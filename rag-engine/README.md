@@ -72,6 +72,22 @@ Each logical document is a Layer-1 snippet or a Layer-2 doc (`docId` = financebe
 under `atlas.ingest.*` (`ATLAS_INGEST_CHUNK_SIZE`, `..._CHUNK_OVERLAP`, `..._LAYER1_MANIFEST`, …).
 Ingestion is triggered via the admin endpoint (P1 task 7).
 
+## Clearance & RBAC core (P1)
+The RBAC core (ADR-0012) lives in `com.atlas.ragengine.security`:
+- **`ClearanceLevel`** — ordered enum `PUBLIC < ANALYST < COMPLIANCE < RESTRICTED`; a caller at level *L*
+  sees content at any level ≤ *L*.
+- **`RbacFilterBuilder`** — the single, mandatory retrieval predicate: `clearance = ANY(?)` bound to the
+  caller's visible-label array (e.g. COMPLIANCE → `{public,analyst,compliance}`). Centralized so both the
+  dense (kNN) and sparse (tsvector) paths in task 5 share one trust boundary it can't bypass. Also exposes
+  `isVisible(...)` for the defense-in-depth controller re-check (fails closed on unknown labels).
+- **`ClearanceResolver`** — the **P1-only** clearance-transport shim (ADR-0016): resolves the caller level
+  from `X-Atlas-Clearance` (explicit, wins) or `X-Atlas-User` → the D3 map (`dev/clearance-users.json`),
+  else the configured default (`public`, fail-closed). **Profile-gated to `local`/`test`** (`SecurityConfig`);
+  outside those profiles the shim is absent and the system fails closed. The P3 simulated IdP supersedes it.
+
+Config under `atlas.security.*` (`ATLAS_SECURITY_HEADER_USER`, `..._HEADER_CLEARANCE`,
+`..._DEFAULT_CLEARANCE`, `..._CLEARANCE_USERS`) — env-swappable.
+
 ## Run
 
 ```bash
@@ -102,6 +118,9 @@ curl -s localhost:8081/actuator/health | jq         # liveness (does NOT call th
   valid clearance labels, front-matter, no dangling doc-id references, non-empty snippets.
 - `CorpusLoaderTest` / `DocumentChunkerTest` / `IngestionValidatorTest` — pure-unit ingestion components
   (loading both layers; chunk windows/overlap; LLM04 trusted-source admission + SHA-256).
+- `ClearanceLevelTest` / `RbacFilterBuilderTest` / `ClearanceResolverTest` — pure-unit RBAC core: clearance
+  ordering + visible-set math, the mandatory `= ANY(?)` predicate + defense-in-depth `isVisible`, and the
+  P1 header/user→clearance shim (explicit-header wins, D3 map fallback, fail-closed default).
 - `IngestionIT` — Testcontainers `pgvector/pgvector:pg16` (Docker, **no GPU**) with a deterministic stub
   embedder; ingests the full corpus and asserts document/chunk counts (24/24), provenance + integrity
   columns, the generated tsvector, `vector_dims = 768`, and full-rebuild idempotency.

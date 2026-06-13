@@ -199,6 +199,13 @@
   simplest correct design and uses the `atlas_chunk_clear` index. RLS is recorded as a future hardening option.
 - **Consequences:** Proven by the D4 negative-access integration test as a **hard CI gate (0 leaks)** across
   dense/sparse/hybrid paths. If a non-hierarchical org model ever emerges, supersede with a new ADR (sets/RLS).
+- **Implementation note (P1 task 4):** the mandatory predicate is encoded as **`clearance = ANY(?)`** bound to
+  the caller's visible-label array (e.g. COMPLIANCE → `{public,analyst,compliance}`), not a literal
+  `level <= N`. It is semantically identical but fully parameterized (no interpolation of caller input) and
+  index-friendly on `atlas_chunk_clear`. `RbacFilterBuilder` returns a reusable `RbacPredicate(sqlFragment,
+  params)` so the dense and sparse SQL (task 5) share one boundary, plus `isVisible(...)` for the
+  defense-in-depth controller re-check (fails closed on unknown labels). `ClearanceLevel` is the ordered enum;
+  unknown labels throw / deny rather than escalate.
 
 ### ADR-0011 — Chunking strategy & chunk size
 - **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-1)

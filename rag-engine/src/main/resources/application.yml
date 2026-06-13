@@ -46,3 +46,9 @@ atlas:
     chunk-overlap: ${ATLAS_INGEST_CHUNK_OVERLAP:64}
     embedding-dim: ${EMBED_DIM:768}
     trusted-origins: ${ATLAS_INGEST_TRUSTED_ORIGINS:classpath:corpus/,classpath:/corpus/}
+  # P1-only clearance-transport shim (ADR-0016). Profile-gated to local/test; the P3 IdP supersedes it.
+  security:
+    clearance-users: ${ATLAS_SECURITY_CLEARANCE_USERS:classpath:dev/clearance-users.json}
+    header-user: ${ATLAS_SECURITY_HEADER_USER:X-Atlas-User}
+    header-clearance: ${ATLAS_SECURITY_HEADER_CLEARANCE:X-Atlas-Clearance}
+    default-clearance: ${ATLAS_SECURITY_DEFAULT_CLEARANCE:public}
