@@ -45,7 +45,9 @@ curl -s localhost:8081/actuator/health | jq         # liveness (does NOT call th
   dimension equals `EMBED_DIM` (768).
 
 ## Known quirk (R5)
-The JarvisLabs nginx proxy can return a transient `404` on the *first* request after the
-instance has been idle (the route warms up on the next call). Re-run if the live test
-trips on the first attempt. Spring AI's retry handles transient 5xx but not 404; a short
-client-side retry is a candidate hardening (revisited with the P3 circuit-breaker work).
+If the **JarvisLabs instance is paused**, its nginx proxy still answers but the Ollama
+upstream is down, so requests return `404 <html>` (nginx), not a connection error.
+**Resume the instance before running the live test.** Also remember a resumed instance may
+publish a new endpoint URL → update `OLLAMA_BASE_URL` (see RUNBOOK §2). Spring AI's retry
+handles transient 5xx but not 404; a short client-side retry is a candidate hardening
+(revisited with the P3 circuit-breaker work).
