@@ -224,6 +224,16 @@ uvx ruff check evals
 uvx --with pytest pytest evals -q
 ```
 
+**Corpus (P1):** the two-layer corpus lives in `rag-engine/src/main/resources/corpus/`
+(`layer1/` = committed FinanceBench evidence snippets + `manifest.json`; `layer2/` = authored
+AML/compliance overlay). Test fixtures (D3 shim, D4 negative-access, D7 poisoned docs) are under
+`rag-engine/src/test/resources/fixtures/`. To refresh/extend Layer-1 from Hugging Face (no auth):
+```bash
+python rag-engine/src/main/resources/corpus/scripts/fetch_layer1.py --check   # verify entries resolve
+python rag-engine/src/main/resources/corpus/scripts/fetch_layer1.py --write   # rewrite snippet files
+```
+See `rag-engine/src/main/resources/corpus/README.md` for provenance + license (CC-BY-NC-4.0).
+
 ## 5. CI & supply-chain — P0
 GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`. Five jobs (= the required status checks):
 

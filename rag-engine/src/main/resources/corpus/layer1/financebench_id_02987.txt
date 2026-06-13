@@ -1,0 +1,21 @@
+Activision Blizzard, Inc. and Subsidiaries
+Consolidated Balance Sheets
+(Amounts in millions, except share data)
+                                              At December 31, 2019   At December 31, 2018
+Assets
+Current assets:
+Cash and cash equivalents                            $5,794                $4,225
+Accounts receivable, net of allowances                  848                 1,035
+Inventories, net                                         32                    43
+Software development                                    322                   264
+Other current assets                                    296                   539
+Total current assets                                  7,292                 6,106
+Software development (non-current)                       54                    65
+Property and equipment, net                             253                   282
+Deferred income taxes, net                            1,293                   458
+Intangible assets, net                                  531                   735
+Goodwill                                              9,764                 9,762
+Total assets                                        $19,845               $17,890
+
+Note: FY2019 revenue / average PP&E (FY2018-FY2019) gives a fixed asset turnover
+ratio of 24.26 (Total net revenues divided by average Property and equipment, net).

@@ -1,0 +1,22 @@
+American Express Company
+Table 1: Summary of Financial Performance
+Years Ended December 31 (Millions, except percentages and per share amounts)
+                                                     2022       2021       2020
+Total revenues net of interest expense            $52,862    $42,380    $36,087
+Provisions for credit losses                        2,182     (1,419)     4,730
+Expenses                                           41,095     33,110     27,061
+Pretax income                                       9,585     10,689      4,296
+Income tax provision                                2,071      2,629      1,161
+Net income                                          7,514      8,060      3,135
+Earnings per common share — diluted                 $9.85     $10.02      $3.77
+Cash dividends declared per common share            $2.08      $1.72      $1.72
+Return on average equity                            32.3%      33.7%      14.2%
+Effective tax rate                                 21.6%      24.6%      27.0%
+Common Equity Tier 1                               10.3%      10.5%      13.5%
+Card Member loans                                 107,964     88,562     73,373
+Customer deposits                                 110,239     84,382     86,875
+
+The effective tax rate dropped from 24.6% in FY2021 to 21.6% in FY2022. As a
+financial-services company, American Express measures performance through Net
+Interest Margin rather than operating or gross margin. Common stock trades on the
+New York Stock Exchange under the trading symbol AXP.

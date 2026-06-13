@@ -1,0 +1,22 @@
+American Water Works Company, Inc. and Subsidiary Companies
+Consolidated Statements of Cash Flows (In millions)
+For the Years Ended December 31              2020      2019      2018
+CASH FLOWS FROM OPERATING ACTIVITIES
+Net income                                   $709      $621      $565
+Depreciation and amortization                 604       582       545
+Provision for losses on accounts receivable    34        28        33
+Impact of Freedom Industries settlement         --        (4)      (40)
+Net cash provided by operating activities    1,426     1,383     1,386
+CASH FLOWS FROM INVESTING ACTIVITIES
+Capital expenditures                        (1,822)   (1,654)   (1,586)
+Acquisitions, net of cash acquired            (135)     (235)     (398)
+Net cash used in investing activities       (2,061)   (1,945)   (2,036)
+CASH FLOWS FROM FINANCING ACTIVITIES
+Proceeds from long-term debt                 1,334     1,530     1,358
+Repayments of long-term debt                  (342)     (495)     (526)
+Dividends paid                                (389)     (353)     (319)
+Net cash provided by financing activities    1,120       494       726
+Cash, cash equivalents and restricted funds at end of period $576  $91  $159
+
+Note: American Water Works paid $389 million in cash dividends in FY2020
+(approximately $0.40 billion).

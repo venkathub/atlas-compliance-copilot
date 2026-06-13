@@ -13,6 +13,7 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0020 | 2026-06-13 | Layer-1 ingestion form: committed FinanceBench evidence snippets | Accepted | P1 |
 | 0019 | 2026-06-13 | Testcontainers ITs: docker-java API pin + exec-classifier jar | Accepted | P1 |
 | 0018 | 2026-06-13 | Answer generation scope & citation granularity | Accepted | P1 |
 | 0017 | 2026-06-13 | Final Layer-1 corpus subset (FinanceBench) | Accepted | P1 |
@@ -41,6 +42,32 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0020 — Layer-1 ingestion form: committed FinanceBench evidence snippets
+- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §5 (Task 2) ·
+  **Refines:** ADR-0017 (FinanceBench subset), ADR-0004 (two-layer corpus)
+- **Context:** ADR-0017 fixed the Layer-1 subset as "~10–15 FinanceBench docs pulled from HF at ingest."
+  FinanceBench's source documents are **full 10-K/10-Q filings (100–200 pages each)**. Ingesting full
+  filings means thousands of chunks, heavy embedding cost/time on the dev GPU, PDF parsing, and
+  non-deterministic content for the Testcontainers ITs — at odds with the low-spec laptop + cost-discipline
+  constraints (CLAUDE.md). The form of Layer-1 ("what is a document") was left open by the spec.
+- **Options considered (owner-confirmed):** (a) **Commit FinanceBench `evidence_text` snippets** (~12 short
+  docs tied to the 150 golden tuples) as the Layer-1 text — small, deterministic, version-controlled,
+  eval-aligned, cheap to embed; (b) pull full filings from HF at ingest into a gitignored dir — most
+  realistic chunking, but heavy/non-deterministic/PDF-parsing; (c) hybrid (snippets + 2–3 full filings).
+- **Decision:** **(a)** Commit cleaned FinanceBench **evidence snippets** as Layer-1, pinned by
+  `corpus/layer1/manifest.json`. A throwaway `scripts/fetch_layer1.py` documents provenance and can
+  refresh/extend from the public HF datasets-server (no auth). Layer-1 clearance: `public` for
+  financial-statement excerpts (real public filings), `analyst` for interpretive MD&A excerpts — giving
+  Layer-1 a public↔analyst boundary while the full clearance gradient lives in the authored Layer-2 overlay.
+- **Rationale:** Deterministic, offline ITs; minimal embedding cost; the snippets are exactly the evidence
+  the P2 golden set scores, keeping P1 ingestion and P2 evals coherent. Realism of full-document chunking is
+  deferred — if evals later need it, switch to option (b)/(c) via a new ADR. Distinctive snippet tokens
+  (e.g. "Zwijndrecht", "Combat Arms Earplugs", "Amex Ventures", "MMM26") give the hybrid sparse-retrieval
+  test real keywords dense search alone would miss.
+- **Consequences:** Layer-1 lives in version control (CC-BY-NC-4.0 attribution in `corpus/README.md` +
+  manifest). The ingestion loader (Task 3) reads `manifest.json` + snippet files; it does not parse PDFs in
+  P1. Re-ingest is a full rebuild. Chunking (ADR-0011) still applies but produces far fewer chunks per doc.
 
 ### ADR-0019 — Testcontainers ITs: docker-java API pin + exec-classifier jar
 - **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §4, §5 (Task 1)

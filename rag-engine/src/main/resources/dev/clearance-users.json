@@ -1,0 +1,12 @@
+{
+  "_note": "D3 — P1-only dev clearance shim (ADR-0016 / D-P1-6). Maps a dev caller identity (X-Atlas-User header) to a clearance level. Active ONLY under the local/test profile; the simulated IdP in P3 (ADR-0003) supersedes this with a verifiable claim. A request may instead pass X-Atlas-Clearance directly. NEVER enable in a shared/prod environment.",
+  "header_user": "X-Atlas-User",
+  "header_clearance": "X-Atlas-Clearance",
+  "default_clearance": "public",
+  "users": {
+    "guest-public": { "clearance": "public",     "display": "Public Guest" },
+    "analyst-bob":  { "clearance": "analyst",     "display": "Bob — Markets Analyst" },
+    "priya":        { "clearance": "compliance",  "display": "Priya — Compliance Analyst" },
+    "bsa-admin":    { "clearance": "restricted",  "display": "BSA Officer / Admin" }
+  }
+}

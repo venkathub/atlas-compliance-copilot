@@ -41,6 +41,20 @@ Indexes: `atlas_chunk_hnsw` (HNSW cosine, dense) · `atlas_chunk_tsv` (GIN, spar
 `atlas_chunk_clear` (btree, RBAC pre-filter). Flyway runs automatically on app startup against
 the configured datasource; `vector(768)` is fixed by ADR-0005 and must match `EMBED_DIM`.
 
+## Corpus & fixtures (P1)
+Two-layer corpus (ADR-0004) + authored fixtures — full details in
+[`src/main/resources/corpus/README.md`](src/main/resources/corpus/README.md).
+- **Layer 1 (D1)** — `corpus/layer1/`: committed FinanceBench evidence snippets
+  (`PatronusAI/financebench`, **CC-BY-NC-4.0**), pinned by `manifest.json`. Deterministic,
+  offline, eval-aligned (ADR-0020). Clearance: `public` (statements) / `analyst` (MD&A).
+- **Layer 2 (D2)** — `corpus/layer2/`: ~12 authored AML/compliance docs on the **Northwind**
+  account, spanning all four clearance levels; restricted docs carry synthetic PII.
+- **D3** — `dev/clearance-users.json`: P1-only dev user→clearance shim (ADR-0016).
+- **D4** — `test/resources/fixtures/negative_access.json`: negative-access golden set (RBAC hard gate).
+- **D7** — `test/resources/fixtures/poisoned/`: prompt-injection fixtures + `expectations.json` (LLM01).
+
+`FixtureCatalogTest` (pure unit) guards the integrity of the corpus + fixtures on every build.
+
 ## Run
 
 ```bash
@@ -67,6 +81,8 @@ curl -s localhost:8081/actuator/health | jq         # liveness (does NOT call th
 
 ## Tests
 - `OllamaConnectivityProbeTest` — pure unit (mocked models), CI-safe.
+- `FixtureCatalogTest` — pure unit; validates the P1 corpus + fixtures (D1/D2/D3/D4/D7):
+  valid clearance labels, front-matter, no dangling doc-id references, non-empty snippets.
 - `SchemaMigrationIT` — Testcontainers `pgvector/pgvector:pg16`; runs the Flyway V1 migration
   and asserts the tables, the three indexes, the `vector(768)` column, and the generated
   `content_tsv` column exist. Needs Docker, **not** a GPU — runs in CI.
