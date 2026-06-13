@@ -13,6 +13,14 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0018 | 2026-06-13 | Answer generation scope & citation granularity | Accepted | P1 |
+| 0017 | 2026-06-13 | Final Layer-1 corpus subset (FinanceBench) | Accepted | P1 |
+| 0016 | 2026-06-13 | Clearance transport in P1 (pre-IdP shim) | Accepted | P1 |
+| 0015 | 2026-06-13 | Prompt-injection guardrail approach (LLM01) | Accepted | P1 |
+| 0014 | 2026-06-13 | Reranking approach (seam now, cross-encoder in P2) | Accepted | P1 |
+| 0013 | 2026-06-13 | Hybrid search fusion method (RRF) | Accepted | P1 |
+| 0012 | 2026-06-13 | RBAC model & enforcement mechanism | Accepted | P1 |
+| 0011 | 2026-06-13 | Chunking strategy & chunk size | Accepted | P1 |
 | 0010 | 2026-06-13 | CI pipeline, supply-chain controls & multi-arch image | Accepted | P0 |
 | 0009 | 2026-06-13 | Local infra under snap-Docker confinement | Accepted | P0 |
 | 0008 | 2026-06-13 | Monorepo build topology & framework version pins | Accepted | P0 |
@@ -25,12 +33,122 @@
 | 0001 | 2026-06-13 | Core language/runtime split (Java + Python) | Accepted | P0 |
 
 > ADR-0001–0007 were pre-recorded from roadmap planning (CLAUDE.md + `ROADMAP.md` §0); **ADR-0008–0010 capture
-> decisions made while implementing P0.** Each remains open to revision with a new superseding ADR if a later
-> phase surfaces evidence against it.
+> decisions made while implementing P0.** **ADR-0011–0018 are the P1 grooming decisions** (`docs/phases/P1_SPEC.md`
+> §3), confirmed with the project owner before P1 implementation begins. Each remains open to revision with a
+> new superseding ADR if a later phase surfaces evidence against it.
 
 ---
 
 ## 2. Decisions
+
+### ADR-0018 — Answer generation scope & citation granularity
+- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-8)
+- **Context:** P1 must prove the forcing story's "answer with citations" — but we could stop at retrieval or
+  go all the way to a generated answer; citations could be chunk- or sentence-level.
+- **Options considered:** (a) **Full QA: grounded answer with inline `[n]` markers → chunk-level citations**;
+  (b) retrieval-only (ranked chunks, no LLM answer) — smaller but doesn't prove the citation story.
+- **Decision:** **(a)** Full grounded QA via Spring AI Advisors, **chunk-level** inline `[n]` citations.
+- **Rationale:** Matches the roadmap ("answers carry inline citations") and the Priya story; chunk-level is
+  the right granularity for 10-K prose + AML memos without the overhead of span attribution.
+- **Consequences:** `CitationExtractor` must guarantee every marker resolves to a returned chunk and no
+  citation exceeds caller clearance. Sentence-level attribution deferred to P2 tuning if evals warrant it.
+
+### ADR-0017 — Final Layer-1 corpus subset (FinanceBench)
+- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-7)
+- **Context:** ADR-0004 fixed the two-layer corpus but left the exact Layer-1 subset to "P1 start". Layer 1 is
+  the Hugging Face finance substrate that proves chunking/embeddings/hybrid/citations.
+- **Options considered:** (a) **FinanceBench (`PatronusAI/financebench`) subset, ~10–15 docs**; (b) raw EDGAR
+  10-K subset (public-domain, but no eval tuples); (c) both.
+- **Decision:** **(a) FinanceBench, ~10–15 docs.** Pulled from HF at ingest time; Layer-1 docs carry a baseline
+  clearance tag (`public`/`analyst`), with sensitive material in the authored Layer-2 overlay.
+- **Rationale:** FinanceBench ships 150 `(question, answer, evidence, doc)` tuples that **seed the P2 golden
+  eval set (D5)** — choosing it now keeps P1 ingestion and P2 evals coherent. License CC-BY-NC-4.0 is fine for
+  a portfolio; raw EDGAR (public domain) remains the commercial-clean fallback. Small subset = cost discipline.
+- **Consequences:** HF corpus is download-time data, never a runtime dependency (app talks only to pgvector +
+  Ollama). If a commercial-clean corpus is ever needed, switch to EDGAR via a new ADR.
+
+### ADR-0016 — Clearance transport in P1 (pre-IdP shim)
+- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 (superseded by ADR-0003's IdP in P3) · **Spec:** P1_SPEC §3 (D-P1-6)
+- **Context:** RBAC retrieval needs a caller clearance now, but the simulated identity/clearance provider is
+  scheduled for P3 (ADR-0003). P1 must not be blocked waiting on it.
+- **Options considered:** (a) **Trusted request header `X-Atlas-Clearance` + a dev user→clearance map (D3),
+  gated to the `local`/test profile**; (b) a minimal self-signed JWT stub now (closer to P3 shape, but
+  throwaway crypto P3 replaces).
+- **Decision:** **(a)** Trusted-header shim, profile-gated, documented loudly as P1-only. The admin ingest
+  endpoint is guarded by the same shim (requires admin/`restricted`).
+- **Rationale:** Unblocks all RBAC tests without building crypto plumbing P3 discards; keeps the P1 surface
+  minimal and the trust boundary explicit.
+- **Consequences:** **Must not ship to any shared/prod environment as-is** — P3's simulated IdP supersedes it
+  with cryptographically verifiable claims. The retrieval/controller code reads an abstract `Clearance` so the
+  P3 swap touches only the resolver.
+
+### ADR-0015 — Prompt-injection guardrail approach (LLM01)
+- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-5)
+- **Context:** Retrieved documents are untrusted content (the D7 poisoned-doc fixture); a compliance copilot
+  must resist prompt injection (OWASP LLM01).
+- **Options considered:** (a) **Defense-in-depth: delimiter/spotlighting of retrieved content + system-prompt
+  hardening + a lightweight heuristic scanner that quarantines/flags suspicious chunks**; (b) a dedicated
+  classifier model (e.g. prompt-guard) — stronger but new model/infra; (c) instruction-only hardening — weakest.
+- **Decision:** **(a)** for P1; escalate to **(b)** in P2 alongside the adversarial/red-team eval set.
+- **Rationale:** Pragmatic and testable against D7 without adding a model; layered controls beat any single
+  mechanism. The classifier is better justified once P2 can measure its lift.
+- **Consequences:** Guardrail effectiveness is gated by the D7 integration test in P1 (pass/fail), then by the
+  P2 adversarial suite. Heuristic phrase list must be maintained; documented as a known limitation.
+
+### ADR-0014 — Reranking approach (seam now, cross-encoder in P2)
+- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-4)
+- **Context:** The default Ollama deployment ships no reranker. The roadmap lists reranking under P1 skills,
+  but a real cross-encoder adds a model + infra surface.
+- **Options considered:** (a) cross-encoder (ONNX/HF) reranker in P1 — best relevance, new dependency;
+  (b) LLM-as-reranker via Ollama — no new infra, but added latency/cost and less consistent;
+  (c) **no dedicated reranker in P1 — ship RRF-fused order as the rank, keep a `DocumentPostProcessor` seam.**
+- **Decision:** **(c)** for the P1 MVP, with the post-processor seam in place; add the cross-encoder in **P2**
+  where evals can prove it earns its cost.
+- **Rationale:** Keeps P1 focused on the hard problem (RBAC correctness) and avoids unmeasured infra. The seam
+  makes (a)/(b) a drop-in later. Honest trade-off: P1 "reranking" is fusion-ordering + interface, not a model.
+- **Consequences:** Portfolio/README must state the reranker is RRF-based in P1, cross-encoder in P2. Revisit
+  if the P1 manual baseline shows relevance gaps that fusion alone can't close.
+
+### ADR-0013 — Hybrid search fusion method (RRF)
+- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-3)
+- **Context:** ADR-0002 fixed hybrid retrieval = dense (pgvector HNSW) + sparse (`tsvector`); the two result
+  lists must be combined into one ranking.
+- **Options considered:** (a) **Reciprocal Rank Fusion (RRF), k=60** — score-scale-agnostic, robust, no weight
+  tuning; (b) weighted linear combination of normalized scores (e.g. 0.6 dense / 0.4 sparse) — tunable but
+  needs normalization + weight selection.
+- **Decision:** **(a) RRF, k=60.**
+- **Rationale:** RRF is the 2026 default for dense+sparse: it sidesteps the incomparable score scales of cosine
+  similarity vs `ts_rank` and needs no tuning. Weighted fusion can't be tuned credibly until P2 can measure it.
+- **Consequences:** If the P1 baseline reveals a systematic dense/sparse imbalance, switch to (b) in P2 with a
+  logged weight set. Fusion is unit-tested for deterministic ordering.
+
+### ADR-0012 — RBAC model & enforcement mechanism
+- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-2)
+- **Context:** The system's hardest correctness/safety requirement (R1): a user must **never** receive a chunk
+  above their clearance. The four labels are `public`/`analyst`/`compliance`/`restricted`.
+- **Options considered:** (a) **hierarchical levels (`public<analyst<compliance<restricted`) + a mandatory SQL
+  predicate (`level <= caller`) pushed into both dense and sparse queries in a custom retriever**; (b) Postgres
+  Row-Level Security policies — strongest DB guarantee, but session-role plumbing + pool complexity; (c)
+  set-of-roles membership — more flexible for non-hierarchical orgs, overkill for four clean levels.
+- **Decision:** **(a)** Hierarchical levels with the predicate centralized in `RbacFilterBuilder` so it can
+  never be bypassed, plus a defense-in-depth controller assert that every returned citation `<= caller`.
+- **Rationale:** Our labels are a genuine hierarchy, so levels + a single mandatory SQL predicate is the
+  simplest correct design and uses the `atlas_chunk_clear` index. RLS is recorded as a future hardening option.
+- **Consequences:** Proven by the D4 negative-access integration test as a **hard CI gate (0 leaks)** across
+  dense/sparse/hybrid paths. If a non-hierarchical org model ever emerges, supersede with a new ADR (sets/RLS).
+
+### ADR-0011 — Chunking strategy & chunk size
+- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-1)
+- **Context:** Chunk shape drives retrieval recall and citation granularity for 10-K prose (Layer 1) and AML
+  memos (Layer 2).
+- **Options considered:** (a) **recursive/structural splitter, ~512 tokens, ~64 overlap** — respects
+  paragraph/section boundaries, overlap preserves cross-boundary context; (b) fixed token windows (e.g. 256/0)
+  — simplest but cuts mid-sentence; (c) sentence-window / small-to-big — best precision but more moving parts.
+- **Decision:** **(a)** Recursive/structural, ~512-token chunks with ~64-token overlap.
+- **Rationale:** A sane, well-understood default for the corpus mix that yields good citation granularity
+  without the complexity of small-to-big; window size is cheap to revisit during the P1 manual baseline.
+- **Consequences:** Window/overlap are config (env-swappable); re-chunking implies a full re-ingest (P1 has no
+  incremental migration). Revisit sizes in P2 once RAGAS context-recall can measure the effect.
 
 ### ADR-0010 — CI pipeline, supply-chain controls (LLM03) & multi-arch image
 - **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P0
