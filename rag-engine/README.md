@@ -153,21 +153,26 @@ guarantees (in CI, every build):
 - **Prompt injection (D7): 3/3 payloads quarantined**, benign control preserved, no restricted-string leak.
 - **Retrieval latency (Testcontainers, stub embedder):** hybrid query p50 ≈ tens of ms over 24 chunks.
 
-LLM-dependent numbers from the **live run** (`mvn -P live …` against the remote Ollama
-`qwen2.5:3b-instruct` + `nomic-embed-text`, local pgvector; recorded 2026-06-13):
+LLM-dependent numbers from the **live run** (`mvn -P live …` + a manual 10-question baseline against the
+remote Ollama `qwen2.5:3b-instruct` + `nomic-embed-text`, local pgvector; recorded 2026-06-13):
 
 | Metric | Target (P1 manual) | Result (live, 2026-06-13) |
 |---|---|---|
-| Grounded-citation pass-rate (Northwind forcing story) | ≥ 90% | **Pass** — Priya's answer cited 6 sources, all resolving to retrieved chunks, all ≤ compliance |
-| RBAC respected end-to-end (per-caller max citation clearance) | no leaks | **public→public · analyst→analyst · compliance→compliance**; restricted docs (SAR draft/EDD/OFAC) never cited by anyone |
-| Answer faithfulness (manual spot-check) | grounded, no fabrication | grounded — correctly surfaced EX-2026-0142 structuring ($47,900) + EX-2026-0155 pass-through ($312,000) breaching the $5k/$10k thresholds; public caller correctly answered "no authorized exceptions visible" |
-| End-to-end `POST /v1/query` latency (compliance) | record | **p50 ≈ 5.5 s** (3 runs: 6.85 / 4.81 / 5.52 s) — query embed + hybrid SQL + chat generation |
-| `live` IT suite | green | `OllamaConnectivityLiveIT` 2/2 · `QueryLiveIT` 1/1 (admin ingest 24 docs → cited compliance answer → public RBAC check) |
+| Citation resolution (10 representative Q&A) | every `[n]` resolves; none above clearance | **10/10** — every emitted marker resolved to a returned chunk; **0** citations above the caller's clearance |
+| RBAC end-to-end (per-caller) | no cross-clearance leak | **10/10 correct** — restricted docs (SAR draft, EDD/PII, OFAC, investigation) **never cited by any caller**; 3 above-clearance probes (public "Northwind exceptions", compliance "beneficial owners + DOB/IDs", compliance "draft SAR + OFAC") **grounded-refused with no PII/SAR leakage** |
+| Answer grounding / faithfulness | grounded, no fabrication | **10/10 grounded-or-correctly-refused, no fabrication**; full-quality answers **8/10** — 2 weak (one templated `[1]…[5]` without restating the figure; one incomplete because the driver doc is *analyst-gated* from a public caller — correct RBAC, weak answer). Small-model limits, not faithfulness failures |
+| Correct facts on Layer-1 (finance) | grounded extraction | 3M FY2018 capex **$1,577M**, AmEx FY2022 effective tax **21.6%**, BSA structuring definition — all correct + cited |
+| `POST /v1/query` latency | record p50/p95 | **p50 ≈ 2.8 s, p95 ≈ 6.8 s** (~9 samples; token-generation-bound — longer answers cost more) |
+| `live` IT suite | green | `OllamaConnectivityLiveIT` 2/2 · `QueryLiveIT` 1/1 |
 
-> **Tuning finding (for P2):** `sparseHits = 0` on the long natural-language question — `plainto_tsquery`
-> ANDs every lexeme, so no single chunk matches them all; dense retrieval carried the result. Switch to
-> `websearch_to_tsquery`/OR semantics (or query-term extraction) in P2 to let the sparse path contribute on
-> conversational queries. These numbers become automated RAGAS thresholds in P2.
+> **Honest scope of this baseline:** it validates citation integrity, end-to-end RBAC (incl. PII/SAR
+> non-leakage), and grounding on 10 hand-checked Q&A — it is **not** an automated faithfulness score. A live
+> *adversarial* answer test (a poisoned doc reaching the real model) was **not** run; P1 relies on pre-model
+> quarantine (proven by `PromptInjectionIT`) and defers live red-teaming to P2 (ADR-0015).
+>
+> **Tuning finding (for P2):** `sparseHits = 0` on long natural-language questions — `plainto_tsquery` ANDs
+> every lexeme, so no single chunk matches them all and dense retrieval carries the result. Move to
+> `websearch_to_tsquery`/OR semantics in P2. All of the above become automated RAGAS thresholds in P2.
 
 ## Run
 
