@@ -13,6 +13,7 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0019 | 2026-06-13 | Testcontainers ITs: docker-java API pin + exec-classifier jar | Accepted | P1 |
 | 0018 | 2026-06-13 | Answer generation scope & citation granularity | Accepted | P1 |
 | 0017 | 2026-06-13 | Final Layer-1 corpus subset (FinanceBench) | Accepted | P1 |
 | 0016 | 2026-06-13 | Clearance transport in P1 (pre-IdP shim) | Accepted | P1 |
@@ -40,6 +41,41 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0019 — Testcontainers ITs: docker-java API pin + exec-classifier jar
+- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §4, §5 (Task 1)
+- **Context:** P1 Task 1 introduced the first Testcontainers integration test (`SchemaMigrationIT`, pgvector
+  pg16) and Flyway-managed schema. Two environment/build frictions surfaced that would otherwise make ITs
+  flaky or unrunnable, and the resolution is non-obvious enough to record for reproducibility.
+- **Problems & options:**
+  1. **Modern Docker daemon rejects Testcontainers' default API version.** Daemons ≥28 (local dev runs 29.x)
+     enforce a minimum Docker API of 1.40, but Testcontainers' bundled docker-java negotiates 1.32 →
+     *"client version 1.32 is too old."* docker-java **ignores the `DOCKER_API_VERSION` env var**; the only
+     levers are its `api.version` config property or a programmatic client. Options: (a) pin `api.version`
+     via a forwarded system property (portable, overridable); (b) require each dev to hand-edit a docker-java
+     props file (fragile); (c) downgrade Docker (unacceptable).
+  2. **Spring Boot fat jar hides classpath resources from Failsafe ITs.** After `package`, the repackaged fat
+     jar becomes the project artifact; Failsafe then resolves the project's classpath entry to that jar, where
+     resources live under `BOOT-INF/classes/` — so `classpath:db/migration` (Flyway) and `@SpringBootTest`
+     package-up config scanning silently find **nothing** (lifecycle `verify` failed while the direct
+     `failsafe:` goal passed). Options: (a) classify the fat jar (`-exec`) so the **main** artifact stays a
+     thin jar with resources at the root; (b) bind `repackage` after `integration-test` (non-standard, breaks
+     `package`); (c) point Flyway at a `filesystem:` path (brittle, env-specific).
+- **Decision:**
+  1. Pin docker-java's **`api.version`** via a parent-pom property **`docker.api.version` (default `1.43`)**,
+     forwarded to the Failsafe-forked JVM through `<systemPropertyVariables>`. Overridable per-machine with
+     `-Ddocker.api.version=…`.
+  2. Give the Spring Boot **repackage a `classifier=exec`** so the runnable jar is `*-exec.jar` and the main
+     artifact is a thin jar (resources at classpath root). Dockerfile copies `*-exec.jar`.
+  3. Write `SchemaMigrationIT` against **Flyway's Java API directly** (Testcontainers datasource), not
+     `@SpringBootTest` — it tests the migration SQL in isolation, with no Spring context or Ollama beans. The
+     "Flyway runs on boot" wiring is covered later by the ingestion IT (Task 3), which needs a context anyway.
+- **Rationale:** All three keep the build portable (CI's older Docker also satisfies API 1.43; `verify` stays
+  green in both lifecycle and direct invocation) and the ITs fast and hermetic. The frictions are
+  environment-driven, so the fixes live in build config + RUNBOOK, not application code.
+- **Consequences:** New deps in `rag-engine` (jdbc, postgresql, flyway-core, flyway-database-postgresql,
+  testcontainers). `verify` now requires Docker (no GPU). Downstream modules adopting Testcontainers inherit
+  `docker.api.version`; any that produce a runnable jar should reuse the `exec` classifier convention.
 
 ### ADR-0018 — Answer generation scope & citation granularity
 - **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-8)

@@ -27,6 +27,18 @@
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
         <maven-failsafe-plugin.version>3.5.2</maven-failsafe-plugin.version>
+
+        <!--
+          docker-java API version for Testcontainers ITs. Modern Docker daemons (>=28,
+          e.g. local dev on 29.x) dropped support for legacy Docker API versions, while
+          Testcontainers' bundled docker-java negotiates the old default (1.32) and gets
+          rejected ("client version 1.32 is too old; minimum supported API version is 1.40").
+          docker-java ignores the DOCKER_API_VERSION env var, so we pin its `api.version`
+          config property here and forward it to the Failsafe-forked JVM. 1.43 == Docker 24
+          (2023), a safe floor for CI and local. Override with -Ddocker.api.version=... if your
+          daemon's max API is older. See docs/RUNBOOK.md.
+        -->
+        <docker.api.version>1.43</docker.api.version>
     </properties>
 
     <modules>

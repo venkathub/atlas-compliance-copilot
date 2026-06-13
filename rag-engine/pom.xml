@@ -30,9 +30,48 @@
             <artifactId>spring-ai-starter-model-ollama</artifactId>
         </dependency>
 
+        <!-- JDBC datasource for the custom pgvector schema (P1). We manage the schema
+             ourselves (custom DocumentRetriever, hybrid + RBAC), so plain JDBC, not JPA. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Flyway: versioned, reproducible schema migrations (P1). -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers: spin up pgvector/pgvector:pg16 for schema + retrieval ITs. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -46,11 +85,49 @@
                   We parent off atlas-parent (not spring-boot-starter-parent), so the
                   repackage execution is NOT auto-bound. Declare it explicitly to produce
                   the executable fat jar.
+
+                  classifier=exec: the fat jar is published as rag-engine-<ver>-exec.jar so the
+                  MAIN artifact stays a thin jar (resources at the classpath root). This keeps
+                  `project.artifact.file` a plain jar after `package`, so Flyway/Spring classpath
+                  scanning (e.g. `classpath:db/migration`) still resolves during failsafe ITs —
+                  the fat jar would hide them under BOOT-INF/classes. The Dockerfile uses -exec.
                 -->
+                <configuration>
+                    <classifier>exec</classifier>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>
                             <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              Failsafe runs integration tests (*IT) by default so the Testcontainers
+              ITs (schema, ingestion, RBAC, …) run in normal CI — they need Docker but
+              NOT a GPU. The live smoke test is excluded here via the `live` JUnit tag
+              and only enabled by the `live` profile below.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <excludedGroups>live</excludedGroups>
+                    <!--
+                      Forward docker-java's API version to the forked JVM so Testcontainers
+                      can talk to modern Docker daemons (see docker.api.version in parent pom).
+                    -->
+                    <systemPropertyVariables>
+                        <api.version>${docker.api.version}</api.version>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
                         </goals>
                     </execution>
                 </executions>
@@ -61,8 +138,8 @@
     <profiles>
         <!--
           The live smoke test (OllamaConnectivityLiveIT) hits the real remote GPU.
-          It runs ONLY under this profile so normal CI never needs a GPU:
-              source .env && mvn -P live verify
+          This profile DROPS the `live` exclusion so those tests run too:
+              set -a && . ./.env && set +a && mvn -P live -pl rag-engine verify
         -->
         <profile>
             <id>live</id>
@@ -71,14 +148,10 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-failsafe-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <goals>
-                                    <goal>integration-test</goal>
-                                    <goal>verify</goal>
-                                </goals>
-                            </execution>
-                        </executions>
+                        <configuration>
+                            <!-- override: include live-tagged ITs in this profile -->
+                            <excludedGroups></excludedGroups>
+                        </configuration>
                     </plugin>
                 </plugins>
             </build>

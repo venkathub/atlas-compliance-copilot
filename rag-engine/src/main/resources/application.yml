@@ -4,6 +4,15 @@ server:
 spring:
   application:
     name: rag-engine
+  datasource:
+    # pgvector store + RBAC metadata. Env-driven, never hardcoded (CLAUDE.md).
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:atlas}}
+    username: ${POSTGRES_USER:atlas}
+    password: ${POSTGRES_PASSWORD:atlas}
+  flyway:
+    # Versioned, reproducible schema migrations (P1). Runs on startup against the datasource.
+    enabled: true
+    locations: classpath:db/migration
   ai:
     ollama:
       # Remote GPU endpoint — env-swappable, never hardcoded (CLAUDE.md).

@@ -24,16 +24,19 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      # `verify` runs unit tests only — the live Ollama IT is gated behind the
-      # `live` profile, so CI never needs a GPU.
-      - name: Build & unit test
+      # `verify` runs unit tests (surefire) + Testcontainers ITs (failsafe) — the
+      # GitHub runner has Docker, so the pgvector schema/ingestion ITs run here. The
+      # live Ollama IT is gated behind the `live` JUnit tag/profile, so CI needs no GPU.
+      - name: Build & test
         run: mvn -B verify
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: surefire-reports
-          path: "**/target/surefire-reports/*"
+          path: |
+            **/target/surefire-reports/*
+            **/target/failsafe-reports/*
           if-no-files-found: ignore
 
   python:
