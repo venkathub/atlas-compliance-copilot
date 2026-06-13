@@ -1,0 +1,54 @@
+# Atlas — local infra stack (P0).
+# Postgres+pgvector and Redis, digest-pinned, healthchecked.
+#
+# Snap-Docker note: the daemon cannot bind-mount our workspace (it lives under
+# /data, outside $HOME, blocked by snap confinement). So we use NAMED VOLUMES only
+# and apply DB init SQL via `docker exec` stdin from the Makefile (see `make up`),
+# never a host bind mount. Images are kept stock (no custom build) so the multi-arch
+# manifest is preserved for the Oracle Ampere A1 (arm64) prod target.
+
+name: atlas
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16@sha256:00ba258a66dac104fd5171074a0084462a64a1369d8513f3d0a634e2f24d15bc
+    container_name: atlas-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - atlas-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+    container_name: atlas-redis
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - atlas-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  atlas-pgdata:
+  atlas-redisdata:
+
+networks:
+  default:
+    name: atlas-net
