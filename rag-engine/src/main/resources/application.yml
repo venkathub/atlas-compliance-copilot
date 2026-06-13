@@ -4,6 +4,15 @@ server:
 spring:
   application:
     name: rag-engine
+  datasource:
+    # pgvector store + RBAC metadata. Env-driven, never hardcoded (CLAUDE.md).
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:atlas}}
+    username: ${POSTGRES_USER:atlas}
+    password: ${POSTGRES_PASSWORD:atlas}
+  flyway:
+    # Versioned, reproducible schema migrations (P1). Runs on startup against the datasource.
+    enabled: true
+    locations: classpath:db/migration
   ai:
     ollama:
       # Remote GPU endpoint — env-swappable, never hardcoded (CLAUDE.md).
@@ -27,3 +36,28 @@ management:
   endpoint:
     health:
       show-details: never
+
+# Ingestion pipeline (P1). All env-swappable; chunk sizing per ADR-0011, dim per ADR-0005.
+atlas:
+  ingest:
+    layer1-manifest: ${ATLAS_INGEST_LAYER1_MANIFEST:classpath:corpus/layer1/manifest.json}
+    layer2-glob: ${ATLAS_INGEST_LAYER2_GLOB:classpath:corpus/layer2/*.md}
+    chunk-size: ${ATLAS_INGEST_CHUNK_SIZE:512}
+    chunk-overlap: ${ATLAS_INGEST_CHUNK_OVERLAP:64}
+    embedding-dim: ${EMBED_DIM:768}
+    trusted-origins: ${ATLAS_INGEST_TRUSTED_ORIGINS:classpath:corpus/,classpath:/corpus/}
+  # P1-only clearance-transport shim (ADR-0016). Profile-gated to local/test; the P3 IdP supersedes it.
+  security:
+    clearance-users: ${ATLAS_SECURITY_CLEARANCE_USERS:classpath:dev/clearance-users.json}
+    header-user: ${ATLAS_SECURITY_HEADER_USER:X-Atlas-User}
+    header-clearance: ${ATLAS_SECURITY_HEADER_CLEARANCE:X-Atlas-Clearance}
+    default-clearance: ${ATLAS_SECURITY_DEFAULT_CLEARANCE:public}
+  # Hybrid retrieval tuning (ADR-0013 RRF). All env-swappable.
+  retrieval:
+    dense-k: ${ATLAS_RETRIEVAL_DENSE_K:20}
+    sparse-k: ${ATLAS_RETRIEVAL_SPARSE_K:20}
+    rrf-k: ${ATLAS_RETRIEVAL_RRF_K:60}
+    top-k: ${ATLAS_RETRIEVAL_TOP_K:6}
+  # Prompt-injection guardrail (LLM01, ADR-0015). Default phrase set is in code; override to extend.
+  guardrail:
+    enabled: ${ATLAS_GUARDRAIL_ENABLED:true}

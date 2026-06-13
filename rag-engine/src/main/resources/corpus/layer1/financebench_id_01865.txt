@@ -1,0 +1,19 @@
+3M Company — MD&A, Worldwide Sales Change by Business Segment (Year ended December 31, 2022)
+
+Business Segment            Organic  Acquisitions  Divestitures  Translation  Total
+Safety and Industrial         1.0%        --            --         (4.2)%     (3.2)%
+Transportation and Electronics 1.2        --          (0.5)        (4.6)      (3.9)
+Health Care                   3.2         --          (1.4)        (3.8)      (2.0)
+Consumer                     (0.9)        --          (0.4)        (2.6)      (3.9)
+Total Company                 1.2         --          (0.5)        (3.9)      (3.2)
+
+Sales and operating income by business segment (Dollars in millions):
+                              2022 Net Sales  % of Total  2022 Operating Income
+Safety and Industrial            $11,604        33.9%          $1,199
+Transportation and Electronics     8,902        26.0            1,012
+Health Care                        8,421        24.6            1,815
+Consumer                           5,298        15.5              994
+Total Company                    $34,229       100.0%          $6,539
+
+Excluding the impact of M&A, the Consumer segment shrank by 0.9% organically,
+dragging on the company's overall organic growth for 2022.

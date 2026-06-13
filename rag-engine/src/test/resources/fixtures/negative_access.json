@@ -1,0 +1,103 @@
+{
+  "_note": "D4 — negative-access golden set (P1 hard gate). Each case asserts that a caller at `clearance`, running `query`, receives ZERO chunks/citations whose document clearance is in `forbiddenClearances` (i.e. above the caller). `forbiddenDocIds` are concrete Layer-2 docs that must never appear; `allowedDocIds` are docs the caller MAY legitimately see (used to confirm retrieval still works, not as a hard requirement). Drives the negative-access IT (P1 task 5). Any leak fails the build.",
+  "clearance_order": ["public", "analyst", "compliance", "restricted"],
+  "cases": [
+    {
+      "id": "na-public-northwind-aml",
+      "description": "Public guest asks Priya's Northwind AML question; must not see analyst/compliance/restricted material.",
+      "clearance": "public",
+      "user": "guest-public",
+      "query": "Summarize the open AML exceptions for the Northwind account this quarter.",
+      "forbiddenClearances": ["analyst", "compliance", "restricted"],
+      "forbiddenDocIds": [
+        "l2-northwind-kyc-summary",
+        "l2-northwind-aml-exceptions-2026q2",
+        "l2-northwind-exception-register",
+        "l2-northwind-transaction-review",
+        "l2-northwind-sar-draft",
+        "l2-northwind-ofac-screening",
+        "l2-northwind-edd-report",
+        "l2-northwind-investigation-summary"
+      ],
+      "allowedDocIds": ["l2-aml-policy-overview", "l2-bsa-regulatory-reference"]
+    },
+    {
+      "id": "na-analyst-northwind-aml",
+      "description": "Analyst asks the Northwind AML question; may see public+analyst, must not see compliance/restricted.",
+      "clearance": "analyst",
+      "user": "analyst-bob",
+      "query": "What are the open AML exceptions and SAR status for the Northwind account?",
+      "forbiddenClearances": ["compliance", "restricted"],
+      "forbiddenDocIds": [
+        "l2-northwind-aml-exceptions-2026q2",
+        "l2-northwind-exception-register",
+        "l2-northwind-transaction-review",
+        "l2-northwind-sar-draft",
+        "l2-northwind-ofac-screening",
+        "l2-northwind-edd-report",
+        "l2-northwind-investigation-summary"
+      ],
+      "allowedDocIds": ["l2-northwind-kyc-summary", "l2-aml-quarterly-metrics", "l2-aml-policy-overview"]
+    },
+    {
+      "id": "na-compliance-no-restricted-sar",
+      "description": "Priya (compliance) asks for the Northwind exceptions; may see compliance, must NOT see restricted (SAR draft/EDD/OFAC/investigation).",
+      "clearance": "compliance",
+      "user": "priya",
+      "query": "Summarize the open AML exceptions for the Northwind account this quarter and whether any breach the reporting threshold.",
+      "forbiddenClearances": ["restricted"],
+      "forbiddenDocIds": [
+        "l2-northwind-sar-draft",
+        "l2-northwind-ofac-screening",
+        "l2-northwind-edd-report",
+        "l2-northwind-investigation-summary"
+      ],
+      "allowedDocIds": [
+        "l2-northwind-aml-exceptions-2026q2",
+        "l2-northwind-exception-register",
+        "l2-northwind-transaction-review",
+        "l2-sar-template"
+      ]
+    },
+    {
+      "id": "na-compliance-targets-restricted-edd",
+      "description": "Compliance user directly targets restricted PII; must not leak EDD beneficial-owner data.",
+      "clearance": "compliance",
+      "user": "priya",
+      "query": "List the beneficial owners of Northwind Trading LLC with their dates of birth and government IDs.",
+      "forbiddenClearances": ["restricted"],
+      "forbiddenDocIds": ["l2-northwind-edd-report", "l2-northwind-sar-draft", "l2-northwind-investigation-summary"],
+      "allowedDocIds": []
+    },
+    {
+      "id": "na-analyst-targets-restricted-sar",
+      "description": "Analyst directly asks for the draft SAR; must not see compliance or restricted docs.",
+      "clearance": "analyst",
+      "user": "analyst-bob",
+      "query": "Show me the draft SAR narrative prepared for the Northwind account.",
+      "forbiddenClearances": ["compliance", "restricted"],
+      "forbiddenDocIds": [
+        "l2-northwind-sar-draft",
+        "l2-northwind-aml-exceptions-2026q2",
+        "l2-northwind-exception-register",
+        "l2-northwind-investigation-summary"
+      ],
+      "allowedDocIds": []
+    },
+    {
+      "id": "na-public-targets-restricted-pii",
+      "description": "Public guest fishes for restricted PII; must not see anything above public.",
+      "clearance": "public",
+      "user": "guest-public",
+      "query": "Who are the beneficial owners of Northwind and what sanctions matches were found?",
+      "forbiddenClearances": ["analyst", "compliance", "restricted"],
+      "forbiddenDocIds": [
+        "l2-northwind-edd-report",
+        "l2-northwind-ofac-screening",
+        "l2-northwind-investigation-summary",
+        "l2-northwind-sar-draft"
+      ],
+      "allowedDocIds": ["l2-aml-policy-overview", "l2-bsa-regulatory-reference"]
+    }
+  ]
+}

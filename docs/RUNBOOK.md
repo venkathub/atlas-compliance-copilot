@@ -188,14 +188,29 @@ make -C infra logs|ps   # follow logs / status
 Defaults (from repo-root `.env`): Postgres `localhost:5432` (db/user `atlas`), Redis `localhost:6379`.
 Verified: pgvector **0.8.2** + pg_trgm on `pg16`; both containers healthy.
 
-## 4. Build, test & run — P0
+## 4. Build, test & run — P0/P1
 **Java (`rag-engine`):**
 ```bash
-mvn -B verify                       # build + unit tests (no GPU) — same as CI 'java' job
-mvn -pl rag-engine spring-boot:run  # boot the app
+mvn -B verify                       # build + unit tests (surefire) + Testcontainers ITs (failsafe)
+mvn -pl rag-engine test             # unit tests only (no Docker, no GPU)
+mvn -pl rag-engine spring-boot:run  # boot the app (needs Postgres up — runs Flyway on start)
 curl -s localhost:8081/probe/connectivity | jq   # 30s demo: chat reply + embeddingDim=768, ok=true
 curl -s localhost:8081/actuator/health | jq      # liveness (does NOT call the GPU)
 ```
+> **`verify` needs Docker** (not a GPU): from P1 the Failsafe ITs use Testcontainers to spin up
+> `pgvector/pgvector:pg16` (e.g. `SchemaMigrationIT` runs the Flyway migration and asserts the schema).
+
+**Testcontainers ↔ modern Docker daemon (api.version):** Docker daemons ≥28 (e.g. local dev on
+29.x) drop support for the legacy Docker API version that Testcontainers' bundled docker-java
+negotiates by default, so ITs fail with *"client version 1.32 is too old; minimum supported API
+version is 1.40."* docker-java ignores the `DOCKER_API_VERSION` env var, so the build pins its
+`api.version` config property via the parent-pom property **`docker.api.version`** (default `1.43`
+= Docker 24/2023) and forwards it to the Failsafe-forked JVM. Override if your daemon's *max* API
+is older:
+```bash
+mvn -B verify -Ddocker.api.version=1.41
+```
+
 **Live Ollama smoke test (P0 exit gate — needs a *resumed* JarvisLabs instance):**
 ```bash
 set -a && . ./.env && set +a && mvn -P live -pl rag-engine verify
@@ -209,12 +224,33 @@ uvx ruff check evals
 uvx --with pytest pytest evals -q
 ```
 
+**Corpus (P1):** the two-layer corpus lives in `rag-engine/src/main/resources/corpus/`(`layer1/` = committed FinanceBench evidence snippets + `manifest.json`; `layer2/` = authored
+AML/compliance overlay). Test fixtures (D3 shim, D4 negative-access, D7 poisoned docs) are under
+`rag-engine/src/test/resources/fixtures/`. To refresh/extend Layer-1 from Hugging Face (no auth):
+```bash
+python rag-engine/src/main/resources/corpus/scripts/fetch_layer1.py --check   # verify entries resolve
+python rag-engine/src/main/resources/corpus/scripts/fetch_layer1.py --write   # rewrite snippet files
+```
+See `rag-engine/src/main/resources/corpus/README.md` for provenance + license (CC-BY-NC-4.0).
+
+**Ingest + query (P1, needs `make -C infra up` + a live Ollama; app runs with `SPRING_PROFILES_ACTIVE=local`):**
+```bash
+set -a && . ./.env && set +a && mvn -pl rag-engine spring-boot:run      # boots + runs Flyway
+curl -sX POST localhost:8081/v1/admin/ingest -H 'X-Atlas-User: bsa-admin' | jq     # full rebuild (admin only)
+curl -sX POST localhost:8081/v1/query -H 'X-Atlas-User: priya' -H 'Content-Type: application/json' \
+  -d '{"query":"Summarize the open AML exceptions for the Northwind account this quarter."}' | jq
+```
+Clearance is supplied by the **P1-only** dev shim (ADR-0016): header `X-Atlas-User` (mapped via
+`dev/clearance-users.json`) or `X-Atlas-Clearance` directly. The same Northwind query as
+`X-Atlas-User: guest-public` returns no compliance/restricted citations (RBAC). Live ITs (incl.
+`QueryLiveIT`) need infra up + a resumed GPU: `mvn -P live -pl rag-engine verify`.
+
 ## 5. CI & supply-chain — P0
 GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`. Five jobs (= the required status checks):
 
 | Job (display name) | What it does |
 |---|---|
-| **Java build & test** | `mvn -B verify` (unit tests; live IT excluded) |
+| **Java build & test** | `mvn -B verify` (unit tests + Testcontainers ITs on the runner's Docker; live IT excluded) |
 | **Python lint & test** | `ruff` + `pytest` on `evals` |
 | **Secret scan (gitleaks)** | full-history secret scan |
 | **Vuln scan & SBOM** | Trivy fs scan (vuln+misconfig+secret, **report-only for now**) + Syft CycloneDX SBOM artifact |

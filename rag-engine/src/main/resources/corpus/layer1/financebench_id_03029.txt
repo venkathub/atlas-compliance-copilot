@@ -1,0 +1,19 @@
+3M Company and Subsidiaries
+Consolidated Statement of Cash Flows
+Years ended December 31 (Millions)
+                                                          2018      2017      2016
+Cash Flows from Operating Activities
+Net income including noncontrolling interest             $5,363    $4,869    $5,058
+Depreciation and amortization                             1,488     1,544     1,474
+Stock-based compensation expense                            302       324       298
+Net cash provided by operating activities                 6,439     6,240     6,662
+Cash Flows from Investing Activities
+Purchases of property, plant and equipment (PP&E)        (1,577)   (1,373)   (1,420)
+Proceeds from sale of PP&E and other assets                 262        49        58
+Net cash provided by (used in) investing activities         222    (3,086)   (1,403)
+Cash Flows from Financing Activities
+Purchases of treasury stock                              (4,870)   (2,068)   (3,753)
+Dividends paid to shareholders                           (3,193)   (2,803)   (2,678)
+Net cash provided by (used in) financing activities      (6,701)   (2,655)   (4,626)
+Net increase (decrease) in cash and cash equivalents       (200)      655       600
+Cash and cash equivalents at end of period               $2,853    $3,053    $2,398

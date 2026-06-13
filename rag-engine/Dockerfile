@@ -10,9 +10,14 @@
 #
 # Base pinned by digest (OWASP LLM03 supply-chain). Build context = repo root; the jar
 # must be built first:  mvn -pl rag-engine -am package
+# The runnable Spring Boot jar is the classified `-exec` artifact (the plain jar is a thin
+# library jar; see rag-engine/pom.xml spring-boot-maven-plugin classifier).
 FROM gcr.io/distroless/java21-debian12:nonroot@sha256:7e37784d94dccbf5ccb195c73b295f5ad00cd266512dfbac12eb9c3c28f8077d
 
 WORKDIR /app
-COPY rag-engine/target/rag-engine-*.jar /app/app.jar
+COPY rag-engine/target/rag-engine-*-exec.jar /app/app.jar
+# P1 runs with the local profile so the dev clearance shim (ADR-0016) is wired. The P3 IdP
+# supersedes it; this is a demo/dev default and must not be treated as production authz.
+ENV SPRING_PROFILES_ACTIVE=local
 EXPOSE 8081
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

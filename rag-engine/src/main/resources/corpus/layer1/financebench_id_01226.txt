@@ -1,0 +1,29 @@
+3M Company — MD&A, Results of Operations (FY2022 vs FY2021)
+
+Operating Expenses (Percent of net sales)        2022     2021    Change
+Cost of sales                                    56.2%    53.2%     3.0%
+Selling, general and administrative (SG&A)       26.5     20.4      6.1
+Research, development and related (R&D)            5.4      5.6     (0.2)
+Gain on business divestitures                    (8.0)       --     (8.0)
+Goodwill impairment expense                       0.8        --      0.8
+Operating income margin                          19.1%    20.8%    (1.7)%
+
+Selling, General and Administrative Expenses: SG&A, measured as a percent of
+sales, increased in 2022 when compared to the same period last year. SG&A was
+impacted by increased special item costs for significant litigation primarily
+related to steps toward resolving Combat Arms Earplugs litigation (discussed in
+Note 16) resulting in a 2022 second quarter pre-tax charge of approximately
+$1.2 billion, certain impairment costs related to exiting PFAS manufacturing
+(see Note 15), costs related to exiting Russia (see Note 15), divestiture-related
+restructuring charges (see Note 5), and continued investment in key growth
+initiatives. These increases were partially offset by restructuring benefits and
+ongoing general 3M cost management.
+
+Cost of Sales increases were primarily due to 2022 special item costs for
+significant litigation from additional commitments to address PFAS-related
+matters at 3M's Zwijndrecht, Belgium site (discussed in Note 16), higher raw
+materials and logistics costs.
+
+Gain on Business Divestitures: In the third quarter of 2022, 3M recorded a
+pre-tax gain of $2.7 billion related to the split-off and combination of its
+Food Safety business with Neogen Corporation.

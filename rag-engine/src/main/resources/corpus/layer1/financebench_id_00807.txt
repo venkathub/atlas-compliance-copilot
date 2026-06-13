@@ -1,0 +1,21 @@
+3M Company and Subsidiaries
+Consolidated Balance Sheet (Unaudited)
+(Dollars in millions, except per share amount)
+                                              June 30, 2023   December 31, 2022
+Assets
+Cash and cash equivalents                          $4,258           $3,655
+Marketable securities current                          56              238
+Accounts receivable net of allowances              4,947            4,532
+Total inventories                                  5,280            5,372
+Total current assets                              15,754           14,688
+Property, plant and equipment net                  9,211            9,178
+Total assets                                      $48,880          $46,455
+Liabilities
+Short-term borrowings and current portion of LT debt $3,033          $1,938
+Accounts payable                                   3,231            3,183
+Total current liabilities                         10,936            9,523
+Long-term debt                                    12,954           14,001
+Total liabilities                                $41,023          $31,685
+
+Quick ratio note: (Total current assets - Total inventories) / Total current
+liabilities = (15,754 - 5,280) / 10,936 = 0.96 as of June 30, 2023.

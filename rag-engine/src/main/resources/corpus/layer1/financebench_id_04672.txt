@@ -1,0 +1,23 @@
+3M Company and Subsidiaries
+Consolidated Balance Sheet
+At December 31 (Dollars in millions, except per share amount)
+                                                          2018      2017
+Assets
+Cash and cash equivalents                                $2,853    $3,053
+Accounts receivable net of allowances of $95 and $103     5,020     4,911
+Total inventories                                          4,366     4,034
+Total current assets                                      13,709    14,277
+Property, plant and equipment                            24,873    24,914
+Less: Accumulated depreciation                          (16,135)  (16,048)
+Property, plant and equipment net                         8,738     8,866
+Goodwill                                                 10,051    10,513
+Total assets                                            $36,500   $37,987
+Liabilities
+Total current liabilities                                 7,244     7,687
+Long-term debt                                           13,411    12,096
+Total liabilities                                       $26,652   $26,365
+Equity
+Retained earnings                                        40,636    39,115
+Total 3M Company shareholders equity                      9,796    11,563
+Total equity                                             $9,848   $11,622
+Total liabilities and equity                            $36,500   $37,987

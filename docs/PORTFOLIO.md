@@ -32,7 +32,36 @@ embedding 768-dim · distroless image (no shell, nonroot).
 
 ---
 
-## P1 — Permission-aware RAG (pending)
+## P1 — Permission-aware RAG (complete · 2026-06-13)
+
+**One-liner:** Built the production RAG core — permission-aware hybrid retrieval over pgvector with
+inline-cited, grounded answers and a hard, CI-gated guarantee of **zero cross-clearance leaks**.
+
+**Resume bullets (draft):**
+- Built a **permission-aware hybrid RAG engine** (Java/**Spring AI 1.0**, **pgvector/PG16**): dense **HNSW**
+  + sparse **tsvector** retrieval fused with **Reciprocal Rank Fusion**, with hierarchical RBAC
+  (`public<analyst<compliance<restricted`) **pushed into SQL** so above-clearance chunks are never fetched.
+- Enforced the RBAC boundary as a **hard CI gate** — a negative-access golden set (6 scenarios × dense/sparse/
+  hybrid = **18 assertions**) proves **0 of 18 cross-clearance leaks**; any leak fails the build.
+- Shipped **grounded QA with chunk-level inline `[n]` citations** over `POST /v1/query`, with a defense-in-depth
+  per-citation clearance re-check and a **no-LLM grounded-refusal** path when nothing authorized is found.
+- Hardened ingestion + prompts against **OWASP LLM01/LLM04**: trusted-source-only admission with **SHA-256**
+  provenance, and a prompt-injection guardrail that **quarantined 3/3 poisoned documents** (spotlighting +
+  heuristic scanner) while preserving benign content.
+- Engineered a deterministic, **GPU-free test suite** (**92 tests**: 58 unit + 34 **Testcontainers** ITs) via a
+  stub embedder/chat model, keeping the whole RAG pipeline CI-verifiable without a GPU; real-model path covered
+  by a profile-gated live E2E test.
+
+**Evidence:** `mvn verify` green — 58 unit + 34 IT (incl. `RbacNegativeAccessIT` 18/18 no-leak, `PromptInjectionIT`
+3/3, `IngestionIT` 24 docs/24 chunks) · ADR-0011–0020 · 7 feature commits.
+
+**Quantified:** 24 documents / 24 chunks ingested · 4 clearance levels · 0/18 RBAC leaks · 3/3 injection payloads
+quarantined · RRF k=60 · 768-dim embeddings · **live E2E green vs. real Ollama (`qwen2.5:3b`): `POST /v1/query`
+p50 ≈ 5.5 s, 6-source cited compliance answer, per-caller RBAC enforced (public→public … compliance→compliance,
+restricted never cited)** · OWASP LLM01/04/08/09 mapped. _(Grounded-citation + faithfulness recorded 2026-06-13;
+automated as RAGAS thresholds in P2.)_
+
+---
 ## P2 — Evaluation & observability (pending)
 ## P3 — Cost-aware gateway (pending)
 ## P4 — Agent orchestrator + MCP (pending)
