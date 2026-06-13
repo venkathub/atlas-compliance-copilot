@@ -4,9 +4,11 @@ Permission-aware retrieval core: chunking, embeddings, hybrid (HNSW dense +
 `tsvector` sparse) search, reranking, inline citations, prompt-injection guardrails,
 and RBAC filtering at retrieval time.
 
-**Full engine built in P1.** In **P0** this module hosts only the **Ollama connectivity
-probe** — proof that the Spring AI ↔ remote Ollama path works end-to-end (one chat
-completion + one embedding via `OLLAMA_BASE_URL`). No retrieval logic yet.
+**P1 (current): the full permission-aware RAG engine** — pgvector schema + Flyway,
+two-layer corpus ingestion with provenance/integrity (LLM04), hierarchical clearance +
+RBAC pushed into SQL, hybrid retrieval (dense + sparse + RRF), a prompt-injection
+guardrail (LLM01), and grounded QA with inline citations over `POST /v1/query`. The P0
+Ollama connectivity probe is retained.
 
 ## Stack
 - Spring Boot 3.4.7 · Spring AI 1.0.0 (`spring-ai-starter-model-ollama`) · Java 21
@@ -117,6 +119,51 @@ assembly — defense in depth over untrusted retrieved content:
 
 This layers on top of RBAC — quarantine does not replace clearance filtering.
 
+## Grounded QA + API (P1)
+`QueryService` (`com.atlas.ragengine.qa`, ADR-0018) ties it together: retrieve (RBAC-filtered) →
+guardrail (quarantine + spotlight) → grounded prompt (`SPOTLIGHT_INSTRUCTION` + numbered sources) →
+`ChatModel` → `CitationExtractor`. Citations are chunk-level `[n]` markers; the extractor ignores
+out-of-range/duplicate markers and **re-checks `isVisible` per citation** (fail-closed). If no safe
+source survives, it returns a grounded "no authorized information" refusal **without calling the model**.
+
+HTTP API:
+- **`POST /v1/query`** — body `{ "query": "...", "topK": 6 }`; caller clearance from the shim headers;
+  returns `{ answer, citations[], retrieval{denseHits,sparseHits,fused,reranked,clearanceApplied} }`.
+- **`POST /v1/admin/ingest`** — full corpus rebuild; **guarded** (requires `restricted`/admin), returns
+  `{documents, chunks, rejectedUntrusted}`.
+
+### 30-second demo (needs `make -C infra up` + a live Ollama; SPRING_PROFILES_ACTIVE=local)
+```bash
+set -a && . ./.env && set +a && mvn -pl rag-engine spring-boot:run     # boots + runs Flyway
+curl -sX POST localhost:8081/v1/admin/ingest -H 'X-Atlas-User: bsa-admin' | jq   # {documents:24,...}
+# Priya (compliance) — grounded, cited answer:
+curl -sX POST localhost:8081/v1/query -H 'X-Atlas-User: priya' -H 'Content-Type: application/json' \
+  -d '{"query":"Summarize the open AML exceptions for the Northwind account this quarter."}' | jq
+# Same question as a public guest — no compliance/restricted citations (RBAC):
+curl -sX POST localhost:8081/v1/query -H 'X-Atlas-User: guest-public' -H 'Content-Type: application/json' \
+  -d '{"query":"Summarize the open AML exceptions for the Northwind account this quarter."}' | jq
+```
+
+## Manual quality baseline (P1)
+P1 records a *manual* baseline; automated RAGAS/DeepEval thresholds are **P2**. Measured, deterministic
+guarantees (in CI, every build):
+- **RBAC: 0 cross-clearance leaks** across the D4 negative-access set (6 cases × dense/sparse/hybrid = 18 checks).
+- **Citations: structurally sound** — every cited `[n]` resolves to a returned chunk and every citation is
+  `≤ caller clearance` (CitationExtractor + QueryServiceIT).
+- **Prompt injection (D7): 3/3 payloads quarantined**, benign control preserved, no restricted-string leak.
+- **Retrieval latency (Testcontainers, stub embedder):** hybrid query p50 ≈ tens of ms over 24 chunks.
+
+LLM-dependent numbers (grounded-citation pass-rate, answer faithfulness, end-to-end p50/p95 against the real
+model) are recorded from a **live run** (`mvn -P live …`, needs the GPU):
+
+| Metric | Target (P1 manual) | Result | Date |
+|---|---|---|---|
+| Grounded-citation pass-rate (~12 Q&A) | ≥ 90% | _pending live run_ | — |
+| Answer faithfulness (manual 1–5) | ≥ 4.0 avg | _pending live run_ | — |
+| End-to-end p50 / p95 latency | record | _pending live run_ | — |
+
+> These become automated RAGAS thresholds in P2.
+
 ## Run
 
 ```bash
@@ -160,6 +207,14 @@ curl -s localhost:8081/actuator/health | jq         # liveness (does NOT call th
 - `PromptInjectionIT` — Testcontainers (D7); ingests the poisoned fixtures through the real pipeline and
   asserts per-doc quarantine + that a PUBLIC (attacker) caller's spotlighted context leaks none of the
   restricted strings the payloads try to summon (combined RBAC + guardrail).
+- `CitationExtractorTest` / `QueryServiceTest` — pure-unit QA: marker→source mapping, out-of-range/duplicate
+  handling, defense-in-depth visibility drop; grounded-refusal path (model not called) + cited happy path.
+- `QueryControllerTest` / `AdminIngestControllerTest` — MockMvc contract: §2.4 JSON, header→clearance, admin
+  403 guard.
+- `QueryServiceIT` — Testcontainers + stub ChatModel; real retrieval→guardrail→citations, every marker
+  resolves, no citation exceeds clearance.
+- `QueryLiveIT` — `@Tag("live")`, `@ActiveProfiles("local")`; end-to-end `POST /v1/admin/ingest` then
+  `POST /v1/query` against the real Ollama (not in CI).
 - `IngestionIT` — Testcontainers `pgvector/pgvector:pg16` (Docker, **no GPU**) with a deterministic stub
   embedder; ingests the full corpus and asserts document/chunk counts (24/24), provenance + integrity
   columns, the generated tsvector, `vector_dims = 768`, and full-rebuild idempotency.

@@ -8,7 +8,7 @@ import java.util.List;
  * with the mandatory RBAC predicate pushed into SQL (ADR-0012) — fused with RRF (ADR-0013) and
  * reranked/truncated (ADR-0014). The single entry point used by the QA layer (task 7).
  */
-public class HybridDocumentRetriever {
+public class HybridDocumentRetriever implements HybridRetriever {
 
     private final DenseRetriever denseRetriever;
     private final SparseRetriever sparseRetriever;
@@ -34,6 +34,7 @@ public class HybridDocumentRetriever {
     public record RetrievalResult(List<RetrievedChunk> chunks, RetrievalStats stats) {
     }
 
+    @Override
     public RetrievalResult retrieve(String query, ClearanceLevel caller, int topK) {
         int effectiveTopK = topK > 0 ? topK : props.topK();
         List<RetrievedChunk> dense = denseRetriever.retrieve(query, caller, props.denseK());

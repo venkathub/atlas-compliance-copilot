@@ -20,15 +20,15 @@ import org.testcontainers.utility.DockerImageName;
  * stub embedder, no GPU) and the dense/sparse/hybrid retrievers wired against it. The dense retriever
  * shares the ingestion embedder so query and chunk vectors are comparable.
  */
-final class RetrievalTestHarness implements AutoCloseable {
+public final class RetrievalTestHarness implements AutoCloseable {
 
     static final int DIM = 768;
 
-    final PostgreSQLContainer<?> postgres;
-    final JdbcTemplate jdbc;
-    final DenseRetriever dense;
-    final SparseRetriever sparse;
-    final HybridDocumentRetriever hybrid;
+    public final PostgreSQLContainer<?> postgres;
+    public final JdbcTemplate jdbc;
+    public final DenseRetriever dense;
+    public final SparseRetriever sparse;
+    public final HybridDocumentRetriever hybrid;
 
     @SuppressWarnings("resource")
     private RetrievalTestHarness() {
@@ -63,7 +63,7 @@ final class RetrievalTestHarness implements AutoCloseable {
                 RetrievalProperties.defaults());
     }
 
-    static RetrievalTestHarness start() {
+    public static RetrievalTestHarness start() {
         return new RetrievalTestHarness();
     }
 

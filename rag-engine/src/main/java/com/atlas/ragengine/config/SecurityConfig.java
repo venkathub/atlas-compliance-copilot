@@ -5,6 +5,7 @@ import com.atlas.ragengine.security.DevClearanceDirectory;
 import com.atlas.ragengine.security.RbacFilterBuilder;
 import com.atlas.ragengine.security.ClearanceLevel;
 import com.atlas.ragengine.security.SecurityProperties;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -38,5 +39,16 @@ public class SecurityConfig {
     @Profile({"local", "test"})
     ClearanceResolver clearanceResolver(SecurityProperties props, DevClearanceDirectory directory) {
         return new ClearanceResolver(props, directory);
+    }
+
+    /**
+     * Fail-closed fallback used outside {@code local}/{@code test}: no trusted-header shim, so the
+     * context still loads but every caller resolves to {@code PUBLIC} (the P3 IdP provides the real
+     * resolver). Ensures the app boots in any profile without trusting client headers.
+     */
+    @Bean
+    @ConditionalOnMissingBean(ClearanceResolver.class)
+    ClearanceResolver failClosedClearanceResolver() {
+        return ClearanceResolver.failClosed();
     }
 }

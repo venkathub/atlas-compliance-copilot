@@ -224,8 +224,7 @@ uvx ruff check evals
 uvx --with pytest pytest evals -q
 ```
 
-**Corpus (P1):** the two-layer corpus lives in `rag-engine/src/main/resources/corpus/`
-(`layer1/` = committed FinanceBench evidence snippets + `manifest.json`; `layer2/` = authored
+**Corpus (P1):** the two-layer corpus lives in `rag-engine/src/main/resources/corpus/`(`layer1/` = committed FinanceBench evidence snippets + `manifest.json`; `layer2/` = authored
 AML/compliance overlay). Test fixtures (D3 shim, D4 negative-access, D7 poisoned docs) are under
 `rag-engine/src/test/resources/fixtures/`. To refresh/extend Layer-1 from Hugging Face (no auth):
 ```bash
@@ -233,6 +232,18 @@ python rag-engine/src/main/resources/corpus/scripts/fetch_layer1.py --check   # 
 python rag-engine/src/main/resources/corpus/scripts/fetch_layer1.py --write   # rewrite snippet files
 ```
 See `rag-engine/src/main/resources/corpus/README.md` for provenance + license (CC-BY-NC-4.0).
+
+**Ingest + query (P1, needs `make -C infra up` + a live Ollama; app runs with `SPRING_PROFILES_ACTIVE=local`):**
+```bash
+set -a && . ./.env && set +a && mvn -pl rag-engine spring-boot:run      # boots + runs Flyway
+curl -sX POST localhost:8081/v1/admin/ingest -H 'X-Atlas-User: bsa-admin' | jq     # full rebuild (admin only)
+curl -sX POST localhost:8081/v1/query -H 'X-Atlas-User: priya' -H 'Content-Type: application/json' \
+  -d '{"query":"Summarize the open AML exceptions for the Northwind account this quarter."}' | jq
+```
+Clearance is supplied by the **P1-only** dev shim (ADR-0016): header `X-Atlas-User` (mapped via
+`dev/clearance-users.json`) or `X-Atlas-Clearance` directly. The same Northwind query as
+`X-Atlas-User: guest-public` returns no compliance/restricted citations (RBAC). Live ITs (incl.
+`QueryLiveIT`) need infra up + a resumed GPU: `mvn -P live -pl rag-engine verify`.
 
 ## 5. CI & supply-chain — P0
 GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`. Five jobs (= the required status checks):

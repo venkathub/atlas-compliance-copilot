@@ -23,14 +23,35 @@ public class ClearanceResolver {
     private final SecurityProperties props;
     private final DevClearanceDirectory directory;
     private final ClearanceLevel defaultLevel;
+    private final boolean trustHeaders;
 
     public ClearanceResolver(SecurityProperties props, DevClearanceDirectory directory) {
         this.props = props;
         this.directory = directory;
         this.defaultLevel = resolveDefault(props, directory);
+        this.trustHeaders = true;
+    }
+
+    private ClearanceResolver(ClearanceLevel fixedDefault) {
+        this.props = null;
+        this.directory = null;
+        this.defaultLevel = fixedDefault;
+        this.trustHeaders = false;
+    }
+
+    /**
+     * A fail-closed resolver that <b>ignores all headers</b> and always returns {@code PUBLIC}. Used
+     * outside the {@code local}/{@code test} profiles where the trusted-header shim is not wired, so
+     * the app context still loads but never trusts client-supplied clearance.
+     */
+    public static ClearanceResolver failClosed() {
+        return new ClearanceResolver(ClearanceLevel.PUBLIC);
     }
 
     public ClearanceLevel resolve(RequestHeaders headers) {
+        if (!trustHeaders) {
+            return defaultLevel;
+        }
         // 1) explicit clearance header (dev shim — trusted only under local/test profile)
         var explicit = headers.get(props.headerClearance());
         if (explicit.isPresent()) {

@@ -115,6 +115,15 @@
   the right granularity for 10-K prose + AML memos without the overhead of span attribution.
 - **Consequences:** `CitationExtractor` must guarantee every marker resolves to a returned chunk and no
   citation exceeds caller clearance. Sentence-level attribution deferred to P2 tuning if evals warrant it.
+- **Implementation note (P1 task 7):** the prompt is assembled **directly** (`ChatModel` + a `SystemMessage`
+  carrying `SPOTLIGHT_INSTRUCTION` + numbered-`[n]` citation rules, and a `UserMessage` with numbered
+  spotlighted sources) rather than via the stock `QuestionAnswerAdvisor` — the numbered-citation +
+  spotlighting + guardrail contract is custom (consistent with the custom retriever). `CitationExtractor`
+  parses `[n]`, ignores out-of-range/duplicate markers, and re-checks `isVisible` per citation (fail-closed).
+  When no safe source survives, `QueryService` returns a grounded "no authorized information" refusal **without
+  calling the model** (no hallucination, no cost). `POST /v1/query` returns `{answer, citations[], retrieval}`;
+  `POST /v1/admin/ingest` is guarded to `RESTRICTED` callers via the shim. A fail-closed `ClearanceResolver`
+  (`@ConditionalOnMissingBean`) keeps the context bootable outside `local`/`test` without trusting headers.
 
 ### ADR-0017 — Final Layer-1 corpus subset (FinanceBench)
 - **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-7)

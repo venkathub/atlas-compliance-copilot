@@ -54,4 +54,13 @@ class ClearanceResolverTest {
     void unparseableClearanceHeaderFallsBackToDefault() {
         assertThat(resolve(Map.of("X-Atlas-Clearance", "god-mode"))).isEqualTo(ClearanceLevel.PUBLIC);
     }
+
+    @Test
+    void failClosedResolverIgnoresHeadersAndReturnsPublic() {
+        ClearanceResolver failClosed = ClearanceResolver.failClosed();
+        assertThat(failClosed.resolve(RequestHeaders.of(Map.of("X-Atlas-Clearance", "restricted"))))
+                .isEqualTo(ClearanceLevel.PUBLIC);
+        assertThat(failClosed.resolve(RequestHeaders.of(Map.of("X-Atlas-User", "bsa-admin"))))
+                .isEqualTo(ClearanceLevel.PUBLIC);
+    }
 }
