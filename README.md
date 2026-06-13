@@ -43,4 +43,6 @@ cp .env.example .env        # then edit values (never commit .env)
 - [`CLAUDE.md`](CLAUDE.md) — engineering operating agreement
 
 ## License
-TBD (portfolio project).
+[Apache-2.0](LICENSE) © 2026 Venkatesh.
+Note: the FinanceBench dataset used from P1 stays under its own **CC-BY-NC-4.0** license
+(see `docs/DECISIONS.md` ADR-0004) — that covers data, not this code.
