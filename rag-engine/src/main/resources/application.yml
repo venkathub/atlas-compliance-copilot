@@ -1,0 +1,29 @@
+server:
+  port: ${RAG_ENGINE_PORT:8081}
+
+spring:
+  application:
+    name: rag-engine
+  ai:
+    ollama:
+      # Remote GPU endpoint — env-swappable, never hardcoded (CLAUDE.md).
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      init:
+        # The remote endpoint already hosts the models; never auto-pull at startup.
+        pull-model-strategy: never
+      chat:
+        options:
+          model: "${OLLAMA_CHAT_MODEL:qwen2.5:3b-instruct}"
+          keep-alive: 30m   # keep the model resident to avoid GPU cold starts
+      embedding:
+        options:
+          model: "${OLLAMA_EMBED_MODEL:nomic-embed-text}"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
