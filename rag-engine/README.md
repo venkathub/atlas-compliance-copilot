@@ -88,6 +88,22 @@ The RBAC core (ADR-0012) lives in `com.atlas.ragengine.security`:
 Config under `atlas.security.*` (`ATLAS_SECURITY_HEADER_USER`, `..._HEADER_CLEARANCE`,
 `..._DEFAULT_CLEARANCE`, `..._CLEARANCE_USERS`) — env-swappable.
 
+## Hybrid retrieval (P1)
+`HybridDocumentRetriever` (`com.atlas.ragengine.retrieval`) runs permission-aware hybrid search:
+- **`DenseRetriever`** — pgvector HNSW kNN (`embedding <=> ?::vector`, cosine), score `1 - distance`.
+- **`SparseRetriever`** — Postgres full-text (`content_tsv @@ plainto_tsquery`, `ts_rank_cd`), catches rare
+  exact terms (tickers, place names) dense embeddings miss.
+- Both **push the mandatory RBAC predicate into SQL** (`clearance = ANY(?)`, ADR-0012) — above-clearance
+  chunks are never fetched.
+- **`ReciprocalRankFusion`** (ADR-0013, k=60) fuses the two ranked lists; **`RrfPassThroughReranker`** is the
+  P1 rerank (ADR-0014 seam — a cross-encoder drops in for P2). Returns `RetrievalResult{chunks, stats}` where
+  stats carry `denseHits/sparseHits/fused/reranked/clearanceApplied` (the visible trace).
+
+Config under `atlas.retrieval.*` (`ATLAS_RETRIEVAL_DENSE_K`, `..._SPARSE_K`, `..._RRF_K`, `..._TOP_K`).
+
+> **RBAC hard gate:** the D4 negative-access IT asserts **0 cross-clearance leaks** across dense-only,
+> sparse-only, and hybrid paths (6 golden cases × 3 paths). Any leak fails the build.
+
 ## Run
 
 ```bash
@@ -121,6 +137,11 @@ curl -s localhost:8081/actuator/health | jq         # liveness (does NOT call th
 - `ClearanceLevelTest` / `RbacFilterBuilderTest` / `ClearanceResolverTest` — pure-unit RBAC core: clearance
   ordering + visible-set math, the mandatory `= ANY(?)` predicate + defense-in-depth `isVisible`, and the
   P1 header/user→clearance shim (explicit-header wins, D3 map fallback, fail-closed default).
+- `ReciprocalRankFusionTest` — pure-unit RRF math (both-source winner, union, deterministic tie-break, k).
+- `RbacNegativeAccessIT` — **HARD GATE**: Testcontainers; each D4 golden case × {dense, sparse, hybrid} →
+  asserts 0 chunks/doc-ids above the caller's clearance (any leak fails the build).
+- `HybridRetrievalIT` — Testcontainers; the sparse path surfaces a rare keyword (and RBAC filters it from a
+  public caller), fusion ordering is deterministic, retrieval stats are populated.
 - `IngestionIT` — Testcontainers `pgvector/pgvector:pg16` (Docker, **no GPU**) with a deterministic stub
   embedder; ingests the full corpus and asserts document/chunk counts (24/24), provenance + integrity
   columns, the generated tsvector, `vector_dims = 768`, and full-rebuild idempotency.

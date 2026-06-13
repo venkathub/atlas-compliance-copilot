@@ -52,3 +52,9 @@ atlas:
     header-user: ${ATLAS_SECURITY_HEADER_USER:X-Atlas-User}
     header-clearance: ${ATLAS_SECURITY_HEADER_CLEARANCE:X-Atlas-Clearance}
     default-clearance: ${ATLAS_SECURITY_DEFAULT_CLEARANCE:public}
+  # Hybrid retrieval tuning (ADR-0013 RRF). All env-swappable.
+  retrieval:
+    dense-k: ${ATLAS_RETRIEVAL_DENSE_K:20}
+    sparse-k: ${ATLAS_RETRIEVAL_SPARSE_K:20}
+    rrf-k: ${ATLAS_RETRIEVAL_RRF_K:60}
+    top-k: ${ATLAS_RETRIEVAL_TOP_K:6}

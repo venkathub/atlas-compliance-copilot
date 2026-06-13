@@ -184,6 +184,12 @@
   similarity vs `ts_rank` and needs no tuning. Weighted fusion can't be tuned credibly until P2 can measure it.
 - **Consequences:** If the P1 baseline reveals a systematic dense/sparse imbalance, switch to (b) in P2 with a
   logged weight set. Fusion is unit-tested for deterministic ordering.
+- **Implementation note (P1 task 5):** dense = `embedding <=> ?::vector` (cosine) over the HNSW index, score
+  `1 - distance`; sparse = `content_tsv @@ plainto_tsquery('english', ?)` ordered by `ts_rank_cd`. Both push
+  the RBAC predicate into SQL (ADR-0012). `ReciprocalRankFusion` sums `1/(k+rank)` (k=60) with a deterministic
+  id tie-break. The **D4 negative-access IT is a hard gate**: 6 golden cases × {dense, sparse, hybrid} = 18
+  dynamic assertions of 0 cross-clearance leaks. The reranker (ADR-0014) is a pass-through over the fused
+  order in P1 (`RrfPassThroughReranker`) behind a `Reranker` seam.
 
 ### ADR-0012 — RBAC model & enforcement mechanism
 - **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-2)

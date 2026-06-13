@@ -1,5 +1,6 @@
 package com.atlas.ragengine.ingest;
 
+import com.atlas.ragengine.common.PgVector;
 import com.atlas.ragengine.ingest.DocumentChunker.Chunk;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,7 +49,7 @@ public class EmbeddingWriter {
                             + "(id, document_id, chunk_index, content, clearance, metadata, embedding) "
                             + "VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::vector)",
                     chunkId, documentId, chunk.index(), chunk.text(), clearance,
-                    toJson(meta), toVectorLiteral(embedding));
+                    toJson(meta), PgVector.toLiteral(embedding));
         }
         return chunks.size();
     }
@@ -59,17 +60,5 @@ public class EmbeddingWriter {
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed to serialize chunk metadata", e);
         }
-    }
-
-    /** pgvector text input format: {@code [v1,v2,...]}. */
-    static String toVectorLiteral(float[] embedding) {
-        StringBuilder sb = new StringBuilder(embedding.length * 8).append('[');
-        for (int i = 0; i < embedding.length; i++) {
-            if (i > 0) {
-                sb.append(',');
-            }
-            sb.append(embedding[i]);
-        }
-        return sb.append(']').toString();
     }
 }
