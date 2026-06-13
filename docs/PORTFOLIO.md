@@ -56,9 +56,10 @@ inline-cited, grounded answers and a hard, CI-gated guarantee of **zero cross-cl
 3/3, `IngestionIT` 24 docs/24 chunks) · ADR-0011–0020 · 7 feature commits.
 
 **Quantified:** 24 documents / 24 chunks ingested · 4 clearance levels · 0/18 RBAC leaks · 3/3 injection payloads
-quarantined · RRF k=60 · 768-dim embeddings · hybrid retrieval p50 ≈ tens of ms (24 chunks) · OWASP LLM01/04/08/09
-mapped. _(Grounded-citation pass-rate + answer-faithfulness recorded from the live run; automated as RAGAS
-thresholds in P2.)_
+quarantined · RRF k=60 · 768-dim embeddings · **live E2E green vs. real Ollama (`qwen2.5:3b`): `POST /v1/query`
+p50 ≈ 5.5 s, 6-source cited compliance answer, per-caller RBAC enforced (public→public … compliance→compliance,
+restricted never cited)** · OWASP LLM01/04/08/09 mapped. _(Grounded-citation + faithfulness recorded 2026-06-13;
+automated as RAGAS thresholds in P2.)_
 
 ---
 ## P2 — Evaluation & observability (pending)

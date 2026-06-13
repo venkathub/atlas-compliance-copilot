@@ -114,7 +114,7 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration>
-                    <excludedGroups>live</excludedGroups>
+                    <excludedGroups>${failsafe.excluded.groups}</excludedGroups>
                     <!--
                       Forward docker-java's API version to the forked JVM so Testcontainers
                       can talk to modern Docker daemons (see docker.api.version in parent pom).
@@ -143,18 +143,10 @@
         -->
         <profile>
             <id>live</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-failsafe-plugin</artifactId>
-                        <configuration>
-                            <!-- override: include live-tagged ITs in this profile -->
-                            <excludedGroups></excludedGroups>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
+            <properties>
+                <!-- run the live-tagged ITs (real GPU) in addition to the normal ITs -->
+                <failsafe.excluded.groups></failsafe.excluded.groups>
+            </properties>
         </profile>
     </profiles>
 </project>

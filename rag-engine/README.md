@@ -153,16 +153,21 @@ guarantees (in CI, every build):
 - **Prompt injection (D7): 3/3 payloads quarantined**, benign control preserved, no restricted-string leak.
 - **Retrieval latency (Testcontainers, stub embedder):** hybrid query p50 ≈ tens of ms over 24 chunks.
 
-LLM-dependent numbers (grounded-citation pass-rate, answer faithfulness, end-to-end p50/p95 against the real
-model) are recorded from a **live run** (`mvn -P live …`, needs the GPU):
+LLM-dependent numbers from the **live run** (`mvn -P live …` against the remote Ollama
+`qwen2.5:3b-instruct` + `nomic-embed-text`, local pgvector; recorded 2026-06-13):
 
-| Metric | Target (P1 manual) | Result | Date |
-|---|---|---|---|
-| Grounded-citation pass-rate (~12 Q&A) | ≥ 90% | _pending live run_ | — |
-| Answer faithfulness (manual 1–5) | ≥ 4.0 avg | _pending live run_ | — |
-| End-to-end p50 / p95 latency | record | _pending live run_ | — |
+| Metric | Target (P1 manual) | Result (live, 2026-06-13) |
+|---|---|---|
+| Grounded-citation pass-rate (Northwind forcing story) | ≥ 90% | **Pass** — Priya's answer cited 6 sources, all resolving to retrieved chunks, all ≤ compliance |
+| RBAC respected end-to-end (per-caller max citation clearance) | no leaks | **public→public · analyst→analyst · compliance→compliance**; restricted docs (SAR draft/EDD/OFAC) never cited by anyone |
+| Answer faithfulness (manual spot-check) | grounded, no fabrication | grounded — correctly surfaced EX-2026-0142 structuring ($47,900) + EX-2026-0155 pass-through ($312,000) breaching the $5k/$10k thresholds; public caller correctly answered "no authorized exceptions visible" |
+| End-to-end `POST /v1/query` latency (compliance) | record | **p50 ≈ 5.5 s** (3 runs: 6.85 / 4.81 / 5.52 s) — query embed + hybrid SQL + chat generation |
+| `live` IT suite | green | `OllamaConnectivityLiveIT` 2/2 · `QueryLiveIT` 1/1 (admin ingest 24 docs → cited compliance answer → public RBAC check) |
 
-> These become automated RAGAS thresholds in P2.
+> **Tuning finding (for P2):** `sparseHits = 0` on the long natural-language question — `plainto_tsquery`
+> ANDs every lexeme, so no single chunk matches them all; dense retrieval carried the result. Switch to
+> `websearch_to_tsquery`/OR semantics (or query-term extraction) in P2 to let the sparse path contribute on
+> conversational queries. These numbers become automated RAGAS thresholds in P2.
 
 ## Run
 

@@ -124,6 +124,14 @@
   calling the model** (no hallucination, no cost). `POST /v1/query` returns `{answer, citations[], retrieval}`;
   `POST /v1/admin/ingest` is guarded to `RESTRICTED` callers via the shim. A fail-closed `ClearanceResolver`
   (`@ConditionalOnMissingBean`) keeps the context bootable outside `local`/`test` without trusting headers.
+- **Live E2E validation (2026-06-13):** verified end-to-end against the real remote Ollama
+  (`qwen2.5:3b-instruct` + `nomic-embed-text`); `QueryLiveIT` + a manual run green — Priya (compliance) received
+  a 6-source cited answer (all ≤ compliance; restricted SAR/EDD/OFAC never cited), public/analyst callers
+  correctly bounded, `POST /v1/query` p50 ≈ 5.5 s. Two findings: (1) the `live` Maven profile wasn't actually
+  enabling the `@Tag("live")` ITs — an empty `<excludedGroups>` didn't override the base, so switched to a
+  `failsafe.excluded.groups` property the profile blanks; (2) `plainto_tsquery` ANDs every lexeme, so long
+  conversational questions return 0 sparse hits (dense carried retrieval) — move to `websearch_to_tsquery`/OR
+  semantics in P2.
 
 ### ADR-0017 — Final Layer-1 corpus subset (FinanceBench)
 - **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-7)

@@ -39,6 +39,12 @@
           daemon's max API is older. See docs/RUNBOOK.md.
         -->
         <docker.api.version>1.43</docker.api.version>
+
+        <!--
+          JUnit tag excluded by Failsafe by default — the `live` tests hit the real remote GPU and
+          must never run in CI. The `live` Maven profile (rag-engine) blanks this property to run them.
+        -->
+        <failsafe.excluded.groups>live</failsafe.excluded.groups>
     </properties>
 
     <modules>
