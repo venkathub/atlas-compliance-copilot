@@ -1,0 +1,31 @@
+# Atlas — consistent formatting across the polyglot monorepo.
+# https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Java — 4-space indent (Spring/Google style).
+[*.java]
+indent_size = 4
+
+# Python — 4-space indent (PEP 8 / ruff default).
+[*.py]
+indent_size = 4
+
+# Maven / XML
+[*.{xml,pom}]
+indent_size = 2
+
+# Markdown — keep trailing whitespace (hard line breaks).
+[*.md]
+trim_trailing_whitespace = false
+
+# Makefiles require tabs.
+[Makefile]
+indent_style = tab
