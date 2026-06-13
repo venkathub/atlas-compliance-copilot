@@ -13,6 +13,9 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0010 | 2026-06-13 | CI pipeline, supply-chain controls & multi-arch image | Accepted | P0 |
+| 0009 | 2026-06-13 | Local infra under snap-Docker confinement | Accepted | P0 |
+| 0008 | 2026-06-13 | Monorepo build topology & framework version pins | Accepted | P0 |
 | 0007 | 2026-06-13 | Security & governance baseline (OWASP/OTel/AI gov) | Accepted | P0–P5 |
 | 0006 | 2026-06-13 | Production deploy target & GPU host | Accepted | P0/P5 |
 | 0005 | 2026-06-13 | Dev models & embedding dimension | Accepted | P0/P1 |
@@ -21,12 +24,71 @@
 | 0002 | 2026-06-13 | Vector store: Postgres + pgvector | Accepted | P1 |
 | 0001 | 2026-06-13 | Core language/runtime split (Java + Python) | Accepted | P0 |
 
-> These six are pre-recorded from the roadmap planning (CLAUDE.md + `ROADMAP.md` §0). Each remains open to
-> revision with a new superseding ADR if a phase surfaces evidence against it.
+> ADR-0001–0007 were pre-recorded from roadmap planning (CLAUDE.md + `ROADMAP.md` §0); **ADR-0008–0010 capture
+> decisions made while implementing P0.** Each remains open to revision with a new superseding ADR if a later
+> phase surfaces evidence against it.
 
 ---
 
 ## 2. Decisions
+
+### ADR-0010 — CI pipeline, supply-chain controls (LLM03) & multi-arch image
+- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P0
+- **Context:** P0 DoD requires a CI gate, supply-chain security (OWASP LLM03), and multi-arch images for the
+  Oracle Ampere A1 (arm64) prod target.
+- **Options considered:**
+  - CI shape: one monolithic job vs **separate jobs** (clearer required status checks).
+  - Scanners blocking vs report-only; image base **distroless** vs full JRE; build-in-Dockerfile (multi-stage,
+    emulated arm64 compile) vs **copy prebuilt jar** (arch-independent); action refs by major tag vs exact/SHA.
+- **Decision:** **5 GitHub Actions jobs** — `java` (mvn verify), `python` (ruff+pytest), `secret-scan`
+  (gitleaks), `supply-chain` (**Trivy** fs scan + **Syft** CycloneDX SBOM), `image` (buildx **amd64+arm64**,
+  pushed to **GHCR on `main` only**). Image is **distroless nonroot, digest-pinned base**, built by **copying
+  the arch-independent fat jar** (no QEMU emulation). The live Ollama IT is **gated out of CI** (`live`
+  profile). Actions pinned to major tags; `setup-uv` pinned **exact** (`v8.2.0` — no moving `v8` tag exists).
+- **Rationale:** Distinct jobs = readable branch-protection checks; distroless = minimal attack surface + fast
+  multi-arch; copy-jar exploits the JVM's arch-independence so arm64 needs no emulated build. Trivy is
+  **report-only initially** so an upstream Spring CVE can't block the first green build.
+- **Consequences:** **TODO** flip Trivy to blocking (`exit-code 1`) once the baseline is triaged; consider
+  **SHA-pinning** actions as hardening. Branch protection must require the five check **display names**
+  (`Java build & test`, `Python lint & test`, `Secret scan (gitleaks)`, `Vuln scan & SBOM`,
+  `Multi-arch image build`). First green run = #2.
+
+### ADR-0009 — Local infra under snap-Docker confinement
+- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P0
+- **Context:** The dev host runs Canonical's **snap** Docker, whose binaries are AppArmor-confined and
+  **cannot read files under `/data`** — and the Atlas workspace lives at `/data/aiTrack/Atlas` (outside `$HOME`).
+  Verified: a bind mount of `/data/...` appears **empty** in-container, and `docker compose -f /data/...yml`
+  fails with *no such file or directory*.
+- **Options considered:** relocate the repo under `$HOME` (rejected — workspace is fixed); connect extra snap
+  interfaces (no plug grants arbitrary `/data`); a custom DB image baking the init SQL (extra image to
+  maintain, and `docker build` from `/data` hits the same confinement); **feed everything via stdin/exec**.
+- **Decision:** Never hand a `/data` path to a snap docker binary. The compose file is **piped via stdin**
+  (`cat docker-compose.yml | docker compose -f -`), config is passed through **exported env vars** (not
+  `--env-file`), DB init SQL is streamed via **`docker exec` stdin**, data lives in **named volumes**, and
+  local image builds pipe context via **`tar | docker buildx build -`**. Images stay **stock** (multi-arch
+  manifest preserved).
+- **Rationale:** Confinement-proof and **portable** — stdin/exec work identically on non-snap Docker hosts, so
+  the repo isn't snap-specific. Keeps the DB image unmodified (no custom build to maintain).
+- **Consequences:** `infra/Makefile` encodes the pattern; documented in `infra/README.md` + RUNBOOK §3. A
+  non-obvious gotcha for contributors, hence this ADR.
+
+### ADR-0008 — Monorepo build topology & framework version pins
+- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P0
+- **Context:** A polyglot monorepo with several future Spring modules (gateway, rag-engine, mcp-tools) needs
+  one source of truth for dependency/plugin versions, and a stable, reproducible framework baseline.
+- **Options considered:**
+  - Parent: each module parents off `spring-boot-starter-parent` (free plugin mgmt, but per-module version
+    duplication and no shared home for our own deps) vs a **root aggregator pom** that imports the Spring Boot
+    + Spring AI BOMs in `dependencyManagement` and centralizes `pluginManagement`.
+  - Framework pin: latest Spring AI (docs already show a 2.0 line) vs the **1.0.0 GA** verified on Maven Central.
+- **Decision:** Root **aggregator pom** (packaging `pom`) imports `spring-boot-dependencies` + `spring-ai-bom`
+  and centralizes plugin versions; modules parent off it and declare dependencies version-free. Pin
+  **Spring Boot 3.4.7 + Spring AI 1.0.0 GA**, **Java 21**. Because we do *not* use `spring-boot-starter-parent`,
+  the Spring Boot **`repackage`** execution is declared explicitly in each app module.
+- **Rationale:** One upgrade point across all Java modules; no dual-parent; GA pin = downloadable + stable for
+  a learning project (bumping is a property change + ADR). Avoids surprise from a moving 2.0 line mid-build.
+- **Consequences:** App modules must bind `repackage` — forgetting it yields a non-executable thin jar (a bug
+  this caught during P0). Compiler/surefire/failsafe versions are pinned centrally in the parent.
 
 ### ADR-0007 — Security & governance baseline (OWASP GenAI + OTel + AI governance)
 - **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P0–P5 (cross-cutting)

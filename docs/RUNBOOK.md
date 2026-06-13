@@ -46,10 +46,18 @@ docker buildx ls
 Prod runs on Oracle Cloud Ampere A1 (**arm64**). One-time, to enable cross-builds from this amd64 host:
 ```bash
 docker run --privileged --rm tonistiigi/binfmt --install all
-docker buildx create --name atlas --driver docker-container --use
-docker buildx inspect --bootstrap        # should list linux/amd64 and linux/arm64
+docker buildx create --name atlas-builder --driver docker-container --use --bootstrap
+docker buildx ls          # should list linux/amd64 and linux/arm64
 ```
-Build multi-arch images with `docker buildx build --platform linux/amd64,linux/arm64 ...` (added in P0/P5).
+**Snap-Docker note (this host):** the snap docker CLI can't read `/data` (ADR-0009), so feed the build
+context via **stdin** instead of a path:
+```bash
+# build rag-engine for both arches (jar first: mvn -pl rag-engine -am package)
+tar --exclude=./.git -C /data/aiTrack/Atlas -cf - . | \
+  docker buildx build --builder atlas-builder --platform linux/amd64,linux/arm64 \
+    -f rag-engine/Dockerfile -t atlas/rag-engine:dev --output type=oci,dest="$HOME/img.tar" -
+```
+(In GitHub Actions the runner is not confined, so the `image` job uses a normal path context — see §5.)
 
 ### 1.4 Toolchain verification (copy-paste)
 ```bash
@@ -165,12 +173,56 @@ All three returning sane values = endpoint is healthy and ready for the RAG engi
 
 ---
 
-## 3. Local service stack (Docker Compose) — *added in P0*
-Postgres+pgvector, Redis, and (later) Langfuse/Grafana/Prometheus run via `infra/docker-compose.yml`.
-Commands and ports will be documented here when P0 lands the compose file.
+## 3. Local service stack (Postgres+pgvector, Redis) — P0
+Defined in `infra/docker-compose.yml` (stock images, **digest-pinned**, healthchecked, **named volumes**).
+Snap-Docker-safe operation (ADR-0009): the Makefile pipes compose via stdin and applies init via `exec` —
+no `/data` path is ever handed to a snap docker binary.
+```bash
+make -C infra up        # start; wait healthy; load pgvector + pg_trgm
+make -C infra health    # container health + pgvector version + redis PONG
+make -C infra down      # stop (keep data volumes)
+make -C infra clean     # stop + delete volumes
+make -C infra psql      # psql shell into atlas-postgres
+make -C infra logs|ps   # follow logs / status
+```
+Defaults (from repo-root `.env`): Postgres `localhost:5432` (db/user `atlas`), Redis `localhost:6379`.
+Verified: pgvector **0.8.2** + pg_trgm on `pg16`; both containers healthy.
 
-## 4. Build & test — *added per phase*
-Per-module build/test commands (Maven for Java modules, `uv` for Python) documented as each module is built.
+## 4. Build, test & run — P0
+**Java (`rag-engine`):**
+```bash
+mvn -B verify                       # build + unit tests (no GPU) — same as CI 'java' job
+mvn -pl rag-engine spring-boot:run  # boot the app
+curl -s localhost:8081/probe/connectivity | jq   # 30s demo: chat reply + embeddingDim=768, ok=true
+curl -s localhost:8081/actuator/health | jq      # liveness (does NOT call the GPU)
+```
+**Live Ollama smoke test (P0 exit gate — needs a *resumed* JarvisLabs instance):**
+```bash
+set -a && . ./.env && set +a && mvn -P live -pl rag-engine verify
+```
+> If it returns an nginx `404`, the JarvisLabs instance is **paused** — resume it (§2.4) and re-check
+> `OLLAMA_BASE_URL` (a resumed instance may publish a new URL).
 
-## 5. Production deploy — *added in P5*
-Oracle Cloud Ampere A1 (arm64) deploy steps; Hetzner fallback.
+**Python (`evals` scaffold):**
+```bash
+uvx ruff check evals
+uvx --with pytest pytest evals -q
+```
+
+## 5. CI & supply-chain — P0
+GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`. Five jobs (= the required status checks):
+
+| Job (display name) | What it does |
+|---|---|
+| **Java build & test** | `mvn -B verify` (unit tests; live IT excluded) |
+| **Python lint & test** | `ruff` + `pytest` on `evals` |
+| **Secret scan (gitleaks)** | full-history secret scan |
+| **Vuln scan & SBOM** | Trivy fs scan (vuln+misconfig+secret, **report-only for now**) + Syft CycloneDX SBOM artifact |
+| **Multi-arch image build** | buildx amd64+arm64; pushes `ghcr.io/<repo>/rag-engine` on `main` only |
+
+**Branch protection (one-time, repo owner):** Settings → Branches → protect `main` → require a PR + require
+the five checks above + block force-pushes. Checks appear in the picker only after one green run.
+**TODO:** flip Trivy to blocking (`exit-code 1`) once the CVE baseline is triaged; consider SHA-pinning actions.
+
+## 6. Production deploy — *added in P5*
+Oracle Cloud Ampere A1 (arm64) deploy steps; Hetzner fallback. The P0 multi-arch image already targets arm64.

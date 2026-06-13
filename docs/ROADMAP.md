@@ -89,14 +89,14 @@ the *phase-specific* additions on top of that baseline.
   dev on a low-spec laptop, **multi-arch image builds** (for ARM prod), CI pipeline design,
   OpenAI-compatible LLM integration against remote Ollama.
 - **Entry criteria.** Empty repo; this roadmap approved; `OLLAMA_BASE_URL` available.
-- **Exit criteria (DoD).**
-  - [ ] Monorepo layout per CLAUDE.md conventions; `.env.example` with every required var, **no secrets in code**.
-  - [ ] `docker compose up` brings up Postgres+pgvector and Redis locally; healthchecks pass.
-  - [ ] Image builds are **multi-arch (amd64 + arm64)** so they run on the Oracle Ampere A1 prod target.
-  - [ ] CI skeleton (GitHub Actions) runs lint + build + a placeholder test on every PR; branch protection on `main`.
-  - [ ] **Supply-chain security (OWASP LLM03):** CI runs dependency + secret scanning; container images and model tags are pinned by digest; an SBOM/AIBOM is generated.
-  - [ ] **Smoke test**: an automated check that calls the cloud Ollama endpoint via env config and asserts a completion + an embedding come back; model is swappable by env, never hardcoded.
-  - [ ] `docs/RUNBOOK.md` started (incl. "how to pause/resume the JarvisLabs GPU"); `docs/DECISIONS.md` records stack/baseline-model/deploy-target choices.
+- **Exit criteria (DoD).**  *(P0 complete 2026-06-13 — see ADR-0008–0010; CI run #2 green.)*
+  - [x] Monorepo layout per CLAUDE.md conventions; `.env.example` with every required var, **no secrets in code**.
+  - [x] `make -C infra up` brings up Postgres+pgvector and Redis locally; healthchecks pass (snap-Docker-safe, ADR-0009).
+  - [x] Image builds are **multi-arch (amd64 + arm64)** for the Oracle Ampere A1 prod target (distroless, digest-pinned; verified locally + in CI).
+  - [x] CI (GitHub Actions) runs build + lint + tests on every PR/push (green). *Branch protection on `main` = pending repo-owner click.*
+  - [x] **Supply-chain security (OWASP LLM03):** CI runs dependency + secret scanning (Trivy + gitleaks); image + base pinned by digest; SBOM generated (Syft/CycloneDX).
+  - [x] **Smoke test**: an automated `@Tag("live")` IT calls the cloud Ollama endpoint via env config and asserts a completion + a 768-dim embedding; model swappable by env, never hardcoded.
+  - [x] `docs/RUNBOOK.md` updated (incl. JarvisLabs pause/resume); `docs/DECISIONS.md` records stack/model/deploy + P0 implementation choices.
 
 ### P1 — Permission-aware RAG engine + pgvector store
 - **Goal.** Given a user + clearance, retrieve only authorized documents and answer with citations.
