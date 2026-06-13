@@ -55,6 +55,23 @@ Two-layer corpus (ADR-0004) + authored fixtures — full details in
 
 `FixtureCatalogTest` (pure unit) guards the integrity of the corpus + fixtures on every build.
 
+## Ingestion pipeline (P1)
+`IngestionService.rebuild()` performs an **idempotent full rebuild**:
+`CorpusLoader` → `IngestionValidator` (LLM04) → `DocumentChunker` (ADR-0011) → `EmbeddingWriter`.
+- **CorpusLoader** reads Layer-1 (`manifest.json` + snippets) and Layer-2 (markdown front-matter).
+- **IngestionValidator** (LLM04) admits only trusted origins (allow-list), records a `content_sha256`,
+  and rejects invalid/empty docs (untrusted docs are never stored).
+- **DocumentChunker** (ADR-0011) splits structurally into ~512-token windows with ~64-token overlap
+  (injectable token estimator; char-based default).
+- **EmbeddingWriter** embeds each chunk (`nomic-embed-text`, 768) and writes `atlas_chunk`
+  (`content_tsv` auto-generated). Document and chunk ids are **deterministic name-based UUIDs**
+  (`docId`, `docId#index`), so a rebuild reproduces identical rows — stable citations + idempotency.
+
+Each logical document is a Layer-1 snippet or a Layer-2 doc (`docId` = financebench_id / l2 doc_id);
+`source_uri` is provenance and may repeat across snippets from the same filing. Config is env-swappable
+under `atlas.ingest.*` (`ATLAS_INGEST_CHUNK_SIZE`, `..._CHUNK_OVERLAP`, `..._LAYER1_MANIFEST`, …).
+Ingestion is triggered via the admin endpoint (P1 task 7).
+
 ## Run
 
 ```bash
@@ -83,6 +100,11 @@ curl -s localhost:8081/actuator/health | jq         # liveness (does NOT call th
 - `OllamaConnectivityProbeTest` — pure unit (mocked models), CI-safe.
 - `FixtureCatalogTest` — pure unit; validates the P1 corpus + fixtures (D1/D2/D3/D4/D7):
   valid clearance labels, front-matter, no dangling doc-id references, non-empty snippets.
+- `CorpusLoaderTest` / `DocumentChunkerTest` / `IngestionValidatorTest` — pure-unit ingestion components
+  (loading both layers; chunk windows/overlap; LLM04 trusted-source admission + SHA-256).
+- `IngestionIT` — Testcontainers `pgvector/pgvector:pg16` (Docker, **no GPU**) with a deterministic stub
+  embedder; ingests the full corpus and asserts document/chunk counts (24/24), provenance + integrity
+  columns, the generated tsvector, `vector_dims = 768`, and full-rebuild idempotency.
 - `SchemaMigrationIT` — Testcontainers `pgvector/pgvector:pg16`; runs the Flyway V1 migration
   and asserts the tables, the three indexes, the `vector(768)` column, and the generated
   `content_tsv` column exist. Needs Docker, **not** a GPU — runs in CI.

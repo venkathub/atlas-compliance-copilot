@@ -36,3 +36,13 @@ management:
   endpoint:
     health:
       show-details: never
+
+# Ingestion pipeline (P1). All env-swappable; chunk sizing per ADR-0011, dim per ADR-0005.
+atlas:
+  ingest:
+    layer1-manifest: ${ATLAS_INGEST_LAYER1_MANIFEST:classpath:corpus/layer1/manifest.json}
+    layer2-glob: ${ATLAS_INGEST_LAYER2_GLOB:classpath:corpus/layer2/*.md}
+    chunk-size: ${ATLAS_INGEST_CHUNK_SIZE:512}
+    chunk-overlap: ${ATLAS_INGEST_CHUNK_OVERLAP:64}
+    embedding-dim: ${EMBED_DIM:768}
+    trusted-origins: ${ATLAS_INGEST_TRUSTED_ORIGINS:classpath:corpus/,classpath:/corpus/}

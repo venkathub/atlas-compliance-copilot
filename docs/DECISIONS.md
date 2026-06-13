@@ -212,6 +212,11 @@
   without the complexity of small-to-big; window size is cheap to revisit during the P1 manual baseline.
 - **Consequences:** Window/overlap are config (env-swappable); re-chunking implies a full re-ingest (P1 has no
   incremental migration). Revisit sizes in P2 once RAGAS context-recall can measure the effect.
+- **Implementation note (P1 task 3):** the `DocumentChunker` uses an **injectable token estimator**; the
+  production default is a cheap character-based estimate (~4 chars/token) rather than a real tokenizer, since
+  JTokkit is not on the Spring AI classpath and exact token counts aren't needed to *size* chunks. Tests inject
+  a deterministic word counter for exact boundaries. If P2 evals show sizing drift, swap in a JTokkit/HF
+  tokenizer behind the same `ToIntFunction<String>` seam (no API change).
 
 ### ADR-0010 — CI pipeline, supply-chain controls (LLM03) & multi-arch image
 - **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P0
