@@ -76,6 +76,15 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>${maven-surefire-plugin.version}</version>
+                    <configuration>
+                        <!--
+                          Quiet the JDK CDS + dynamic-agent-load warnings on JDK 21.
+                          (Mockito still prints a benign self-attach INFO line; fully removing
+                          it needs a maven-dependency-plugin:properties + -javaagent setup, which
+                          isn't worth an always-on execution across every module for cosmetics.)
+                        -->
+                        <argLine>-XX:+EnableDynamicAgentLoading -Xshare:off</argLine>
+                    </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

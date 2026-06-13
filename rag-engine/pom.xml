@@ -42,6 +42,18 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <!--
+                  We parent off atlas-parent (not spring-boot-starter-parent), so the
+                  repackage execution is NOT auto-bound. Declare it explicitly to produce
+                  the executable fat jar.
+                -->
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

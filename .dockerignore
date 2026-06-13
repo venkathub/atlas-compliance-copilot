@@ -1,0 +1,22 @@
+# Keep the Docker build context small (context = repo root for the rag-engine image).
+.git
+.github
+.gitignore
+.idea
+**/*.iml
+.vscode
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+docs
+*.md
+**/README.md
+infra
+# Java build noise we don't need in the image (we only copy the fat jar explicitly):
+**/target/classes
+**/target/generated-sources
+**/target/maven-status
+**/target/surefire-reports
+**/target/test-classes
