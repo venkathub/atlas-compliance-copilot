@@ -58,3 +58,6 @@ atlas:
     sparse-k: ${ATLAS_RETRIEVAL_SPARSE_K:20}
     rrf-k: ${ATLAS_RETRIEVAL_RRF_K:60}
     top-k: ${ATLAS_RETRIEVAL_TOP_K:6}
+  # Prompt-injection guardrail (LLM01, ADR-0015). Default phrase set is in code; override to extend.
+  guardrail:
+    enabled: ${ATLAS_GUARDRAIL_ENABLED:true}

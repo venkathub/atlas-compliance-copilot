@@ -41,11 +41,18 @@ public class IngestionService {
     public IngestionReport rebuild() {
         // Full rebuild: clear chunks + documents (chunk cascade-deletes with its document).
         jdbc.update("TRUNCATE TABLE atlas_document CASCADE");
+        return ingest(loader.loadAll());
+    }
 
-        int documents = 0;
+    /**
+     * Validate → chunk → embed → store the given documents, <b>without</b> truncating. Used by
+     * {@link #rebuild()} and by tests that append documents (e.g. poisoned fixtures).
+     */
+    public IngestionReport ingest(List<SourceDocument> documents) {
+        int docCount = 0;
         int chunks = 0;
         int rejected = 0;
-        for (SourceDocument doc : loader.loadAll()) {
+        for (SourceDocument doc : documents) {
             ValidationResult vr = validator.validate(doc);
             if (!vr.accepted()) {
                 rejected++;
@@ -67,10 +74,10 @@ public class IngestionService {
             chunkMeta.put("sourceUri", doc.sourceUri());
             chunkMeta.put("sourceLayer", doc.sourceLayer());
             chunks += writer.write(documentId, doc.clearance(), chunkMeta, docChunks);
-            documents++;
+            docCount++;
         }
-        IngestionReport report = new IngestionReport(documents, chunks, rejected);
-        log.info("Ingestion rebuild complete: {} documents, {} chunks, {} rejected (untrusted/invalid)",
+        IngestionReport report = new IngestionReport(docCount, chunks, rejected);
+        log.info("Ingestion complete: {} documents, {} chunks, {} rejected (untrusted/invalid)",
                 report.documents(), report.chunks(), report.rejectedUntrusted());
         return report;
     }

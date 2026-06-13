@@ -157,6 +157,15 @@
   mechanism. The classifier is better justified once P2 can measure its lift.
 - **Consequences:** Guardrail effectiveness is gated by the D7 integration test in P1 (pass/fail), then by the
   P2 adversarial suite. Heuristic phrase list must be maintained; documented as a known limitation.
+- **Implementation note (P1 task 6):** `InjectionGuardrail` runs after RBAC retrieval, before prompt assembly.
+  The scanner normalizes content (lowercase, strip comment *markers* so payloads hidden in `<!-- … -->` are
+  still seen, collapse whitespace) and **quarantines** any chunk matching an injection-imperative phrase
+  (config `atlas.guardrail.*`, default list in code) — quarantined chunks never reach the model, and the
+  matched phrases are surfaced for the trace. Survivors are **spotlighted** in `<atlas:doc …>` delimiters with
+  provenance; forged delimiters in source are neutralized (U+2024) and HTML comments stripped from the prompt.
+  `SPOTLIGHT_INSTRUCTION` is the system-prompt hardening the QA layer (task 7) prepends. The D7 IT ingests the
+  poisoned fixtures through the real pipeline and asserts per-doc quarantine + that a PUBLIC (attacker) caller's
+  spotlighted context leaks none of the restricted strings the payloads try to summon (combined RBAC+guardrail).
 
 ### ADR-0014 — Reranking approach (seam now, cross-encoder in P2)
 - **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-4)

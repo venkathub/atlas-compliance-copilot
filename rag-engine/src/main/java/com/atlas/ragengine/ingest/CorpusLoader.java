@@ -72,6 +72,7 @@ public class CorpusLoader {
     /** Layer 2: authored markdown with YAML front-matter. */
     public List<SourceDocument> loadLayer2() {
         List<SourceDocument> out = new ArrayList<>();
+        String base = globBase(props.layer2Glob());
         try {
             Resource[] resources = resolver.getResources(props.layer2Glob());
             for (Resource res : resources) {
@@ -81,7 +82,7 @@ public class CorpusLoader {
                 meta.put("account", fm.value("account"));
                 meta.put("docType", fm.value("doc_type"));
                 meta.put("containsPii", Boolean.parseBoolean(fm.value("contains_pii")));
-                String origin = originOf(res);
+                String origin = base + res.getFilename();
                 out.add(new SourceDocument(
                         fm.value("doc_id"), fm.value("title"), fm.value("clearance"),
                         fm.value("source_uri"), 2, origin, fm.body(), meta));
@@ -92,11 +93,12 @@ public class CorpusLoader {
         return out;
     }
 
-    private String originOf(Resource res) throws IOException {
-        // Normalize to a stable classpath-style origin so the LLM04 allow-list matches in tests + jar.
-        String uri = res.getURI().toString();
-        int idx = uri.indexOf("corpus/");
-        return idx >= 0 ? "classpath:" + uri.substring(idx) : uri;
+    /** The fixed prefix of a resource glob, up to (and including) the last '/' before the wildcard. */
+    private static String globBase(String glob) {
+        int star = glob.indexOf('*');
+        String prefix = star >= 0 ? glob.substring(0, star) : glob;
+        int slash = prefix.lastIndexOf('/');
+        return slash >= 0 ? prefix.substring(0, slash + 1) : prefix;
     }
 
     private static String read(Resource res) throws IOException {
