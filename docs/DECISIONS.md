@@ -13,6 +13,18 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0032 | 2026-06-14 | Katzilla external primary-source data (post-P5 backlog) | Proposed | P6 |
+| 0031 | 2026-06-14 | Adversarial breadth: fixtures gate + Promptfoo OWASP sweep | Accepted | P2 |
+| 0030 | 2026-06-14 | Trace content-capture & redaction policy (LLM02/LLM07) | Accepted | P2 |
+| 0029 | 2026-06-14 | Automated fail-safe GPU lifecycle (pause/resume) | Accepted | P2 |
+| 0028 | 2026-06-14 | Golden eval set size & composition | Accepted | P2 |
+| 0027 | 2026-06-14 | Cross-encoder reranker (eval-gated A/B) | Accepted | P2 |
+| 0026 | 2026-06-14 | Spring AI inline evaluators as cheap pre-filter | Accepted | P2 |
+| 0025 | 2026-06-14 | Self-hosted Langfuse (observability) | Accepted | P2 |
+| 0024 | 2026-06-14 | Eval metric set & gating thresholds | Accepted | P2 |
+| 0023 | 2026-06-14 | Eval-context exposure on /v1/query (includeContexts) | Accepted | P2 |
+| 0022 | 2026-06-14 | LLM-as-judge model (cross-family llama3.1:8b) | Accepted | P2 |
+| 0021 | 2026-06-14 | Eval LLM in CI: cassette-replay gate + live calibration | Accepted | P2 |
 | 0020 | 2026-06-13 | Layer-1 ingestion form: committed FinanceBench evidence snippets | Accepted | P1 |
 | 0019 | 2026-06-13 | Testcontainers ITs: docker-java API pin + exec-classifier jar | Accepted | P1 |
 | 0018 | 2026-06-13 | Answer generation scope & citation granularity | Accepted | P1 |
@@ -35,13 +47,193 @@
 | 0001 | 2026-06-13 | Core language/runtime split (Java + Python) | Accepted | P0 |
 
 > ADR-0001–0007 were pre-recorded from roadmap planning (CLAUDE.md + `ROADMAP.md` §0); **ADR-0008–0010 capture
-> decisions made while implementing P0.** **ADR-0011–0018 are the P1 grooming decisions** (`docs/phases/P1_SPEC.md`
-> §3), confirmed with the project owner before P1 implementation begins. Each remains open to revision with a
-> new superseding ADR if a later phase surfaces evidence against it.
+> decisions made while implementing P0.** **ADR-0011–0020 are the P1 grooming + implementation decisions**
+> (`docs/phases/P1_SPEC.md` §3). **ADR-0021–0031 are the P2 grooming decisions** (`docs/phases/P2_SPEC.md` §3),
+> owner-confirmed 2026-06-14 before P2 implementation begins; **ADR-0032 is a Proposed post-P5 backlog item**
+> (`ROADMAP.md` §8). Each remains open to revision with a new superseding ADR if a later phase surfaces
+> evidence against it.
 
 ---
 
 ## 2. Decisions
+
+### ADR-0032 — Katzilla external primary-source data (post-P5 backlog)
+- **Date:** 2026-06-14 · **Status:** Proposed · **Phase:** P6 (post-P5) · **Spec:** `ROADMAP.md` §8
+- **Context:** Katzilla (katzilla.dev) is a hosted, **MCP-native** API wrapping 30+ US/intl government datasets
+  (SEC, FDA, Federal Register, Congress, court opinions, clinical trials…) with a machine-readable **citation +
+  provenance** (`source / license / retrieved_at / data_hash`) on every response. Evaluated for fit with the
+  Atlas vision at the project owner's request.
+- **Options considered:** (a) ignore; (b) adopt as a **core** data source; (c) adopt **post-P5 as an optional,
+  env-gated third-party MCP tool the agent consumes** (public-data demo enrichment only).
+- **Decision:** **(c) Proposed** — a post-P5 optional integration; explicitly **not** a P0–P5 dependency.
+- **Rationale:** Aligns with Atlas's citation/provenance ethos and would demonstrate **MCP client multi-server
+  composition** (consuming a third-party MCP server). But it is **public** data (no RBAC dimension — cannot
+  touch the permission-aware moat), a **third-party SaaS** (conflicts with Atlas's self-hosted / no-egress /
+  cost-discipline posture), and a young vendor; it must stay complementary and never displace the self-built
+  core (permission-aware RBAC RAG + Atlas's own governed MCP tools).
+- **Consequences:** If implemented, it is **env-gated** (`KATZILLA_API_KEY`, off by default) so the core system
+  still runs fully self-hosted from a fresh clone with it absent; used only for the public-data side of a demo
+  (e.g. cite a real Federal Register / FDA item alongside private AML findings). Revisit with a superseding
+  **Accepted** ADR when a P6 lane is actually scoped.
+
+### ADR-0031 — Adversarial breadth: fixtures gate + Promptfoo OWASP sweep
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §3 (D-P2-11), §8 (E4)
+- **Context:** P2's hand-rolled adversarial scorer covered only the four P1 poisoned fixtures — narrow versus
+  the breadth a compliance copilot's "red-team safety evals" claim implies. June-2026 research confirms
+  **Promptfoo** as the standard CI red-team framework (OWASP LLM Top 10 plugins, 50+ vuln categories, Ollama
+  targets); Garak/PyRIT/DeepTeam are alternatives.
+- **Options considered:** (a) **both, split by lane** — fixtures as the deterministic 0-tolerance PR gate +
+  a **Promptfoo OWASP sweep** on the periodic live lane; (b) fixtures only (deterministic but narrow); (c)
+  Promptfoo as the gate (generative/non-deterministic + needs a live model → can't be the per-PR gate).
+- **Decision:** **(a)** — keep the hand-authored fixtures (`poisoned/expectations.json` + `negative_access.json`)
+  as the merge gate; add a Promptfoo sweep targeting `/v1/query` at low clearance in the live-calibration lane;
+  distil new findings into committed fixtures.
+- **Rationale:** Deterministic gate keeps `main` safe; the sweep gives real OWASP breadth + a renewable source
+  of regression fixtures; mirrors the cassette/live split (ADR-0021).
+- **Consequences:** Promptfoo runs only when the GPU is up (calibration lane), never the per-PR gate; findings
+  become committed fixtures so coverage compounds over time.
+
+### ADR-0030 — Trace content-capture & redaction policy (LLM02/LLM07)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §2.4, §3 (D-P2-10), §8 (E1)
+- **Context:** OTel GenAI conventions capture prompt/response **content as events**. In a clearance/PII domain
+  that would push **above-clearance chunk text and PII into Langfuse traces** — the observability plane undoing
+  the RBAC the rest of Atlas enforces (OWASP LLM02 sensitive-info disclosure, LLM07 system-prompt leakage).
+  Surfaced by the P2 web-research pass.
+- **Options considered:** (a) **metadata-only by default; full content opt-in + redaction-filtered, dev-only**;
+  (b) capture full content by default (richest, but leaks); (c) never capture content (safest, least debuggable).
+- **Decision:** **(a)** — `ATLAS_TRACE_CONTENT=off` by default (spans carry ids/clearance/model/token/latency +
+  retrieved-chunk *ids*, never their text); `=full` enables **redacted** prompt/response events for **local dev
+  only**, never a shared/prod stack.
+- **Rationale:** The only option consistent with the compliance/RBAC vision; OTel deliberately models content as
+  opt-in events for exactly this reason.
+- **Consequences:** A redaction IT asserts no above-clearance text / PII (the `poisoned/expectations.json`
+  strings) reaches traces; GenAI semconv is **`Development`-status in 2026**, so the emitted version is pinned
+  via `OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental` (recorded in `baseline.json`).
+
+### ADR-0029 — Automated fail-safe GPU lifecycle (pause/resume)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §2.6, §3 (D-P2-9)
+- **Context:** The eval/calibration lanes need the Cloud Ollama GPU live, then paused (ADR-0006 cost
+  discipline). Manual pause/resume is fail-safe-*off* (forget → silent burn).
+- **Options considered:** (a) **automated, fail-safe `infra/gpu` helper** (provider driver: JarvisLabs default,
+  E2E fallback) — resume → health-poll `/api/tags` → discover the fresh `OLLAMA_BASE_URL` → run → **guaranteed
+  pause (`finally`/trap) + idle-timeout watchdog**; (b) manual only; (c) defer to P3.
+- **Decision:** **(a)**, with **guaranteed-pause as a hard condition** (automation that can resume must never be
+  able to leave the GPU running). Manual remains the documented fallback (RUNBOOK §2.4).
+- **Rationale:** Turns cost discipline into enforced behaviour, not a thing you remember; a tangible "cost as a
+  feature" artifact. It is **off the eval-gate critical path** (the gate is offline/cassette), so it never risks
+  the merge gate.
+- **Consequences:** `GPU_API_KEY` is a managed secret (OWASP LLM03) behind the driver; `make gpu-up/gpu-down`;
+  wired into the live-calibration job; provider coupling abstracted by the driver (E2E fallback).
+
+### ADR-0028 — Golden eval set size & composition
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §3 (D-P2-8)
+- **Context:** The golden set must give meaningful signal yet stay cheap/fast on the dev GPU, and stay coherent
+  with the committed corpus (12 FinanceBench snippets + Layer-2 overlay).
+- **Options considered:** (a) **~25–40 tuples** (~15 FinanceBench-seeded Layer-1 + ~10–15 authored Layer-2
+  Northwind/AML + the 6 negative-access cases); (b) 100+ FinanceBench tuples (stronger stats, but most
+  reference filings outside our 12-snippet subset → corpus expansion / ADR-0020 change); (c) minimal (~10).
+- **Decision:** **(a)**, sized to the **committed corpus** (only FinanceBench rows whose evidence maps to our 12
+  snippets qualify).
+- **Rationale:** Meaningful coverage of both layers + the Priya story, cheap to run, keeps P1↔P2 coherent;
+  ground truth is authoritative (FinanceBench tuples) or authored (Layer-2).
+- **Consequences:** `evals/data/golden.jsonl` committed/versioned; growing beyond the subset requires expanding
+  Layer-1 (new ADR superseding 0020).
+
+### ADR-0027 — Cross-encoder reranker (eval-gated A/B)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §3 (D-P2-7) · **Refines:** ADR-0014
+- **Context:** ADR-0014 shipped P1 with an RRF-pass-through `Reranker` seam and deferred a real reranker to P2
+  "where evals can prove it earns its cost."
+- **Options considered:** (a) **implement a cross-encoder reranker behind the existing seam, A/B via the
+  harness, keep only if context-precision/relevancy lift justifies the latency/infra**; (b) keep deferring
+  (RRF-only); (c) LLM-as-reranker via Ollama (latency/cost, less consistent).
+- **Decision:** **(a)** — implement + eval-gate; if the A/B shows no gain, log an ADR re-deferring it (the
+  harness becomes the evidence). Same eval-gated treatment for the `websearch_to_tsquery` sparse-semantics fix
+  flagged in ADR-0018.
+- **Rationale:** P2 is exactly where the reranker's value can be measured rather than asserted.
+- **Consequences:** Additive behind the `Reranker` seam; the **P1 D4/D7 hard gates must stay green** if
+  retrieval changes; keep/re-defer is recorded either way.
+
+### ADR-0026 — Spring AI inline evaluators as a cheap pre-filter
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §3 (D-P2-6)
+- **Context:** Spring AI ships `RelevancyEvaluator` / `FactCheckingEvaluator`; using them is idiomatic (ROADMAP
+  §6 G7), but they run on the small dev model and shouldn't be the authority.
+- **Options considered:** (a) **inline pre-filter / trace annotation, NOT the gate**; (b) make them the gate
+  (ties the merge gate to the small model, weakly duplicates RAGAS); (c) skip them.
+- **Decision:** **(a)** — run inline as a free per-request signal annotated onto the trace; the **Python RAGAS
+  run remains the authoritative gate**.
+- **Rationale:** Demonstrates idiomatic Spring AI + gives a cheap "smoke" signal without the full RAGAS cost,
+  while keeping the gate in the dedicated harness.
+- **Consequences:** Informational only; never blocks merge on its own.
+
+### ADR-0025 — Self-hosted Langfuse (observability)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §3 (D-P2-5)
+- **Context:** P2 needs an LLM-observability surface that ingests OTel `gen_ai.*` and manages eval datasets.
+- **Options considered:** (a) **self-hosted Langfuse via Docker Compose**; (b) Langfuse Cloud free tier (less
+  infra, but ships trace data off-box + needs an account/key).
+- **Decision:** **(a)** — self-hosted, ingesting OTel over OTLP at `/api/public/otel`.
+- **Rationale:** Keeps the all-local "runs from a fresh clone" promise and the compliance/no-egress story clean;
+  Langfuse remains the 2026 OSS default and natively supports the GenAI conventions.
+- **Consequences:** Heavier `make -C infra up` (Langfuse + its Postgres/ClickHouse); part of the local stack.
+
+### ADR-0024 — Eval metric set & gating thresholds
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §3 (D-P2-4), §4.4, §8 (E3)
+- **Context:** P1's manual quality baseline must become a merge gate without a flaky gate before the baseline is
+  calibrated on a (small) self-hosted judge.
+- **Options considered:** (a) **gate faithfulness + answer_relevancy + context_recall (floors) + a no-regression
+  band on all four; precision/correctness report-only**; (b) hard floors on all four day one (flaky risk); (c)
+  gate only adversarial + faithfulness.
+- **Decision:** **(a)**. Add **context entity recall** (finance/AML entity grounding), **citation correctness**
+  (vision's "answers with citations"), and **noise sensitivity** as **report-only** signals to phase in. The
+  **adversarial/red-team set is always a 100%-pass hard gate** regardless.
+- **Rationale:** Gate the metrics that most directly encode R1/R2 (grounding, recall, no-cross-clearance-leak);
+  phase in precision/entity/citation once the baseline is stable; floors set from the first calibrated run
+  **minus a margin**, with `max_regression` catching slow slides.
+- **Consequences:** Thresholds written into `evals/data/baseline.json` from the first calibrated run; judge runs
+  at **temperature 0**, pinned, recorded; entity-recall/citation must be calibrated before any promotion to a gate.
+
+### ADR-0023 — Eval-context exposure on /v1/query (`includeContexts`)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §2.4, §3 (D-P2-3)
+- **Context:** RAGAS faithfulness/context-precision/recall need the **actual retrieved context text**; the P1
+  `/v1/query` response only returns truncated citation snippets (non-cited-but-retrieved context is invisible).
+- **Options considered:** (a) **opt-in `includeContexts` field** returning the full reranked, RBAC-filtered
+  context set; (b) reconstruct from Langfuse trace payloads (brittle, couples evals to trace internals); (c) a
+  separate `/v1/eval/retrieve` endpoint (duplicates the retrieval path).
+- **Decision:** **(a)** — default-off `includeContexts=true` returns `contexts[]` of full chunk text, still
+  **RBAC-filtered** (`<= caller clearance`).
+- **Rationale:** One small, RBAC-safe field; evals exercise the **single** retrieval path exactly as prod does.
+- **Consequences:** The negative-access hard gate is **extended to `contexts[]`** (closing the
+  "leaked-into-context-but-not-cited" hole); default false leaves normal callers/UI unaffected.
+
+### ADR-0022 — LLM-as-judge model (cross-family `llama3.1:8b-instruct`)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §2.6, §3 (D-P2-2)
+- **Context:** RAGAS metrics are LLM-judge-dependent; the judge must be reliable, cheap enough to run routinely,
+  and **independent** of the subject under test. The RAG subject is `qwen2.5:3b-instruct` (ADR-0005).
+- **Options considered:** (a) **`llama3.1:8b-instruct` — a cross-family judge** (reduces self-enhancement/family
+  bias); (b) `qwen2.5:7b-instruct` (same family → self-preference bias risk); (c) reserved cloud-frontier judge
+  (`gpt-4o`, swappable) for **periodic** calibration; (d) reuse the 3B dev model (noisy *and* same-family).
+- **Decision:** **(a) routine + (c) periodic.** Routine judge `llama3.1:8b-instruct` on the same Ollama GPU at
+  **temperature 0**, **pinned + recorded in `baseline.json`**; frontier judge for occasional authoritative
+  calibration only.
+- **Rationale:** A cross-family 8B judge is the sweet spot of independence, reliability, and self-hosted cost;
+  pinning the judge means a metric move attributes to **the RAG**, not the judge; RAGAS 2026 guidance (temp 0,
+  pin the judge, prefer a stronger judge than the subject) validates this.
+- **Consequences:** ~+5 GB VRAM during eval runs (fits the L4/A5000, co-resident ≈ 8 GB); env
+  `ATLAS_EVAL_JUDGE_MODEL`; swapping the judge requires a recalibration + a new ADR.
+
+### ADR-0021 — Eval LLM in CI: cassette-replay gate + live calibration
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §2.5, §3 (D-P2-1)
+- **Context:** The eval gate needs an LLM (RAG model **and** judge), but CI has **no GPU** and the remote Ollama
+  is **paused-when-idle** (ADR-0006). A live call on every PR contradicts cost discipline and adds flakiness +
+  a secret in CI.
+- **Options considered:** (a) record/replay **cassettes** (deterministic, offline, free); (b) **live remote
+  Ollama in CI** (realistic, but GPU-per-PR + secret); (c) **hybrid** — cassette-replay is the merge gate, a
+  nightly/manual **live** job runs the full RAGAS and updates the baseline.
+- **Decision:** **(c)** — cassette-replay PR gate + periodic live calibration.
+- **Rationale:** The only option consistent with the laptop/GPU/cost constraints **and** a true CI merge gate:
+  deterministic, cost-free PR gate; periodic live calibration keeps the numbers honest.
+- **Consequences:** Cassette key = `hash(prompt + model + inputs)`; a **miss fails loudly** (never a silent live
+  call); cassettes are refreshed whenever the prompt/model/corpus/golden set changes; the live lane uses the
+  GPU helper (ADR-0029) and the Promptfoo sweep (ADR-0031).
 
 ### ADR-0020 — Layer-1 ingestion form: committed FinanceBench evidence snippets
 - **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §5 (Task 2) ·

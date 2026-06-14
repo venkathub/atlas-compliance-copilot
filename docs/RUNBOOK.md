@@ -163,6 +163,9 @@ All three returning sane values = endpoint is healthy and ready for the RAG engi
 - **Pause the instance** at the end of each dev/demo session → per-minute GPU billing stops; models persist on
   the instance's persistent storage.
 - **Resume** before a session; the public endpoint may change on resume → update `OLLAMA_BASE_URL`.
+- **Automated (P2, ADR D-P2-9, preferred):** `make -C infra gpu-up` / `gpu-down` (or the calibration job)
+  drives resume/pause via the provider API with a **guaranteed pause** (`finally`/trap) + idle-timeout
+  watchdog, and auto-discovers the fresh `OLLAMA_BASE_URL`. Manual pause/resume below is the fallback.
 - Reserve the larger/frontier model only for final demos (P5); default to the small model in dev.
 - Rough outlook: a disciplined pause/resume cadence keeps GPU spend to a few hundred ₹/month.
 
@@ -260,5 +263,53 @@ GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`. Five jobs (= t
 the five checks above + block force-pushes. Checks appear in the picker only after one green run.
 **TODO:** flip Trivy to blocking (`exit-code 1`) once the CVE baseline is triaged; consider SHA-pinning actions.
 
-## 6. Production deploy — *added in P5*
+## 6. Eval & observability harness — P2
+The P2 harness lives in `/evals` (Python/RAGAS) + Langfuse/Grafana/Prometheus in `infra/docker-compose.yml`.
+**Key principle (ADR D-P2-1): the CI merge gate replays committed cassettes — it needs NO GPU and NO live
+Ollama.** A live GPU is only needed when you *record* cassettes or run the *live calibration* job.
+
+### 6.1 Bring up the observability stack
+```bash
+make -C infra up                 # now also starts langfuse, grafana, prometheus
+# first run only: open Langfuse, create a project, copy its keys into .env:
+#   LANGFUSE_HOST / LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY
+open http://localhost:3000       # Langfuse (traces + eval datasets)
+open http://localhost:3001       # Grafana (eval-score / latency / trace-volume panels)
+```
+`rag-engine` exports OTel `gen_ai.*` spans to `OTEL_EXPORTER_OTLP_ENDPOINT`; one `/v1/query` → one trace.
+
+### 6.2 Pull the judge model (one-time, on the resumed GPU)
+The routine LLM-as-judge is `llama3.1:8b-instruct` — a **cross-family** judge (llama judging the qwen RAG
+subject) to reduce self-bias — served on the **same** Cloud Ollama endpoint as the RAG model (co-resident
+footprint ≈ 8 GB VRAM — fits the L4/A5000, no upgrade needed):
+```bash
+make -C infra gpu-up                          # auto-resume + health-poll + export OLLAMA_BASE_URL (ADR D-P2-9)
+ssh/console into the Ollama instance, then:  ollama pull llama3.1:8b-instruct
+```
+
+### 6.3 Run the eval gate locally
+```bash
+# (a) OFFLINE — the CI gate. Replays committed cassettes; NO GPU, NO Ollama needed:
+uv run -m atlas_evals.gate                 # → metrics report + green/red verdict (exit code)
+
+# (b) LIVE record/calibrate — needs infra up + a RESUMED GPU with both models pulled.
+#     gpu-up resumes + discovers OLLAMA_BASE_URL; gpu-down GUARANTEES the pause afterwards:
+make -C infra gpu-up
+set -a && . ./.env && set +a
+mvn -pl rag-engine spring-boot:run &        # boot rag-engine; ingest the corpus (admin)
+curl -sX POST localhost:8081/v1/admin/ingest -H 'X-Atlas-User: bsa-admin' | jq
+uv run -m atlas_evals.record               # records cassettes vs live RAG + llama3.1 judge
+uv run -m atlas_evals.gate --recalibrate   # rewrites data/baseline.json from the live run
+make -C infra gpu-down                       # pause the GPU (also auto-paused on idle-timeout)
+```
+> Cassette key = hash(prompt + model + inputs); a **miss fails loudly** (never a silent live call). Refresh
+> cassettes whenever the prompt, model tag, corpus, or golden set changes — then pause the GPU again (§2.4).
+
+### 6.4 Live calibration job (periodic, not the PR gate)
+A manual `workflow_dispatch` GitHub Actions workflow calls the GPU helper end-to-end: **resume → record →
+`--recalibrate` → guaranteed pause** against the live endpoint (optionally the frontier judge
+`ATLAS_EVAL_JUDGE_FRONTIER_MODEL`), committing refreshed cassettes + baseline and recording drift. The
+per-PR `evals` job stays GPU-free.
+
+## 7. Production deploy — *added in P5*
 Oracle Cloud Ampere A1 (arm64) deploy steps; Hetzner fallback. The P0 multi-arch image already targets arm64.
