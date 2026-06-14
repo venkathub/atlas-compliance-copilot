@@ -19,6 +19,7 @@ atlas_evals/
     citation.py          # deterministic citation-resolution signal (report-only)
     ragas_runner.py      # RAGAS-free orchestration: build samples -> Scorer -> MetricReport
     ragas_scorer.py      # concrete RAGAS scorer (lazy import) + per-sample judge cassettes
+    adversarial_scorer.py# binary red-team scorer (LLM07): leaked-string / above-clearance / forbidden-doc
 data/
   golden.jsonl           # committed golden set (versioned)
   adversarial.jsonl      # committed red-team set (references P1 fixtures by ref)

@@ -13,6 +13,7 @@ import os
 
 from atlas_evals.cassettes import CassetteStore, Mode
 from atlas_evals.client import AtlasRagClient, CassettingClient
+from atlas_evals.datasets.adversarial import load_adversarial
 from atlas_evals.datasets.corpus import DATA_DIR
 from atlas_evals.datasets.golden import load_golden
 from atlas_evals.metrics.ragas_runner import RagasRunner
@@ -46,6 +47,12 @@ def main() -> int:
         t.id: rag.query(t.question, t.clearance, top_k=6, include_contexts=True) for t in tuples
     }
     print(f"recorded {len(responses)} /v1/query cassettes -> {RAG_CASSETTES}")
+
+    # Adversarial queries share the same RAG cassette store (each run at the case's clearance).
+    adv_cases = load_adversarial()
+    for case in adv_cases:
+        rag.query(case.query, case.clearance, top_k=6, include_contexts=True)
+    print(f"recorded {len(adv_cases)} adversarial /v1/query cassettes")
 
     scorer = RagasScorer(
         store=CassetteStore(JUDGE_CASSETTES, Mode.RECORD),

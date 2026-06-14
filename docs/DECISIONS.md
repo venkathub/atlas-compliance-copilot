@@ -92,6 +92,11 @@
   of regression fixtures; mirrors the cassette/live split (ADR-0021).
 - **Consequences:** Promptfoo runs only when the GPU is up (calibration lane), never the per-PR gate; findings
   become committed fixtures so coverage compounds over time.
+- **Implementation note (Task 7, 2026-06-14):** The deterministic PR-gate scorer (`metrics/adversarial_scorer.py`)
+  is shipped: binary `score_case`/`score_adversarial` over `/v1/query` responses with three checks —
+  leaked-string (answer vs `must_not_contain`), above-clearance (contexts[] + citations[] vs `must_not_cite_above`),
+  forbidden-doc (citations[].docId vs `negative_access` forbidden ids); **0-tolerance** (`passed` only at
+  pass_rate 1.0; a missing response is a failure). 12 unit tests; the Promptfoo live sweep is wired in Task 9.
 
 ### ADR-0030 — Trace content-capture & redaction policy (LLM02/LLM07)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §2.4, §3 (D-P2-10), §8 (E1)
