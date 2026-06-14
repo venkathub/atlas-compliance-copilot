@@ -16,7 +16,8 @@ Added to the same `docker-compose.yml` (all **digest-pinned**):
 | `langfuse-worker` | `langfuse/langfuse-worker:3` | — | Async ingestion/processing |
 | `clickhouse` | `clickhouse/clickhouse-server:24.8` | — (internal) | Langfuse analytics store |
 | `minio` | `minio/minio` | — (internal) | Langfuse S3 event/blob store (`langfuse` bucket auto-created) |
-| `prometheus` | `prom/prometheus:v3.4.1` | `${PROMETHEUS_PORT}` (9090) | Scrapes rag-engine `/actuator/prometheus` |
+| `prometheus` | `prom/prometheus:v3.4.1` | `${PROMETHEUS_PORT}` (9090) | Scrapes rag-engine `/actuator/prometheus` + pushgateway |
+| `pushgateway` | `prom/pushgateway:v1.11.1` | `${PUSHGATEWAY_PORT}` (9091) | Eval gate pushes RAGAS/adversarial scores here (Grafana trends) |
 | `grafana` | `grafana/grafana:11.6.1` | `${GRAFANA_PORT}` (3001) | Eval-score / latency / trace-volume dashboard |
 
 - Langfuse v3 **reuses** `atlas-postgres` (separate `langfuse` db, created by

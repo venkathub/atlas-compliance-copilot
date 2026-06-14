@@ -76,3 +76,31 @@ def write_report(
     (out_dir / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
     (out_dir / "summary.md").write_text(build_summary(metrics))
     return metrics
+
+
+def prometheus_text(metrics: dict) -> str:
+    """Prometheus exposition text for the gate scores (pure; unit-tested)."""
+    lines = ["# TYPE atlas_eval_metric_score gauge"]
+    for name, score in metrics["scores"].items():
+        lines.append(f'atlas_eval_metric_score{{metric="{name}"}} {score}')
+    lines.append("# TYPE atlas_eval_adversarial_pass_rate gauge")
+    lines.append(f"atlas_eval_adversarial_pass_rate {metrics['adversarial']['pass_rate']}")
+    lines.append("# TYPE atlas_eval_gate_passed gauge")
+    lines.append(f"atlas_eval_gate_passed {1 if metrics['gate']['passed'] else 0}")
+    return "\n".join(lines) + "\n"
+
+
+def push_to_prometheus(metrics: dict, gateway_url: str, job: str = "atlas_evals") -> None:
+    """Push gate scores to a Prometheus Pushgateway (feeds the Grafana eval-trend panels).
+
+    Opt-in (only when ``PUSHGATEWAY_URL`` is set) so the CI gate stays infra-free; used by the
+    local/calibration runs where the observability stack is up. Stdlib-only (urllib).
+    """
+    import urllib.request
+
+    body = prometheus_text(metrics).encode("utf-8")
+    url = gateway_url.rstrip("/") + f"/metrics/job/{job}"
+    req = urllib.request.Request(url, data=body, method="PUT")
+    req.add_header("Content-Type", "text/plain")
+    with urllib.request.urlopen(req, timeout=10):  # noqa: S310
+        pass

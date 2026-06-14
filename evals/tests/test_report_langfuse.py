@@ -6,7 +6,7 @@ from atlas_evals.gate import GateResult
 from atlas_evals.langfuse_sync import build_dataset_items, sync_dataset
 from atlas_evals.metrics.adversarial_scorer import AdversarialReport, CaseResult, Violation
 from atlas_evals.metrics.ragas_runner import MetricReport
-from atlas_evals.report import build_metrics, build_summary, write_report
+from atlas_evals.report import build_metrics, build_summary, prometheus_text, write_report
 
 
 def _fixture():
@@ -51,6 +51,15 @@ def test_write_report_emits_files(tmp_path):
     metrics = json.loads((tmp_path / "metrics.json").read_text())
     assert metrics["scores"]["faithfulness"] == 0.88
     assert (tmp_path / "summary.md").exists()
+
+
+def test_prometheus_text_exposition():
+    baseline, mr, adv = _fixture()
+    metrics = build_metrics(GateResult(True, []), mr, adv, baseline)
+    text = prometheus_text(metrics)
+    assert 'atlas_eval_metric_score{metric="faithfulness"} 0.88' in text
+    assert "atlas_eval_adversarial_pass_rate 1.0" in text
+    assert "atlas_eval_gate_passed 1" in text
 
 
 def test_langfuse_dataset_items_from_real_golden():

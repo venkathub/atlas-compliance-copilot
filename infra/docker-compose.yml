@@ -163,6 +163,14 @@ services:
       - "${PROMETHEUS_PORT:-9090}:9090"
     restart: unless-stopped
 
+  pushgateway:
+    image: prom/pushgateway:v1.11.1@sha256:03738d278e082ee9821df730c741b3b465c251fc2b68a85883def301a55a6215
+    container_name: atlas-pushgateway
+    # Short-lived eval-gate runs push RAGAS/adversarial scores here for Prometheus to scrape.
+    ports:
+      - "${PUSHGATEWAY_PORT:-9091}:9091"
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:11.6.1@sha256:52c3e20686b860c6dc1f623811565773cf51eefa378817a4896dfc863c3c82c8
     container_name: atlas-grafana

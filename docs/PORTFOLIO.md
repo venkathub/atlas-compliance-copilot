@@ -62,7 +62,45 @@ restricted never cited)** · OWASP LLM01/04/08/09 mapped. _(Grounded-citation + 
 automated as RAGAS thresholds in P2.)_
 
 ---
-## P2 — Evaluation & observability (pending)
+## P2 — Evaluation & observability (complete · 2026-06-14)
+
+**One-liner:** Made RAG quality **measurable and non-regressable before any agent exists** — a CI-gated
+RAGAS + adversarial eval harness, OTel `gen_ai.*` tracing into Langfuse, and Grafana dashboards, with a
+deterministic offline gate and a fail-safe live-GPU calibration lane.
+
+**Resume bullets (draft):**
+- Built a **CI-gated RAG eval harness** (Python/**RAGAS 0.2**) over **22 golden cases** (12 authoritative
+  **FinanceBench** + 10 authored AML/Northwind): merge-blocking floors on **faithfulness 0.80 /
+  answer-relevancy 0.70 / context-recall 0.78** with a **no-regression band**, judged by a **cross-family
+  `llama3.1:8b` LLM-as-judge at temp 0** (pinned to attribute drift to the RAG, not the judge).
+- Shipped a **100%-pass adversarial/red-team gate** (OWASP **LLM01/LLM07**: prompt-injection, jailbreak,
+  system-prompt-leak, access-bypass) — **0 violations across 10 cases** — reusing the P1 fixtures *by reference*
+  so P1↔P2 cannot drift; plus a periodic **Promptfoo** OWASP sweep in the live lane.
+- Made the merge gate **deterministic, offline, and free** via a **record/replay cassette** design (RAG +
+  per-sample judge scores) — the per-PR gate runs with **no GPU, no Ollama, RAGAS not even installed**; a
+  cassette miss fails loudly rather than silently calling out.
+- Instrumented every retrieval + model call as **OpenTelemetry `gen_ai.*` spans** (Micrometer→OTel→Langfuse)
+  with the required `gen_ai.client.operation.duration` + token metrics; **content-capture is OFF/redaction-gated
+  by default** so above-clearance text/PII never reach the trace plane (**LLM02/LLM07**).
+- Automated **fail-safe GPU cost discipline**: an `infra/gpu` driver resumes the rented GPU, health-polls,
+  discovers the endpoint, and **guarantees a pause** (`finally`/trap + watchdog) — verified end-to-end against
+  a live JarvisLabs instance (the live run caught 3 real bugs incl. machine-id-drift-on-resume).
+- Drove the deferred reranker as an **evidence-based decision**: implemented an LLM-reranker + `websearch`
+  sparse fix behind flags, ran a live harness **A/B**, and **re-deferred** them when the data showed a
+  trade-off (precision/relevancy +0.07 but two gating metrics regressed) rather than a clear lift.
+
+**Evidence:** `evals` 49 pytest + `infra/gpu` 24 pytest green; eval gate **PASS** (offline replay); Java
+**74 unit + 40 IT** green incl. extended **D4 negative-access on `contexts[]` (24 cases)** + **D7 injection**;
+live calibration recorded 22 cassettes + `baseline.json`; eval scores flow to Prometheus/Grafana via Pushgateway.
+ADR-0021–0031.
+
+**Quantified:** 22 golden + 10 adversarial cases · gating floors faithfulness ≥0.749 / relevancy ≥0.648 /
+recall ≥0.711 · **adversarial 1.000 pass-rate (0 violations)** · judge `llama3.1:8b` @ temp 0 (pinned) ·
+**offline gate: 0 GPU / 0 LLM calls** · 6 observability services (Langfuse v3 + ClickHouse + MinIO +
+Prometheus + Pushgateway + Grafana) · GPU guaranteed-pause verified live · reranker A/B → evidence-based
+re-deferral · OWASP LLM01/02/07 automated.
+
+---
 ## P3 — Cost-aware gateway (pending)
 ## P4 — Agent orchestrator + MCP (pending)
 ## P5 — UI + production deploy (pending)

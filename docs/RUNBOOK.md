@@ -340,5 +340,15 @@ The **Promptfoo OWASP sweep** (`evals/promptfoo/promptfooconfig.yaml`) targets `
 clearance with OWASP LLM plugins (injection, PII, RBAC/BOLA, prompt-extraction, jailbreak); it runs only
 in the calibration lane (GPU up), report-only — findings are distilled into the committed fixtures.
 
+### 6.5 30-second demo (no GPU)
+```bash
+uv run --directory evals python -m atlas_evals.gate   # → ✅ GATE: PASS over 22 golden + 10 adversarial
+cat evals/report/summary.md                            # metric table + adversarial pass-rate
+make -C infra up                                       # if not already up
+open http://localhost:3001                              # Grafana → "Atlas — Eval & Observability (P2)"
+open http://localhost:3000                              # Langfuse → a /v1/query trace's gen_ai.* span tree
+```
+The gate replays committed cassettes — offline, deterministic, GPU-free.
+
 ## 7. Production deploy — *added in P5*
 Oracle Cloud Ampere A1 (arm64) deploy steps; Hetzner fallback. The P0 multi-arch image already targets arm64.

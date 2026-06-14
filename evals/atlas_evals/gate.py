@@ -129,11 +129,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--report-dir", default=str(DATA_DIR.parent / "report"))
     args = ap.parse_args(argv)
 
-    from atlas_evals.report import write_report
+    from atlas_evals.report import push_to_prometheus, write_report
 
     metric_report, adv_report, baseline = _run(args.recalibrate)
     result = evaluate_gate(metric_report.scores, adv_report, baseline)
-    write_report(Path(args.report_dir), result, metric_report, adv_report, baseline)
+    metrics = write_report(Path(args.report_dir), result, metric_report, adv_report, baseline)
+
+    gateway = os.environ.get("PUSHGATEWAY_URL")
+    if gateway:
+        try:
+            push_to_prometheus(metrics, gateway)
+            print(f"pushed eval metrics to {gateway}")
+        except Exception as e:  # never let a metrics push fail the gate
+            print(f"warning: pushgateway push failed: {e}")
 
     if args.recalibrate:
         print("baseline recalibrated; gate verdict below is informational")
