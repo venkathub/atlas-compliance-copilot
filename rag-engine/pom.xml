@@ -24,6 +24,25 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- Micrometer Prometheus registry: exposes /actuator/prometheus for the P2
+             Prometheus scrape (eval/latency/trace-volume dashboards). -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <!-- OTel tracing (P2, ADR-0030): Micrometer Observation -> OpenTelemetry bridge +
+             OTLP exporter. Spring AI ChatModel/EmbeddingModel auto-emit gen_ai.* spans through
+             the ObservationRegistry; spans export over OTLP to Langfuse. Versions are managed by
+             the Spring Boot BOM. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
         <!-- Spring AI Ollama auto-configuration: ChatModel + EmbeddingModel beans. -->
         <dependency>
             <groupId>org.springframework.ai</groupId>

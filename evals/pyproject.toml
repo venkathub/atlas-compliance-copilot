@@ -4,6 +4,14 @@ version = "0.1.0"
 description = "Atlas evaluation & observability harness (RAGAS/DeepEval). P0: scaffold only."
 requires-python = ">=3.11"
 
+[dependency-groups]
+dev = ["pytest>=8"]
+# Heavy LLM-eval stack — only needed for the live RECORD/calibration path (Task 8), never for the
+# offline REPLAY gate or the dataset/cassette unit tests. Install with: uv run --group ragas ...
+# Pinned to the RAGAS 0.2.x line (spec: SingleTurnSample/evaluate()) on Python 3.12 — the langchain
+# 1.x / py3.14 combo breaks RAGAS's imports. See evals/.python-version.
+ragas = ["ragas>=0.2,<0.3", "langchain-ollama>=0.2,<0.3"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

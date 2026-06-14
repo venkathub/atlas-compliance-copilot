@@ -163,6 +163,9 @@ All three returning sane values = endpoint is healthy and ready for the RAG engi
 - **Pause the instance** at the end of each dev/demo session → per-minute GPU billing stops; models persist on
   the instance's persistent storage.
 - **Resume** before a session; the public endpoint may change on resume → update `OLLAMA_BASE_URL`.
+- **Automated (P2, ADR D-P2-9, preferred):** `make -C infra gpu-up` / `gpu-down` (or the calibration job)
+  drives resume/pause via the provider API with a **guaranteed pause** (`finally`/trap) + idle-timeout
+  watchdog, and auto-discovers the fresh `OLLAMA_BASE_URL`. Manual pause/resume below is the fallback.
 - Reserve the larger/frontier model only for final demos (P5); default to the small model in dev.
 - Rough outlook: a disciplined pause/resume cadence keeps GPU spend to a few hundred ₹/month.
 
@@ -260,5 +263,92 @@ GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`. Five jobs (= t
 the five checks above + block force-pushes. Checks appear in the picker only after one green run.
 **TODO:** flip Trivy to blocking (`exit-code 1`) once the CVE baseline is triaged; consider SHA-pinning actions.
 
-## 6. Production deploy — *added in P5*
+## 6. Eval & observability harness — P2
+The P2 harness lives in `/evals` (Python/RAGAS) + Langfuse/Grafana/Prometheus in `infra/docker-compose.yml`.
+**Key principle (ADR D-P2-1): the CI merge gate replays committed cassettes — it needs NO GPU and NO live
+Ollama.** A live GPU is only needed when you *record* cassettes or run the *live calibration* job.
+
+### 6.1 Bring up the observability stack
+```bash
+make -C infra up                 # data stores + langfuse, grafana, prometheus (staged, Snap-safe)
+make -C infra health             # postgres/redis/clickhouse health + langfuse/grafana/prometheus reachability
+open http://localhost:3000       # Langfuse (traces + eval datasets)
+open http://localhost:3001       # Grafana (eval-score / latency / trace-volume panels)
+open http://localhost:9090       # Prometheus (Status → Targets shows the rag-engine scrape)
+```
+Langfuse is **headless-bootstrapped**: `make up` auto-creates the `atlas`/`atlas-rag`
+org+project and wires the API keys straight from `.env` (`LANGFUSE_PUBLIC_KEY` /
+`LANGFUSE_SECRET_KEY`) — no manual "create a project" step. Log into the UI with
+`LANGFUSE_INIT_USER_EMAIL` / `LANGFUSE_INIT_USER_PASSWORD` only if you want to browse traces.
+Footprint note: Langfuse v3 **reuses** `atlas-postgres` (db `langfuse`) + `atlas-redis`,
+adding only ClickHouse + MinIO (owner-confirmed, D-P2-5).
+
+`rag-engine` exports OTel `gen_ai.*` spans to `OTEL_EXPORTER_OTLP_ENDPOINT`; one `/v1/query` → one trace.
+Prometheus scrapes `rag-engine` at `host.docker.internal:${RAG_ENGINE_PORT}/actuator/prometheus`
+(the engine runs on the host, not in the Compose network); its target shows **down** until
+the engine is running — that is expected.
+
+**Enabling trace export to Langfuse (opt-in, ADR-0030).** Export is OFF by default so tests/CI never
+reach Langfuse. To stream traces in dev, set in `.env`:
+```bash
+OTEL_TRACES_EXPORT_ENABLED=true
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:3000/api/public/otel/v1/traces
+LANGFUSE_OTEL_AUTH_HEADER=$(printf 'Basic %s' "$(printf '%s:%s' "$LANGFUSE_PUBLIC_KEY" "$LANGFUSE_SECRET_KEY" | base64 -w0)")
+```
+Trace **content** stays metadata-only unless `ATLAS_TRACE_CONTENT=full` (local dev only — redaction-gated).
+
+### 6.2 Pull the judge model (one-time, on the resumed GPU)
+The routine LLM-as-judge is `llama3.1:8b` — a **cross-family** judge (llama judging the qwen RAG
+subject) to reduce self-bias — served on the **same** Cloud Ollama endpoint as the RAG model (co-resident
+footprint ≈ 8 GB VRAM — fits the L4/A5000, no upgrade needed). (The published Ollama tag is `llama3.1:8b`,
+which *is* the instruct model; `llama3.1:8b-instruct` is not a real tag.)
+```bash
+make -C infra gpu-up                          # auto-resume + health-poll + export OLLAMA_BASE_URL (ADR D-P2-9)
+ssh/console into the Ollama instance, then:  ollama pull llama3.1:8b
+```
+
+### 6.3 Run the eval gate locally
+```bash
+# (a) OFFLINE — the CI gate. Replays committed cassettes; NO GPU, NO Ollama needed:
+uv run --directory evals python -m atlas_evals.gate   # → metrics report + green/red verdict (exit code)
+
+# (b) LIVE record/calibrate — needs infra up + a RESUMED GPU with both models pulled.
+#     gpu-up resumes + discovers OLLAMA_BASE_URL; gpu-down GUARANTEES the pause afterwards:
+make -C infra gpu-up
+set -a && . ./.env && set +a
+mvn -pl rag-engine spring-boot:run &        # boot rag-engine; ingest the corpus (admin)
+curl -sX POST localhost:8081/v1/admin/ingest -H 'X-Atlas-User: bsa-admin' | jq
+uv run --directory evals --group ragas python -m atlas_evals.record   # cassettes vs live RAG + judge
+uv run --directory evals --group ragas python -m atlas_evals.gate --recalibrate  # rewrite baseline.json
+make -C infra gpu-down                       # pause the GPU (also auto-paused on idle-timeout)
+```
+> Cassette key = hash(prompt + model + inputs); a **miss fails loudly** (never a silent live call). Refresh
+> cassettes whenever the prompt, model tag, corpus, or golden set changes — then pause the GPU again (§2.4).
+
+### 6.4 Live calibration job (manual, not the PR gate)
+A **manual** `workflow_dispatch` workflow (`.github/workflows/calibration.yml` → *Eval calibration
+(live)*) calls the GPU helper end-to-end: **resume → pull judge → boot rag-engine + ingest → record
+cassettes → `--recalibrate` → Promptfoo OWASP sweep → guaranteed pause** against the live endpoint,
+then commits the refreshed cassettes + `baseline.json`. It is **manual-only** (owner-confirmed cost
+discipline — no nightly cron). Requires repo secrets `GPU_API_KEY` + `GPU_INSTANCE_ID`.
+
+The per-PR **merge gate** (`ci.yml` → *Eval gate*) is the opposite: `python -m atlas_evals.gate`
+**replays the committed cassettes offline** — no GPU, no Ollama, RAGAS not even installed — and blocks
+merge on a RAGAS-floor / no-regression / adversarial-pass-rate breach.
+
+The **Promptfoo OWASP sweep** (`evals/promptfoo/promptfooconfig.yaml`) targets `/v1/query` at `public`
+clearance with OWASP LLM plugins (injection, PII, RBAC/BOLA, prompt-extraction, jailbreak); it runs only
+in the calibration lane (GPU up), report-only — findings are distilled into the committed fixtures.
+
+### 6.5 30-second demo (no GPU)
+```bash
+uv run --directory evals python -m atlas_evals.gate   # → ✅ GATE: PASS over 22 golden + 10 adversarial
+cat evals/report/summary.md                            # metric table + adversarial pass-rate
+make -C infra up                                       # if not already up
+open http://localhost:3001                              # Grafana → "Atlas — Eval & Observability (P2)"
+open http://localhost:3000                              # Langfuse → a /v1/query trace's gen_ai.* span tree
+```
+The gate replays committed cassettes — offline, deterministic, GPU-free.
+
+## 7. Production deploy — *added in P5*
 Oracle Cloud Ampere A1 (arm64) deploy steps; Hetzner fallback. The P0 multi-arch image already targets arm64.

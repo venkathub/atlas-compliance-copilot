@@ -330,6 +330,22 @@ durable Postgres checkpoints) — all land in **P4**.
 
 ---
 
+## 8. Future extensions (post-P5 backlog)
+
+Ideas evaluated as **on-narrative but deliberately out of P0–P5 scope** — captured here so they aren't lost,
+to be scoped as a post-P5 "P6" lane **only after the core forcing story ships**. Each must preserve the core
+invariants: **self-hosted, runs-from-a-fresh-clone, and the permission-aware moat stays self-built** (never
+displaced by a third party).
+
+| # | Idea | Fit assessment | Placement | ADR |
+|---|------|----------------|-----------|-----|
+| F1 | **Katzilla** (katzilla.dev) — hosted, **MCP-native** API over 30+ US/intl government datasets (SEC, FDA, Federal Register, Congress, court opinions, clinical trials…), with citation + provenance (`source / license / retrieved_at / data_hash`) baked into every response. | **Complementary, not core.** Aligns with Atlas's citation/provenance ethos and would demonstrate **MCP client multi-server composition**. But it is **public** data (no RBAC — cannot touch the permission-aware moat), a **third-party SaaS** (conflicts with self-hosted / no-egress / cost discipline), and a young vendor. Must stay complementary and never replace the self-built core (RBAC RAG + Atlas's own governed MCP tools). | **Post-P5 (P6)**, optional, **env-gated** (`KATZILLA_API_KEY`, off by default), used only for the public-data side of a demo (e.g. cite a real Federal Register / FDA item alongside private AML findings). | ADR-0032 (Proposed) |
+
+> Adding to this table is cheap; promoting an item to an actual P6 build requires a superseding **Accepted** ADR
+> that confirms scope, the env-gating, and that the core still runs without it.
+
+---
+
 ## Open questions — RESOLVED
 
 1. ~~Domain data source~~ → **Resolved:** HF financial corpus (SEC filings / FinanceBench) + synthetic clearance overlay + golden eval set. *(§0.1)*

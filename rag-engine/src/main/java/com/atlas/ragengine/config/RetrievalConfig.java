@@ -2,12 +2,14 @@ package com.atlas.ragengine.config;
 
 import com.atlas.ragengine.retrieval.DenseRetriever;
 import com.atlas.ragengine.retrieval.HybridDocumentRetriever;
+import com.atlas.ragengine.retrieval.LlmReranker;
 import com.atlas.ragengine.retrieval.ReciprocalRankFusion;
 import com.atlas.ragengine.retrieval.Reranker;
 import com.atlas.ragengine.retrieval.RetrievalProperties;
 import com.atlas.ragengine.retrieval.RrfPassThroughReranker;
 import com.atlas.ragengine.retrieval.SparseRetriever;
 import com.atlas.ragengine.security.RbacFilterBuilder;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -26,8 +28,9 @@ public class RetrievalConfig {
     }
 
     @Bean
-    SparseRetriever sparseRetriever(JdbcTemplate jdbcTemplate, RbacFilterBuilder rbacFilterBuilder) {
-        return new SparseRetriever(jdbcTemplate, rbacFilterBuilder);
+    SparseRetriever sparseRetriever(JdbcTemplate jdbcTemplate, RbacFilterBuilder rbacFilterBuilder,
+            RetrievalProperties props) {
+        return new SparseRetriever(jdbcTemplate, rbacFilterBuilder, props.tsqueryFunction());
     }
 
     @Bean
@@ -36,8 +39,9 @@ public class RetrievalConfig {
     }
 
     @Bean
-    Reranker reranker() {
-        return new RrfPassThroughReranker();
+    Reranker reranker(RetrievalProperties props, ChatModel chatModel) {
+        // Eval-gated (ADR-0027): RRF pass-through by default; LLM-as-reranker when opted in.
+        return props.llmReranker() ? new LlmReranker(chatModel) : new RrfPassThroughReranker();
     }
 
     @Bean

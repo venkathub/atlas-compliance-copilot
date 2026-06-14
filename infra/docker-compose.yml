@@ -45,9 +45,167 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # ── Observability plane (P2) ────────────────────────────────────────────────
+  # Langfuse v3 self-host (D-P2-5). REUSES atlas-postgres (db `langfuse`) + atlas-redis,
+  # and adds only ClickHouse (analytics store) + MinIO (S3 event/blob store), per the
+  # owner-confirmed "reuse PG+Redis, add CH+MinIO" footprint choice.
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8@sha256:1ffa82edee000a42c09313bd9f1293d94c570aee74babc1b3ca9983a35fa597b
+    container_name: atlas-clickhouse
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DB: default
+    volumes:
+      - atlas-clickhouse-data:/var/lib/clickhouse
+      - atlas-clickhouse-logs:/var/log/clickhouse-server
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
+    container_name: atlas-minio
+    # Pre-create the `langfuse` bucket by making the dir before the server starts
+    # (MinIO's filesystem backend treats top-level dirs as buckets) — avoids needing
+    # the `mc` client just to provision one bucket.
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server /data --console-address ":9001"'
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - atlas-minio-data:/data
+    restart: unless-stopped
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3@sha256:6a172ea462f45436e55606e9dc1cd2bf100518b82138155f9f2d5d1a8fabd2c8
+    container_name: atlas-langfuse-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment: &langfuse-env
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/langfuse
+      SALT: ${LANGFUSE_SALT}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY}
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
+      REDIS_CONNECTION_STRING: redis://redis:6379/0
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+    restart: unless-stopped
+
+  langfuse-web:
+    image: langfuse/langfuse:3@sha256:1a128e60b0b6547a576010819f91e27c6bde929ca3c640115038e5de15511f9f
+    container_name: atlas-langfuse-web
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    ports:
+      - "${LANGFUSE_PORT:-3000}:3000"
+    environment:
+      <<: *langfuse-env
+      NEXTAUTH_URL: ${LANGFUSE_HOST:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET}
+      # Headless bootstrap so a fresh clone has a working project + the .env API keys
+      # already wired (no manual "create a project" first-run step).
+      LANGFUSE_INIT_ORG_ID: atlas
+      LANGFUSE_INIT_PROJECT_ID: atlas-rag
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-admin@atlas.local}
+      LANGFUSE_INIT_USER_NAME: Atlas Admin
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-atlas-local-admin}
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.4.1@sha256:9abc6cf6aea7710d163dbb28d8eeb7dc5baef01e38fa4cd146a406dd9f07f70d
+    container_name: atlas-prometheus
+    # Config is seeded into a named volume by `make up` (Snap-Docker: no host bind mounts).
+    volumes:
+      - atlas-prometheus-config:/etc/prometheus
+      - atlas-prometheus-data:/prometheus
+    # rag-engine runs on the host (mvn spring-boot:run), not in this network.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    restart: unless-stopped
+
+  pushgateway:
+    image: prom/pushgateway:v1.11.1@sha256:03738d278e082ee9821df730c741b3b465c251fc2b68a85883def301a55a6215
+    container_name: atlas-pushgateway
+    # Short-lived eval-gate runs push RAGAS/adversarial scores here for Prometheus to scrape.
+    ports:
+      - "${PUSHGATEWAY_PORT:-9091}:9091"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.6.1@sha256:52c3e20686b860c6dc1f623811565773cf51eefa378817a4896dfc863c3c82c8
+    container_name: atlas-grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    # Datasource + dashboard provisioning seeded into a named volume by `make up`.
+    volumes:
+      - atlas-grafana-config:/etc/grafana/provisioning
+      - atlas-grafana-data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    restart: unless-stopped
+
 volumes:
   atlas-pgdata:
   atlas-redisdata:
+  atlas-clickhouse-data:
+  atlas-clickhouse-logs:
+  atlas-minio-data:
+  atlas-prometheus-data:
+  atlas-grafana-data:
+  # Config volumes are seeded from repo files by `make up` (see infra/Makefile);
+  # declared external so Compose mounts the already-seeded volume rather than a blank one.
+  atlas-prometheus-config:
+    name: atlas-prometheus-config
+    external: true
+  atlas-grafana-config:
+    name: atlas-grafana-config
+    external: true
 
 networks:
   default:

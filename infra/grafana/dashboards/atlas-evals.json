@@ -1,0 +1,92 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 0,
+  "schemaVersion": 39,
+  "tags": ["atlas", "p2"],
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "",
+  "title": "Atlas — Eval & Observability (P2)",
+  "uid": "atlas-evals-p2",
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "RAG serving (populated by Task 3 OTel gen_ai.* metrics)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "RAG query rate (/v1/query)",
+      "description": "Request volume. Wired once rag-engine exposes Actuator HTTP metrics.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(http_server_requests_seconds_count{uri=\"/v1/query\"}[5m]))",
+          "legendFormat": "queries/s"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "GenAI client operation duration (p95)",
+      "description": "gen_ai.client.operation.duration — the OTel-required GenAI latency metric (Task 3).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(gen_ai_client_operation_duration_seconds_bucket[5m])) by (le, gen_ai_operation_name))",
+          "legendFormat": "{{gen_ai_operation_name}} p95"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "row",
+      "title": "Eval gate (populated by Task 8 harness report)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "collapsed": false
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "RAGAS metric scores over time",
+      "description": "Eval-harness scores (faithfulness / answer_relevancy / context_recall). Source wired in Task 8/11.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "atlas_eval_metric_score",
+          "legendFormat": "{{metric}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Adversarial pass-rate",
+      "description": "Binary red-team gate (must be 1.0). Source wired in Task 8/11.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "atlas_eval_adversarial_pass_rate",
+          "legendFormat": "pass-rate"
+        }
+      ]
+    }
+  ]
+}

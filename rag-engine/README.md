@@ -103,6 +103,12 @@ Config under `atlas.security.*` (`ATLAS_SECURITY_HEADER_USER`, `..._HEADER_CLEAR
 
 Config under `atlas.retrieval.*` (`ATLAS_RETRIEVAL_DENSE_K`, `..._SPARSE_K`, `..._RRF_K`, `..._TOP_K`).
 
+**Eval-gated knobs (P2, ADR-0027 / D-P2-7), default OFF:** `atlas.retrieval.reranker=llm` swaps in
+`LlmReranker` (LLM-as-reranker via Ollama) behind the seam; `atlas.retrieval.sparse-query=websearch`
+uses `websearch_to_tsquery`. The harness A/B (`atlas_evals.ab`) found these gave **no clear, broad lift**
+on the 24-chunk corpus (precision/relevancy up, but faithfulness + recall — gating metrics — regressed),
+so they ship **flag-gated OFF**; RRF + `plainto_tsquery` remain the defaults. Re-evaluate as the corpus grows.
+
 > **RBAC hard gate:** the D4 negative-access IT asserts **0 cross-clearance leaks** across dense-only,
 > sparse-only, and hybrid paths (6 golden cases × 3 paths). Any leak fails the build.
 
@@ -127,10 +133,27 @@ out-of-range/duplicate markers and **re-checks `isVisible` per citation** (fail-
 source survives, it returns a grounded "no authorized information" refusal **without calling the model**.
 
 HTTP API:
-- **`POST /v1/query`** — body `{ "query": "...", "topK": 6 }`; caller clearance from the shim headers;
-  returns `{ answer, citations[], retrieval{denseHits,sparseHits,fused,reranked,clearanceApplied} }`.
+- **`POST /v1/query`** — body `{ "query": "...", "topK": 6, "includeContexts": false }`; caller clearance
+  from the shim headers; returns `{ answer, citations[], retrieval{denseHits,sparseHits,fused,reranked,clearanceApplied} }`.
+  With `includeContexts=true` (eval-harness opt-in, ADR-0023) the response adds `contexts[]` of
+  `{chunkId, documentId, clearance, text}` — the full RBAC-filtered chunks the model saw (omitted otherwise).
 - **`POST /v1/admin/ingest`** — full corpus rebuild; **guarded** (requires `restricted`/admin), returns
   `{documents, chunks, rejectedUntrusted}`.
+
+## Observability — OTel `gen_ai.*` tracing (P2, ADR-0030)
+Every `/v1/query` emits a trace via the **Micrometer Observation API** (→ OTel bridge → OTLP → Langfuse):
+a root **`atlas.query`** span (attributes `atlas.request_id`, `atlas.clearance`, `atlas.top_k`) parents
+**`retrieve`** (dense/sparse/fused/reranked counts) and **`guardrail.scan`** (safe/quarantined counts)
+spans; Spring AI's `EmbeddingModel`/`ChatModel` auto-emit `gen_ai.embeddings`/`gen_ai.chat` spans that nest
+under it. `QueryTracer` records the OTel-required **`gen_ai.client.operation.duration`** Timer +
+**`gen_ai.client.token.usage`** summary (these feed the P3 cost story), exposed at `/actuator/prometheus`.
+
+- **Content capture is OFF by default (D-P2-10):** spans carry only ids/clearance/model/token/latency —
+  **never chunk text or PII**. `ATLAS_TRACE_CONTENT=full` (local dev only) attaches **redaction-filtered**
+  prompt/response content (`RedactionFilter` masks SSN/passport/account/email + a configurable deny-list).
+- **Export to Langfuse is opt-in:** set `OTEL_TRACES_EXPORT_ENABLED=true` + `LANGFUSE_OTEL_AUTH_HEADER`
+  (`Basic base64(pk:sk)`) — otherwise spans are created in-process but not shipped (tests/CI never reach Langfuse).
+- GenAI semconv is pinned via `OTEL_SEMCONV_STABILITY_OPT_IN` (still `Development`-status in 2026).
 
 ### 30-second demo (needs `make -C infra up` + a live Ollama; SPRING_PROFILES_ACTIVE=local)
 ```bash

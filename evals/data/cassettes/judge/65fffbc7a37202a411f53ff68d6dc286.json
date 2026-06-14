@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "id": "gold-l2-ex0155-detail"
+  },
+  "response": {
+    "faithfulness": 1.0,
+    "answer_relevancy": 0.5275237296783843,
+    "context_precision": 0.8874999999778125,
+    "context_recall": 1.0,
+    "context_entity_recall": 0.3333333322222222,
+    "noise_sensitivity": null
+  }
+}

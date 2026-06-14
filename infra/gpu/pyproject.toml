@@ -1,0 +1,22 @@
+[project]
+name = "atlas-gpu"
+version = "0.1.0"
+description = "Atlas fail-safe GPU lifecycle helper (resume / health-poll / discover OLLAMA_BASE_URL / GUARANTEED pause). P2, ADR-0029 / D-P2-9."
+requires-python = ">=3.11"
+# Runtime is stdlib-only (urllib) on purpose: the helper must run in CI with no
+# third-party deps so the cost-discipline guarantee never depends on a fragile env.
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

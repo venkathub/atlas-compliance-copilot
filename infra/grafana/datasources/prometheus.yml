@@ -1,0 +1,11 @@
+# Atlas P2 — Grafana datasource provisioning (Prometheus).
+# Seeded into atlas-grafana-config and mounted at /etc/grafana/provisioning.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true

@@ -1,0 +1,37 @@
+# Atlas P2 — Prometheus scrape config.
+# Seeded into the `atlas-prometheus-config` named volume by `make up` (Snap-Docker:
+# the daemon cannot bind-mount our /data workspace, so configs are streamed into a
+# named volume instead — see infra/README.md).
+#
+# rag-engine runs on the HOST (mvn spring-boot:run), not inside this Compose network,
+# so it is scraped via host.docker.internal (mapped to host-gateway in compose).
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Spring Boot Actuator + Micrometer Prometheus registry on rag-engine.
+  - job_name: rag-engine
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:${RAG_ENGINE_PORT}"]
+        labels:
+          service: rag-engine
+          phase: p2
+
+  # Prometheus scraping itself (sanity target).
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Pushgateway — the eval harness pushes RAGAS/adversarial gate scores here (the gate is a
+  # short-lived job, not a scrape target), feeding the Grafana eval-trend panels.
+  - job_name: pushgateway
+    honor_labels: true
+    static_configs:
+      - targets: ["pushgateway:9091"]
+        labels:
+          service: atlas-evals
+          phase: p2

@@ -1,0 +1,67 @@
+{
+  "meta": {
+    "question": "How much has the effective tax rate of American Express changed between FY2021 and FY2022?",
+    "clearance": "public"
+  },
+  "response": {
+    "answer": "[3] suggests that the effective tax rate for American Express Company dropped from 24.6% in FY2021 to 21.6% in FY2022.",
+    "citations": [
+      {
+        "marker": 3,
+        "chunkId": "31f662e1-5efb-3f9d-9a70-5762853a376b",
+        "documentId": "9aeb4449-6063-3495-a74f-715ed5364e59",
+        "docId": "financebench_id_01351",
+        "title": "AMERICANEXPRESS_2022_10K — Summary of Financial Performance",
+        "sourceUri": "https://s26.q4cdn.com/747928648/files/doc_financials/2022/q4/AMEX-10K-4Q22.pdf",
+        "clearance": "public",
+        "score": 0.015873015873015872,
+        "snippet": "American Express Company Table 1: Summary of Financial Performance Years Ended December 31 (Millions, except percentages and per share amounts) 2022 2021 2020 Total revenues net of interest expense $52,862 $42,380 $36,087 Provisions for cre…"
+      }
+    ],
+    "retrieval": {
+      "denseHits": 10,
+      "sparseHits": 0,
+      "fused": 10,
+      "reranked": 6,
+      "clearanceApplied": "public"
+    },
+    "contexts": [
+      {
+        "chunkId": "7defbf83-6bc9-3af6-a5c3-be8bcfba6800",
+        "documentId": "8cb9042a-cacf-31f4-b878-7abf7ee76518",
+        "clearance": "public",
+        "text": "Activision Blizzard, Inc. and Subsidiaries\nConsolidated Balance Sheets\n(Amounts in millions, except share data)\n                                              At December 31, 2019   At December 31, 2018\nAssets\nCurrent assets:\nCash and cash equivalents                            $5,794                $4,225\nAccounts receivable, net of allowances                  848                 1,035\nInventories, net                                         32                    43\nSoftware development                                    322                   264\nOther current assets                                    296                   539\nTotal current assets                                  7,292                 6,106\nSoftware development (non-current)                       54                    65\nProperty and equipment, net                             253                   282\nDeferred income taxes, net                            1,293                   458\nIntangible assets, net                                  531                   735\nGoodwill                                              9,764                 9,762\nTotal assets                                        $19,845               $17,890\n\nNote: FY2019 revenue / average PP&E (FY2018-FY2019) gives a fixed asset turnover\nratio of 24.26 (Total net revenues divided by average Property and equipment, net)."
+      },
+      {
+        "chunkId": "30624a33-3db4-3551-bbbb-626900686bd5",
+        "documentId": "16eaa499-f0a3-3e63-b602-7bbb4eb80baf",
+        "clearance": "public",
+        "text": "3M Company and Subsidiaries\nConsolidated Statement of Cash Flows\nYears ended December 31 (Millions)\n                                                          2018      2017      2016\nCash Flows from Operating Activities\nNet income including noncontrolling interest             $5,363    $4,869    $5,058\nDepreciation and amortization                             1,488     1,544     1,474\nStock-based compensation expense                            302       324       298\nNet cash provided by operating activities                 6,439     6,240     6,662\nCash Flows from Investing Activities\nPurchases of property, plant and equipment (PP&E)        (1,577)   (1,373)   (1,420)\nProceeds from sale of PP&E and other assets                 262        49        58\nNet cash provided by (used in) investing activities         222    (3,086)   (1,403)\nCash Flows from Financing Activities\nPurchases of treasury stock                              (4,870)   (2,068)   (3,753)\nDividends paid to shareholders                           (3,193)   (2,803)   (2,678)\nNet cash provided by (used in) financing activities      (6,701)   (2,655)   (4,626)\nNet increase (decrease) in cash and cash equivalents       (200)      655       600\nCash and cash equivalents at end of period               $2,853    $3,053    $2,398"
+      },
+      {
+        "chunkId": "31f662e1-5efb-3f9d-9a70-5762853a376b",
+        "documentId": "9aeb4449-6063-3495-a74f-715ed5364e59",
+        "clearance": "public",
+        "text": "American Express Company\nTable 1: Summary of Financial Performance\nYears Ended December 31 (Millions, except percentages and per share amounts)\n                                                     2022       2021       2020\nTotal revenues net of interest expense            $52,862    $42,380    $36,087\nProvisions for credit losses                        2,182     (1,419)     4,730\nExpenses                                           41,095     33,110     27,061\nPretax income                                       9,585     10,689      4,296\nIncome tax provision                                2,071      2,629      1,161\nNet income                                          7,514      8,060      3,135\nEarnings per common share — diluted                 $9.85     $10.02      $3.77\nCash dividends declared per common share            $2.08      $1.72      $1.72\nReturn on average equity                            32.3%      33.7%      14.2%\nEffective tax rate                                 21.6%      24.6%      27.0%\nCommon Equity Tier 1                               10.3%      10.5%      13.5%\nCard Member loans                                 107,964     88,562     73,373\nCustomer deposits                                 110,239     84,382     86,875\n\nThe effective tax rate dropped from 24.6% in FY2021 to 21.6% in FY2022. As a\nfinancial-services company, American Express measures performance through Net\nInterest Margin rather than operating or gross margin. Common stock trades on the\nNew York Stock Exchange under the trading symbol AXP."
+      },
+      {
+        "chunkId": "2e084c77-1ec3-3bb6-8717-5608327efac1",
+        "documentId": "3894b4f0-d430-32d5-855a-becd3089ad90",
+        "clearance": "public",
+        "text": "3M Company and Subsidiaries\nConsolidated Balance Sheet\nAt December 31 (Dollars in millions, except per share amount)\n                                                          2018      2017\nAssets\nCash and cash equivalents                                $2,853    $3,053\nAccounts receivable net of allowances of $95 and $103     5,020     4,911\nTotal inventories                                          4,366     4,034\nTotal current assets                                      13,709    14,277\nProperty, plant and equipment                            24,873    24,914\nLess: Accumulated depreciation                          (16,135)  (16,048)\nProperty, plant and equipment net                         8,738     8,866\nGoodwill                                                 10,051    10,513\nTotal assets                                            $36,500   $37,987\nLiabilities\nTotal current liabilities                                 7,244     7,687\nLong-term debt                                           13,411    12,096\nTotal liabilities                                       $26,652   $26,365\nEquity\nRetained earnings                                        40,636    39,115\nTotal 3M Company shareholders equity                      9,796    11,563\nTotal equity                                             $9,848   $11,622\nTotal liabilities and equity                            $36,500   $37,987"
+      },
+      {
+        "chunkId": "5455fd6c-449c-37fa-831e-3db57ab1ea39",
+        "documentId": "618112d6-c3a3-3ce5-923f-47e3f80d857a",
+        "clearance": "public",
+        "text": "3M Company and Subsidiaries\nConsolidated Statement of Income\nYears ended December 31 (Millions, except per share amounts)\n                                                          2022      2021      2020\nNet sales                                               $34,229   $35,355   $32,184\nOperating expenses\nCost of sales                                            19,232    18,795    16,605\nSelling, general and administrative expenses             9,049     7,197     6,929\nResearch, development and related expenses               1,862     1,994     1,878\nGain on business divestitures                           (2,724)        --      (389)\nGoodwill impairment expense                                271        --        --\nTotal operating expenses                                27,690    27,986    25,023\nOperating income                                         6,539     7,369     7,161\nIncome before income taxes                               6,392     7,204     6,795\nProvision for income taxes                                 612     1,285     1,337\nNet income attributable to 3M                           $5,777    $5,921    $5,449\nEarnings per share attributable to 3M shareholders basic $10.21    $10.23     $9.43\nEarnings per share attributable to 3M shareholders diluted $10.18  $10.12     $9.36"
+      },
+      {
+        "chunkId": "1aab7166-eb56-318c-a5f5-0a4adeb9edc5",
+        "documentId": "d08b5328-033c-3db6-8321-aa2d479f877e",
+        "clearance": "public",
+        "text": "American Water Works Company, Inc. and Subsidiary Companies\nConsolidated Statements of Cash Flows (In millions)\nFor the Years Ended December 31              2020      2019      2018\nCASH FLOWS FROM OPERATING ACTIVITIES\nNet income                                   $709      $621      $565\nDepreciation and amortization                 604       582       545\nProvision for losses on accounts receivable    34        28        33\nImpact of Freedom Industries settlement         --        (4)      (40)\nNet cash provided by operating activities    1,426     1,383     1,386\nCASH FLOWS FROM INVESTING ACTIVITIES\nCapital expenditures                        (1,822)   (1,654)   (1,586)\nAcquisitions, net of cash acquired            (135)     (235)     (398)\nNet cash used in investing activities       (2,061)   (1,945)   (2,036)\nCASH FLOWS FROM FINANCING ACTIVITIES\nProceeds from long-term debt                 1,334     1,530     1,358\nRepayments of long-term debt                  (342)     (495)     (526)\nDividends paid                                (389)     (353)     (319)\nNet cash provided by financing activities    1,120       494       726\nCash, cash equivalents and restricted funds at end of period $576  $91  $159\n\nNote: American Water Works paid $389 million in cash dividends in FY2020\n(approximately $0.40 billion)."
+      }
+    ]
+  }
+}

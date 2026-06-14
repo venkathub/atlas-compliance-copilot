@@ -1,0 +1,89 @@
+{
+  "meta": {
+    "question": "How many open AML exceptions does the Northwind account have in 2026 Q2, and which warrant a SAR?",
+    "clearance": "compliance"
+  },
+  "response": {
+    "answer": "In 2026 Q2, Northwind Trading LLC has three open AML exceptions with a total amount of $47,900, which is consistent with the information provided in Source [1]. Two of these exceptions, EX-2026-0155 and EX-2026-0142, warrant Suspicious Activity Report (SAR) preparation due to their structuring patterns. Source [1] also confirms this by stating \"EX-2026-0142\" and \"EX-2026-0155\" individually or in aggregate exceed the $5,000 SAR consideration threshold and require a SAR draft for BSA Officer review.\n\nSource [3], AML Monitoring — Quarterly Desk Metrics (2026 Q2), indicates escalations rose 26% quarter-over-quarter. The increase was driven primarily by cash-structuring typologies in the cash-intensive trade segment, with high-risk accounts accounting for a disproportionate share of escalations. \n\nHowever, Source [1] does not specify which specific exceptions warrant SAR preparation beyond stating that EX-2026-0142 and EX-2026-0155 do so individually or in aggregate.\n \nSource [2], Northwind Trading LLC — AML Exception Register (Detail), gives more details about the structuring exception, revealing a pattern of eight cash deposits aggregating to $47,900. This supports Source [1]'s claim that EX-2026-0142 warrants a SAR due to a structuring typology below the CTR threshold.\n\nTo sum up, two open AML exceptions warranting SAR preparation are associated with Northwind Trading LLC in 2026 Q2. These exceptions are identified as EX-2026-0155 and EX-2026-0142. The other exceptions, EX-2026-0171 and EX-2026-0188, are not explicitly stated to warrant a SAR in the given sources.",
+    "citations": [
+      {
+        "marker": 1,
+        "chunkId": "6380cece-d127-300f-aabb-283cc9ce0468",
+        "documentId": "43548f70-c671-3b93-b0a8-607cab56b446",
+        "docId": "l2-northwind-aml-exceptions-2026q2",
+        "title": "Northwind Trading LLC — Open AML Exceptions (2026 Q2)",
+        "sourceUri": "atlas://compliance/northwind-trading-llc/aml-exceptions-2026Q2.md",
+        "clearance": "compliance",
+        "score": 0.01639344262295082,
+        "snippet": "# Northwind Trading LLC — Open AML Exceptions (2026 Q2) Account: **NW-4471-08** · Risk rating: **High** · Reviewer: Compliance Desk This summary lists the **open** AML exceptions for the Northwind account for the current quarter. Three of t…"
+      },
+      {
+        "marker": 3,
+        "chunkId": "cf89ca92-a681-33ad-9e99-4119c179bc66",
+        "documentId": "8b323f69-9698-3b4b-9930-f5cb7a7e8312",
+        "docId": "l2-aml-quarterly-metrics",
+        "title": "AML Monitoring — Quarterly Desk Metrics (2026 Q2)",
+        "sourceUri": "atlas://analytics/aml-quarterly-metrics-2026Q2.md",
+        "clearance": "analyst",
+        "score": 0.015873015873015872,
+        "snippet": "# AML Monitoring — Quarterly Desk Metrics (2026 Q2) Aggregate, de-identified monitoring statistics for the commercial portfolio. No single-customer case detail appears in this note (analyst clearance). | Metric | 2026 Q1 | 2026 Q2 | |---|--…"
+      },
+      {
+        "marker": 2,
+        "chunkId": "b024b820-fafa-3e08-a0f3-3628637dec98",
+        "documentId": "26d2d478-07d7-3ba7-af71-7f1263312361",
+        "docId": "l2-northwind-exception-register",
+        "title": "Northwind Trading LLC — AML Exception Register (Detail)",
+        "sourceUri": "atlas://compliance/northwind-trading-llc/exception-register.md",
+        "clearance": "compliance",
+        "score": 0.016129032258064516,
+        "snippet": "# Northwind Trading LLC — AML Exception Register (Detail) Detailed dispositions backing the Q2 exception summary. Compliance access only. ## EX-2026-0142 — Structuring Between 2026-04-01 and 2026-04-08, eight cash deposits of $5,900–$6,100 …"
+      }
+    ],
+    "retrieval": {
+      "denseHits": 20,
+      "sparseHits": 0,
+      "fused": 20,
+      "reranked": 6,
+      "clearanceApplied": "compliance"
+    },
+    "contexts": [
+      {
+        "chunkId": "6380cece-d127-300f-aabb-283cc9ce0468",
+        "documentId": "43548f70-c671-3b93-b0a8-607cab56b446",
+        "clearance": "compliance",
+        "text": "# Northwind Trading LLC — Open AML Exceptions (2026 Q2)\n\nAccount: **NW-4471-08** · Risk rating: **High** · Reviewer: Compliance Desk\n\nThis summary lists the **open** AML exceptions for the Northwind account for the\ncurrent quarter. Three of the four open exceptions individually or in aggregate\nexceed the **$5,000 SAR consideration threshold**; EX-2026-0142 also shows a\n**structuring** pattern below the $10,000 CTR threshold.\n\n| Exception ID | Opened | Typology | Amount (USD) | Status |\n|---|---|---|---|---|\n| EX-2026-0142 | 2026-04-09 | Structuring (sub-$10k cash deposits) | 47,900 | Open |\n| EX-2026-0155 | 2026-04-22 | Rapid movement of funds / pass-through | 312,000 | Open |\n| EX-2026-0171 | 2026-05-11 | Counterparty in high-risk jurisdiction | 88,500 | Open |\n| EX-2026-0188 | 2026-05-30 | Round-dollar wires inconsistent with profile | 9,800 | Open |\n\n## Assessment\nEX-2026-0142 (structuring) and EX-2026-0155 (pass-through) **breach the reporting\nthreshold** and warrant a Suspicious Activity Report. Recommend preparing a draft\nSAR covering EX-2026-0142 and EX-2026-0155 for BSA Officer review. EX-2026-0171\nremains under review pending counterparty screening (see restricted OFAC note)."
+      },
+      {
+        "chunkId": "b024b820-fafa-3e08-a0f3-3628637dec98",
+        "documentId": "26d2d478-07d7-3ba7-af71-7f1263312361",
+        "clearance": "compliance",
+        "text": "# Northwind Trading LLC — AML Exception Register (Detail)\n\nDetailed dispositions backing the Q2 exception summary. Compliance access only.\n\n## EX-2026-0142 — Structuring\nBetween 2026-04-01 and 2026-04-08, eight cash deposits of $5,900–$6,100 were made\nacross three branches, aggregating **$47,900**. Each deposit fell below the\n$10,000 CTR threshold. Pattern is consistent with **structuring** to evade\nreporting. Recommended for SAR.\n\n## EX-2026-0155 — Rapid movement of funds\nAn incoming wire of **$312,000** from a UAE counterparty was followed within 48\nhours by outgoing wires to two Southeast Asian beneficiaries, leaving a near-zero\nbalance (pass-through). No documented commercial rationale. Recommended for SAR.\n\n## EX-2026-0171 — High-risk jurisdiction counterparty\nA **$88,500** wire involved a counterparty flagged for high-risk-jurisdiction\nexposure. Disposition pending sanctions screening; see the restricted OFAC\nscreening note.\n\n## EX-2026-0188 — Round-dollar wires\nFour round-dollar wires totaling **$9,800**, inconsistent with the stated import\nprofile. Monitoring; not currently recommended for SAR."
+      },
+      {
+        "chunkId": "cf89ca92-a681-33ad-9e99-4119c179bc66",
+        "documentId": "8b323f69-9698-3b4b-9930-f5cb7a7e8312",
+        "clearance": "analyst",
+        "text": "# AML Monitoring — Quarterly Desk Metrics (2026 Q2)\n\nAggregate, de-identified monitoring statistics for the commercial portfolio. No\nsingle-customer case detail appears in this note (analyst clearance).\n\n| Metric | 2026 Q1 | 2026 Q2 |\n|---|---|---|\n| Alerts generated | 1,284 | 1,412 |\n| Alerts escalated to compliance | 96 | 121 |\n| Accounts under enhanced monitoring | 38 | 41 |\n| Median alert disposition time (days) | 6.2 | 5.4 |\n\n## Commentary\nEscalations rose 26% quarter-over-quarter, driven primarily by cash-structuring\ntypologies in the cash-intensive trade segment. High-risk accounts continue to\naccount for a disproportionate share of escalations. Specific account\nidentifiers and case narratives are restricted to compliance reviewers."
+      },
+      {
+        "chunkId": "7c3cc729-7b1a-3aab-accd-dc8e34068571",
+        "documentId": "d39146f8-3b6e-3205-ab5a-838f7cefd1ef",
+        "clearance": "public",
+        "text": "# BSA/AML Regulatory Reference (Public Summary)\n\nThis non-confidential reference summarizes the principal U.S. anti-money-laundering\nobligations relevant to Atlas Bank staff. It contains no customer information.\n\n## Core obligations\n- **Customer Identification Program (CIP):** verify the identity of each customer\n  at account opening.\n- **Customer Due Diligence (CDD):** understand the nature and purpose of customer\n  relationships and develop a risk profile.\n- **Enhanced Due Diligence (EDD):** apply heightened scrutiny to higher-risk\n  customers, including those with complex ownership or exposure to high-risk\n  jurisdictions.\n- **Ongoing monitoring:** detect and report suspicious activity.\n\n## Structuring\n\"Structuring\" means breaking a large transaction into smaller amounts to evade the\n$10,000 CTR reporting threshold. Structuring is itself a federal offense regardless\nof whether the underlying funds are legitimate.\n\n## Recordkeeping\nRecords supporting CTRs and SARs must be retained for **five years**."
+      },
+      {
+        "chunkId": "5049f726-8818-315f-93e2-10796e967c37",
+        "documentId": "351992a5-343c-3c8a-af84-d64e7af520fd",
+        "clearance": "compliance",
+        "text": "# Transaction Review Note — Northwind Trading LLC (EX-2026-0142)\n\nReviewer: Compliance Desk · Alert: structuring · Account: NW-4471-08\n\n## Observed pattern\nThe monitoring system flagged a burst of sub-threshold cash deposits. Branch and\ntiming detail:\n\n| Date | Branch | Amount (USD) |\n|---|---|---|\n| 2026-04-01 | BR-12 | 6,100 |\n| 2026-04-02 | BR-12 | 5,900 |\n| 2026-04-03 | BR-07 | 6,000 |\n| 2026-04-04 | BR-19 | 5,950 |\n| 2026-04-05 | BR-07 | 6,050 |\n| 2026-04-07 | BR-12 | 5,900 |\n| 2026-04-08 | BR-19 | 6,000 |\n| 2026-04-08 | BR-07 | 6,000 |\n\nTotal: **$47,900** across 8 deposits, all individually below the $10,000 CTR\nthreshold, spread across three branches within eight days.\n\n## Conclusion\nThe pattern is a textbook **structuring** typology and has no documented\ncommercial justification consistent with the customer's import/export profile.\nEscalated for SAR consideration as EX-2026-0142."
+      },
+      {
+        "chunkId": "03fa7ed6-69aa-36f7-9fd1-10ec6ce5d3fa",
+        "documentId": "92d25c01-e371-3169-be6e-319338a35eef",
+        "clearance": "analyst",
+        "text": "3M Company — MD&A, Financial Condition (Form 10-Q, Q2 2023)\n\nIn November 2018, 3M's Board of Directors replaced the Company's February 2016\nrepurchase program with a new repurchase program. This new program authorizes the\nrepurchase of up to $10 billion of 3M's outstanding common stock, with no\npre-established end date. In the first six months of 2023, the Company purchased\n$29 million of its own stock, compared to $773 million of stock purchases in the\nfirst six months of 2022. As of June 30, 2023, approximately $4.2 billion\nremained available under the authorization.\n\nIn February 2023, 3M's Board of Directors declared a first-quarter 2023 dividend\nof $1.50 per share, an increase of 1 percent. This marked the 65th consecutive\nyear of dividend increases for 3M. In May 2023, 3M's Board of Directors declared\na second-quarter 2023 dividend of $1.50 per share."
+      }
+    ]
+  }
+}

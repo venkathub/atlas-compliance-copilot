@@ -4,6 +4,7 @@ import com.atlas.ragengine.qa.QueryService;
 import com.atlas.ragengine.security.ClearanceLevel;
 import com.atlas.ragengine.security.ClearanceResolver;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -35,9 +36,10 @@ public class QueryController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "query is required");
         }
         ClearanceLevel caller = clearanceResolver.resolve(HttpRequestHeaders.of(http));
-        log.info("Query at clearance '{}': {}", caller.label(), request.query());
+        String requestId = UUID.randomUUID().toString();
+        log.info("Query [{}] at clearance '{}': {}", requestId, caller.label(), request.query());
         QueryService.QaResult result =
-                queryService.answer(request.query(), caller, request.topKOrDefault());
-        return ResponseEntity.ok(QueryResponse.from(result));
+                queryService.answer(request.query(), caller, request.topKOrDefault(), requestId);
+        return ResponseEntity.ok(QueryResponse.from(result, request.includeContextsOrDefault()));
     }
 }

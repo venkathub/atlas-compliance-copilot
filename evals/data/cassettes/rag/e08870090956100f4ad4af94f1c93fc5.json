@@ -1,0 +1,67 @@
+{
+  "meta": {
+    "question": "What are the open AML exceptions and SAR status for the Northwind account?",
+    "clearance": "analyst"
+  },
+  "response": {
+    "answer": "[1] There is no information provided in the given sources about the Northwind account exceptions or SAR status for this query. The available data includes general BSA/AML regulatory reference, AML monitoring metrics, customer profile, and financial statements of Activision Blizzard and 3M Company. For specific open AML exception details and SAR status regarding the Northwind Trading LLC account, further investigation would be needed from their respective compliance officers or records.",
+    "citations": [
+      {
+        "marker": 1,
+        "chunkId": "7c3cc729-7b1a-3aab-accd-dc8e34068571",
+        "documentId": "d39146f8-3b6e-3205-ab5a-838f7cefd1ef",
+        "docId": "l2-bsa-regulatory-reference",
+        "title": "BSA/AML Regulatory Reference — Public Summary",
+        "sourceUri": "atlas://policy/bsa-aml-regulatory-reference.md",
+        "clearance": "public",
+        "score": 0.01639344262295082,
+        "snippet": "# BSA/AML Regulatory Reference (Public Summary) This non-confidential reference summarizes the principal U.S. anti-money-laundering obligations relevant to Atlas Bank staff. It contains no customer information. ## Core obligations - **Custo…"
+      }
+    ],
+    "retrieval": {
+      "denseHits": 16,
+      "sparseHits": 0,
+      "fused": 16,
+      "reranked": 6,
+      "clearanceApplied": "analyst"
+    },
+    "contexts": [
+      {
+        "chunkId": "7c3cc729-7b1a-3aab-accd-dc8e34068571",
+        "documentId": "d39146f8-3b6e-3205-ab5a-838f7cefd1ef",
+        "clearance": "public",
+        "text": "# BSA/AML Regulatory Reference (Public Summary)\n\nThis non-confidential reference summarizes the principal U.S. anti-money-laundering\nobligations relevant to Atlas Bank staff. It contains no customer information.\n\n## Core obligations\n- **Customer Identification Program (CIP):** verify the identity of each customer\n  at account opening.\n- **Customer Due Diligence (CDD):** understand the nature and purpose of customer\n  relationships and develop a risk profile.\n- **Enhanced Due Diligence (EDD):** apply heightened scrutiny to higher-risk\n  customers, including those with complex ownership or exposure to high-risk\n  jurisdictions.\n- **Ongoing monitoring:** detect and report suspicious activity.\n\n## Structuring\n\"Structuring\" means breaking a large transaction into smaller amounts to evade the\n$10,000 CTR reporting threshold. Structuring is itself a federal offense regardless\nof whether the underlying funds are legitimate.\n\n## Recordkeeping\nRecords supporting CTRs and SARs must be retained for **five years**."
+      },
+      {
+        "chunkId": "417be379-73ed-305e-bc9b-307d590e0a6a",
+        "documentId": "81ecc34d-3b30-371e-8d2a-e38d006bcec3",
+        "clearance": "public",
+        "text": "# Atlas Bank — Anti-Money-Laundering (AML) Program Policy\n\n## Purpose\nThis policy establishes Atlas Bank's program to detect, prevent, and report money\nlaundering and terrorist financing in accordance with the Bank Secrecy Act (BSA)\nand applicable regulations. It applies to all employees, contractors, and lines\nof business.\n\n## Key reporting thresholds\n- **Currency Transaction Report (CTR):** filed for cash transactions exceeding\n  **$10,000** in aggregate by or on behalf of one person in a single business day.\n- **Suspicious Activity Report (SAR):** filed when the bank knows, suspects, or has\n  reason to suspect that a transaction (or pattern) aggregating **$5,000 or more**\n  involves funds from illegal activity, is designed to evade BSA requirements\n  (including **structuring** to avoid the CTR threshold), or has no apparent lawful\n  purpose. SARs must be filed within **30 calendar days** of initial detection.\n\n## Roles\n- **Analysts** monitor alerts and document dispositions.\n- **Compliance officers** review exceptions, approve SAR filings, and own the case\n  record.\n- The **BSA Officer** has final authority over the program.\n\n## Confidentiality\nThe existence or contents of a SAR, and any supporting investigative material,\nare strictly confidential and may not be disclosed outside authorized personnel."
+      },
+      {
+        "chunkId": "cf89ca92-a681-33ad-9e99-4119c179bc66",
+        "documentId": "8b323f69-9698-3b4b-9930-f5cb7a7e8312",
+        "clearance": "analyst",
+        "text": "# AML Monitoring — Quarterly Desk Metrics (2026 Q2)\n\nAggregate, de-identified monitoring statistics for the commercial portfolio. No\nsingle-customer case detail appears in this note (analyst clearance).\n\n| Metric | 2026 Q1 | 2026 Q2 |\n|---|---|---|\n| Alerts generated | 1,284 | 1,412 |\n| Alerts escalated to compliance | 96 | 121 |\n| Accounts under enhanced monitoring | 38 | 41 |\n| Median alert disposition time (days) | 6.2 | 5.4 |\n\n## Commentary\nEscalations rose 26% quarter-over-quarter, driven primarily by cash-structuring\ntypologies in the cash-intensive trade segment. High-risk accounts continue to\naccount for a disproportionate share of escalations. Specific account\nidentifiers and case narratives are restricted to compliance reviewers."
+      },
+      {
+        "chunkId": "71186826-2a3f-3b7f-b428-e517619e959a",
+        "documentId": "f2af13eb-64e1-3554-bcae-2fc8b6526e6e",
+        "clearance": "analyst",
+        "text": "# Northwind Trading LLC — KYC / Onboarding Summary\n\n| Field | Value |\n|---|---|\n| Legal entity | Northwind Trading LLC |\n| Account number | NW-4471-08 |\n| Entity type | Limited liability company (import/export trading) |\n| Incorporated | Delaware, USA |\n| Relationship opened | 2021-03-14 |\n| Risk rating | **High** (cash-intensive trade, multi-jurisdiction counterparties) |\n| Relationship manager | Desk 7 (Commercial) |\n\n## Business profile\nNorthwind Trading LLC describes itself as a wholesale importer of consumer\nelectronics and industrial components, with counterparties in the EU, UAE, and\nSoutheast Asia. Expected activity at onboarding: wire transfers in the\n$50k–$500k range, modest cash deposits.\n\n## Notes\nThe account was rated **high risk** at onboarding due to its cash-intensive\nprofile and exposure to higher-risk jurisdictions. Enhanced monitoring applies.\nThis summary is available to analysts for alert triage; sensitive investigative\ndetail is held under compliance/restricted access."
+      },
+      {
+        "chunkId": "7defbf83-6bc9-3af6-a5c3-be8bcfba6800",
+        "documentId": "8cb9042a-cacf-31f4-b878-7abf7ee76518",
+        "clearance": "public",
+        "text": "Activision Blizzard, Inc. and Subsidiaries\nConsolidated Balance Sheets\n(Amounts in millions, except share data)\n                                              At December 31, 2019   At December 31, 2018\nAssets\nCurrent assets:\nCash and cash equivalents                            $5,794                $4,225\nAccounts receivable, net of allowances                  848                 1,035\nInventories, net                                         32                    43\nSoftware development                                    322                   264\nOther current assets                                    296                   539\nTotal current assets                                  7,292                 6,106\nSoftware development (non-current)                       54                    65\nProperty and equipment, net                             253                   282\nDeferred income taxes, net                            1,293                   458\nIntangible assets, net                                  531                   735\nGoodwill                                              9,764                 9,762\nTotal assets                                        $19,845               $17,890\n\nNote: FY2019 revenue / average PP&E (FY2018-FY2019) gives a fixed asset turnover\nratio of 24.26 (Total net revenues divided by average Property and equipment, net)."
+      },
+      {
+        "chunkId": "03fa7ed6-69aa-36f7-9fd1-10ec6ce5d3fa",
+        "documentId": "92d25c01-e371-3169-be6e-319338a35eef",
+        "clearance": "analyst",
+        "text": "3M Company — MD&A, Financial Condition (Form 10-Q, Q2 2023)\n\nIn November 2018, 3M's Board of Directors replaced the Company's February 2016\nrepurchase program with a new repurchase program. This new program authorizes the\nrepurchase of up to $10 billion of 3M's outstanding common stock, with no\npre-established end date. In the first six months of 2023, the Company purchased\n$29 million of its own stock, compared to $773 million of stock purchases in the\nfirst six months of 2022. As of June 30, 2023, approximately $4.2 billion\nremained available under the authorization.\n\nIn February 2023, 3M's Board of Directors declared a first-quarter 2023 dividend\nof $1.50 per share, an increase of 1 percent. This marked the 65th consecutive\nyear of dividend increases for 3M. In May 2023, 3M's Board of Directors declared\na second-quarter 2023 dividend of $1.50 per share."
+      }
+    ]
+  }
+}

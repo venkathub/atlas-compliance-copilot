@@ -46,9 +46,34 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v8.2.0
       - name: Ruff lint
-        run: uvx ruff check evals
-      - name: Pytest
-        run: uvx --with pytest pytest evals -q
+        run: |
+          uvx ruff check evals
+          uvx ruff check infra/gpu
+      - name: Pytest (evals harness)
+        # uv run respects evals/.python-version (3.12) + dependency groups; the heavy
+        # `ragas` group is NOT installed (not a default group), proving the suite is light.
+        run: uv run --directory evals --with pytest pytest -q
+      - name: Pytest (GPU lifecycle helper)
+        run: uv run --directory infra/gpu --with pytest pytest -q
+
+  evals-gate:
+    name: Eval gate (RAGAS + adversarial, cassette-replay)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.2.0
+      # The MERGE GATE. Replays committed cassettes (data/cassettes) against baseline.json:
+      # RAGAS floors + no-regression band + 100%-pass adversarial. NO GPU, NO Ollama, and
+      # RAGAS is NOT installed (replay reads per-sample score cassettes). Non-zero exit blocks merge.
+      - name: Run eval merge gate
+        run: uv run --directory evals python -m atlas_evals.gate
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: eval-report
+          path: evals/report/*
+          if-no-files-found: ignore
 
   secret-scan:
     name: Secret scan (gitleaks)
