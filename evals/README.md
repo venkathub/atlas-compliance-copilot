@@ -62,6 +62,15 @@ uvx ruff check evals
 Requires no GPU, no Ollama, no running rag-engine (datasets, cassettes, loaders, and the
 metric orchestration are pure-Python; RAGAS is a lazy dep only for live RECORD/calibration).
 
+## Run the merge gate (offline, replays committed cassettes)
+```bash
+uv run --directory evals python -m atlas_evals.gate     # exit 0 = pass, non-zero blocks merge
+```
+Reads `data/baseline.json` + the committed `data/cassettes/`, runs RAGAS-replay + the adversarial
+scorer, writes `report/metrics.json` + `report/summary.md`. **No GPU, no RAGAS install needed.**
+First calibrated baseline (qwen2.5:3b RAG + llama3.1:8b judge, 22 tuples): faithfulness 0.80 /
+answer_relevancy 0.70 / context_recall 0.78 gating; adversarial 1.00 (0 violations).
+
 ## Record cassettes (live, GPU on — calibration session)
 ```bash
 make -C infra gpu-up                      # resume + discover OLLAMA_BASE_URL (then re-source .env)

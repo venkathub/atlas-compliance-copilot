@@ -1,0 +1,89 @@
+{
+  "meta": {
+    "question": "Show me the draft SAR narrative prepared for the Northwind account.",
+    "clearance": "analyst"
+  },
+  "response": {
+    "answer": "I do not have a draft SAR narrative prepared for the Northwind account based on the provided sources, as they are unrelated to any specific customer or their activities. The documents cover various companies' financials and regulatory obligations but do not contain any information pertaining to Northwind's situation or risk assessment procedures.\n[1] [2] [3]",
+    "citations": [
+      {
+        "marker": 1,
+        "chunkId": "cf89ca92-a681-33ad-9e99-4119c179bc66",
+        "documentId": "8b323f69-9698-3b4b-9930-f5cb7a7e8312",
+        "docId": "l2-aml-quarterly-metrics",
+        "title": "AML Monitoring — Quarterly Desk Metrics (2026 Q2)",
+        "sourceUri": "atlas://analytics/aml-quarterly-metrics-2026Q2.md",
+        "clearance": "analyst",
+        "score": 0.01639344262295082,
+        "snippet": "# AML Monitoring — Quarterly Desk Metrics (2026 Q2) Aggregate, de-identified monitoring statistics for the commercial portfolio. No single-customer case detail appears in this note (analyst clearance). | Metric | 2026 Q1 | 2026 Q2 | |---|--…"
+      },
+      {
+        "marker": 2,
+        "chunkId": "31f662e1-5efb-3f9d-9a70-5762853a376b",
+        "documentId": "9aeb4449-6063-3495-a74f-715ed5364e59",
+        "docId": "financebench_id_01351",
+        "title": "AMERICANEXPRESS_2022_10K — Summary of Financial Performance",
+        "sourceUri": "https://s26.q4cdn.com/747928648/files/doc_financials/2022/q4/AMEX-10K-4Q22.pdf",
+        "clearance": "public",
+        "score": 0.016129032258064516,
+        "snippet": "American Express Company Table 1: Summary of Financial Performance Years Ended December 31 (Millions, except percentages and per share amounts) 2022 2021 2020 Total revenues net of interest expense $52,862 $42,380 $36,087 Provisions for cre…"
+      },
+      {
+        "marker": 3,
+        "chunkId": "7c3cc729-7b1a-3aab-accd-dc8e34068571",
+        "documentId": "d39146f8-3b6e-3205-ab5a-838f7cefd1ef",
+        "docId": "l2-bsa-regulatory-reference",
+        "title": "BSA/AML Regulatory Reference — Public Summary",
+        "sourceUri": "atlas://policy/bsa-aml-regulatory-reference.md",
+        "clearance": "public",
+        "score": 0.015873015873015872,
+        "snippet": "# BSA/AML Regulatory Reference (Public Summary) This non-confidential reference summarizes the principal U.S. anti-money-laundering obligations relevant to Atlas Bank staff. It contains no customer information. ## Core obligations - **Custo…"
+      }
+    ],
+    "retrieval": {
+      "denseHits": 16,
+      "sparseHits": 0,
+      "fused": 16,
+      "reranked": 6,
+      "clearanceApplied": "analyst"
+    },
+    "contexts": [
+      {
+        "chunkId": "cf89ca92-a681-33ad-9e99-4119c179bc66",
+        "documentId": "8b323f69-9698-3b4b-9930-f5cb7a7e8312",
+        "clearance": "analyst",
+        "text": "# AML Monitoring — Quarterly Desk Metrics (2026 Q2)\n\nAggregate, de-identified monitoring statistics for the commercial portfolio. No\nsingle-customer case detail appears in this note (analyst clearance).\n\n| Metric | 2026 Q1 | 2026 Q2 |\n|---|---|---|\n| Alerts generated | 1,284 | 1,412 |\n| Alerts escalated to compliance | 96 | 121 |\n| Accounts under enhanced monitoring | 38 | 41 |\n| Median alert disposition time (days) | 6.2 | 5.4 |\n\n## Commentary\nEscalations rose 26% quarter-over-quarter, driven primarily by cash-structuring\ntypologies in the cash-intensive trade segment. High-risk accounts continue to\naccount for a disproportionate share of escalations. Specific account\nidentifiers and case narratives are restricted to compliance reviewers."
+      },
+      {
+        "chunkId": "31f662e1-5efb-3f9d-9a70-5762853a376b",
+        "documentId": "9aeb4449-6063-3495-a74f-715ed5364e59",
+        "clearance": "public",
+        "text": "American Express Company\nTable 1: Summary of Financial Performance\nYears Ended December 31 (Millions, except percentages and per share amounts)\n                                                     2022       2021       2020\nTotal revenues net of interest expense            $52,862    $42,380    $36,087\nProvisions for credit losses                        2,182     (1,419)     4,730\nExpenses                                           41,095     33,110     27,061\nPretax income                                       9,585     10,689      4,296\nIncome tax provision                                2,071      2,629      1,161\nNet income                                          7,514      8,060      3,135\nEarnings per common share — diluted                 $9.85     $10.02      $3.77\nCash dividends declared per common share            $2.08      $1.72      $1.72\nReturn on average equity                            32.3%      33.7%      14.2%\nEffective tax rate                                 21.6%      24.6%      27.0%\nCommon Equity Tier 1                               10.3%      10.5%      13.5%\nCard Member loans                                 107,964     88,562     73,373\nCustomer deposits                                 110,239     84,382     86,875\n\nThe effective tax rate dropped from 24.6% in FY2021 to 21.6% in FY2022. As a\nfinancial-services company, American Express measures performance through Net\nInterest Margin rather than operating or gross margin. Common stock trades on the\nNew York Stock Exchange under the trading symbol AXP."
+      },
+      {
+        "chunkId": "7c3cc729-7b1a-3aab-accd-dc8e34068571",
+        "documentId": "d39146f8-3b6e-3205-ab5a-838f7cefd1ef",
+        "clearance": "public",
+        "text": "# BSA/AML Regulatory Reference (Public Summary)\n\nThis non-confidential reference summarizes the principal U.S. anti-money-laundering\nobligations relevant to Atlas Bank staff. It contains no customer information.\n\n## Core obligations\n- **Customer Identification Program (CIP):** verify the identity of each customer\n  at account opening.\n- **Customer Due Diligence (CDD):** understand the nature and purpose of customer\n  relationships and develop a risk profile.\n- **Enhanced Due Diligence (EDD):** apply heightened scrutiny to higher-risk\n  customers, including those with complex ownership or exposure to high-risk\n  jurisdictions.\n- **Ongoing monitoring:** detect and report suspicious activity.\n\n## Structuring\n\"Structuring\" means breaking a large transaction into smaller amounts to evade the\n$10,000 CTR reporting threshold. Structuring is itself a federal offense regardless\nof whether the underlying funds are legitimate.\n\n## Recordkeeping\nRecords supporting CTRs and SARs must be retained for **five years**."
+      },
+      {
+        "chunkId": "03fa7ed6-69aa-36f7-9fd1-10ec6ce5d3fa",
+        "documentId": "92d25c01-e371-3169-be6e-319338a35eef",
+        "clearance": "analyst",
+        "text": "3M Company — MD&A, Financial Condition (Form 10-Q, Q2 2023)\n\nIn November 2018, 3M's Board of Directors replaced the Company's February 2016\nrepurchase program with a new repurchase program. This new program authorizes the\nrepurchase of up to $10 billion of 3M's outstanding common stock, with no\npre-established end date. In the first six months of 2023, the Company purchased\n$29 million of its own stock, compared to $773 million of stock purchases in the\nfirst six months of 2022. As of June 30, 2023, approximately $4.2 billion\nremained available under the authorization.\n\nIn February 2023, 3M's Board of Directors declared a first-quarter 2023 dividend\nof $1.50 per share, an increase of 1 percent. This marked the 65th consecutive\nyear of dividend increases for 3M. In May 2023, 3M's Board of Directors declared\na second-quarter 2023 dividend of $1.50 per share."
+      },
+      {
+        "chunkId": "04f1dd0a-5af9-396b-800a-5805edfb7728",
+        "documentId": "d5b53760-76d0-3a32-89c5-03a9ea096305",
+        "clearance": "analyst",
+        "text": "American Express Company — MD&A, Business Environment (FY2022)\n\nFor 2022, we reported net income of $7.5 billion, or $9.85 per share, compared\nwith net income of $8.1 billion, or $10.02 per share, a year ago. The reduction\nin net income reflected credit reserve builds and net losses in our Amex Ventures\nstrategic investment portfolio in the current year compared with sizeable credit\nreserve releases and significant net gains in our Amex Ventures strategic\ninvestment portfolio in the prior year.\n\nWorldwide network volumes for the year increased 21 percent compared to the prior\nyear (24 percent on an FX-adjusted basis). Total revenues net of interest expense\nincreased 25 percent year-over-year. Discount revenue, our largest revenue line,\nincreased 25 percent year-over-year. Net card fees increased 17 percent\nyear-over-year, as new card acquisitions reached record levels in 2022 and Card\nMember retention remained high, demonstrating the impact of investments we have\nmade in our premium value propositions.\n\nCard Member loans increased 22 percent year-over-year, with the majority of\ngrowth coming from existing Card Members. Provisions for credit losses increased\nversus the prior year, reflecting a reserve build of $617 million compared with a\nreserve release of $2.5 billion in the prior year."
+      },
+      {
+        "chunkId": "1aab7166-eb56-318c-a5f5-0a4adeb9edc5",
+        "documentId": "d08b5328-033c-3db6-8321-aa2d479f877e",
+        "clearance": "public",
+        "text": "American Water Works Company, Inc. and Subsidiary Companies\nConsolidated Statements of Cash Flows (In millions)\nFor the Years Ended December 31              2020      2019      2018\nCASH FLOWS FROM OPERATING ACTIVITIES\nNet income                                   $709      $621      $565\nDepreciation and amortization                 604       582       545\nProvision for losses on accounts receivable    34        28        33\nImpact of Freedom Industries settlement         --        (4)      (40)\nNet cash provided by operating activities    1,426     1,383     1,386\nCASH FLOWS FROM INVESTING ACTIVITIES\nCapital expenditures                        (1,822)   (1,654)   (1,586)\nAcquisitions, net of cash acquired            (135)     (235)     (398)\nNet cash used in investing activities       (2,061)   (1,945)   (2,036)\nCASH FLOWS FROM FINANCING ACTIVITIES\nProceeds from long-term debt                 1,334     1,530     1,358\nRepayments of long-term debt                  (342)     (495)     (526)\nDividends paid                                (389)     (353)     (319)\nNet cash provided by financing activities    1,120       494       726\nCash, cash equivalents and restricted funds at end of period $576  $91  $159\n\nNote: American Water Works paid $389 million in cash dividends in FY2020\n(approximately $0.40 billion)."
+      }
+    ]
+  }
+}

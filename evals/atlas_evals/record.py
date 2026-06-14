@@ -33,14 +33,16 @@ def _fingerprint() -> str:
 
 def main() -> int:
     base_url = os.environ["RAG_ENGINE_URL"] if "RAG_ENGINE_URL" in os.environ else "http://localhost:8081"
-    judge_model = os.environ.get("ATLAS_EVAL_JUDGE_MODEL", "llama3.1:8b-instruct")
+    judge_model = os.environ.get("ATLAS_EVAL_JUDGE_MODEL", "llama3.1:8b")
     judge_base = os.environ.get("ATLAS_EVAL_JUDGE_BASE_URL") or os.environ["OLLAMA_BASE_URL"]
     embed_model = os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
+    # FILL (default) is resumable: existing cassettes are kept, only missing ones are recorded.
+    mode = Mode(os.environ.get("ATLAS_CASSETTE_MODE", "fill"))
 
     tuples = load_golden()
     rag = CassettingClient(
         AtlasRagClient(base_url=base_url),
-        CassetteStore(RAG_CASSETTES, Mode.RECORD),
+        CassetteStore(RAG_CASSETTES, mode),
         fingerprint=_fingerprint(),
     )
     responses = {
@@ -55,7 +57,7 @@ def main() -> int:
     print(f"recorded {len(adv_cases)} adversarial /v1/query cassettes")
 
     scorer = RagasScorer(
-        store=CassetteStore(JUDGE_CASSETTES, Mode.RECORD),
+        store=CassetteStore(JUDGE_CASSETTES, mode),
         judge_model=judge_model,
         embed_model=embed_model,
         base_url=judge_base,

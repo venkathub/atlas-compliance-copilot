@@ -1,0 +1,67 @@
+{
+  "meta": {
+    "question": "Was American Express able to retain card members during 2022?",
+    "clearance": "analyst"
+  },
+  "response": {
+    "answer": "[1] indicates that American Express maintained high card member retention in 2022, as evidenced by the statement \"Net card fees increased 17 percent year-over-year, as new card acquisitions reached record levels in 2022 and Card Member retention remained high, demonstrating the impact of investments we have made in our premium value propositions.\"",
+    "citations": [
+      {
+        "marker": 1,
+        "chunkId": "04f1dd0a-5af9-396b-800a-5805edfb7728",
+        "documentId": "d5b53760-76d0-3a32-89c5-03a9ea096305",
+        "docId": "financebench_id_01981",
+        "title": "AMERICANEXPRESS_2022_10K — MD&A — Business Environment",
+        "sourceUri": "https://s26.q4cdn.com/747928648/files/doc_financials/2022/q4/AMEX-10K-4Q22.pdf",
+        "clearance": "analyst",
+        "score": 0.01639344262295082,
+        "snippet": "American Express Company — MD&A, Business Environment (FY2022) For 2022, we reported net income of $7.5 billion, or $9.85 per share, compared with net income of $8.1 billion, or $10.02 per share, a year ago. The reduction in net income refl…"
+      }
+    ],
+    "retrieval": {
+      "denseHits": 16,
+      "sparseHits": 0,
+      "fused": 16,
+      "reranked": 6,
+      "clearanceApplied": "analyst"
+    },
+    "contexts": [
+      {
+        "chunkId": "04f1dd0a-5af9-396b-800a-5805edfb7728",
+        "documentId": "d5b53760-76d0-3a32-89c5-03a9ea096305",
+        "clearance": "analyst",
+        "text": "American Express Company — MD&A, Business Environment (FY2022)\n\nFor 2022, we reported net income of $7.5 billion, or $9.85 per share, compared\nwith net income of $8.1 billion, or $10.02 per share, a year ago. The reduction\nin net income reflected credit reserve builds and net losses in our Amex Ventures\nstrategic investment portfolio in the current year compared with sizeable credit\nreserve releases and significant net gains in our Amex Ventures strategic\ninvestment portfolio in the prior year.\n\nWorldwide network volumes for the year increased 21 percent compared to the prior\nyear (24 percent on an FX-adjusted basis). Total revenues net of interest expense\nincreased 25 percent year-over-year. Discount revenue, our largest revenue line,\nincreased 25 percent year-over-year. Net card fees increased 17 percent\nyear-over-year, as new card acquisitions reached record levels in 2022 and Card\nMember retention remained high, demonstrating the impact of investments we have\nmade in our premium value propositions.\n\nCard Member loans increased 22 percent year-over-year, with the majority of\ngrowth coming from existing Card Members. Provisions for credit losses increased\nversus the prior year, reflecting a reserve build of $617 million compared with a\nreserve release of $2.5 billion in the prior year."
+      },
+      {
+        "chunkId": "03fa7ed6-69aa-36f7-9fd1-10ec6ce5d3fa",
+        "documentId": "92d25c01-e371-3169-be6e-319338a35eef",
+        "clearance": "analyst",
+        "text": "3M Company — MD&A, Financial Condition (Form 10-Q, Q2 2023)\n\nIn November 2018, 3M's Board of Directors replaced the Company's February 2016\nrepurchase program with a new repurchase program. This new program authorizes the\nrepurchase of up to $10 billion of 3M's outstanding common stock, with no\npre-established end date. In the first six months of 2023, the Company purchased\n$29 million of its own stock, compared to $773 million of stock purchases in the\nfirst six months of 2022. As of June 30, 2023, approximately $4.2 billion\nremained available under the authorization.\n\nIn February 2023, 3M's Board of Directors declared a first-quarter 2023 dividend\nof $1.50 per share, an increase of 1 percent. This marked the 65th consecutive\nyear of dividend increases for 3M. In May 2023, 3M's Board of Directors declared\na second-quarter 2023 dividend of $1.50 per share."
+      },
+      {
+        "chunkId": "5455fd6c-449c-37fa-831e-3db57ab1ea39",
+        "documentId": "618112d6-c3a3-3ce5-923f-47e3f80d857a",
+        "clearance": "public",
+        "text": "3M Company and Subsidiaries\nConsolidated Statement of Income\nYears ended December 31 (Millions, except per share amounts)\n                                                          2022      2021      2020\nNet sales                                               $34,229   $35,355   $32,184\nOperating expenses\nCost of sales                                            19,232    18,795    16,605\nSelling, general and administrative expenses             9,049     7,197     6,929\nResearch, development and related expenses               1,862     1,994     1,878\nGain on business divestitures                           (2,724)        --      (389)\nGoodwill impairment expense                                271        --        --\nTotal operating expenses                                27,690    27,986    25,023\nOperating income                                         6,539     7,369     7,161\nIncome before income taxes                               6,392     7,204     6,795\nProvision for income taxes                                 612     1,285     1,337\nNet income attributable to 3M                           $5,777    $5,921    $5,449\nEarnings per share attributable to 3M shareholders basic $10.21    $10.23     $9.43\nEarnings per share attributable to 3M shareholders diluted $10.18  $10.12     $9.36"
+      },
+      {
+        "chunkId": "31f662e1-5efb-3f9d-9a70-5762853a376b",
+        "documentId": "9aeb4449-6063-3495-a74f-715ed5364e59",
+        "clearance": "public",
+        "text": "American Express Company\nTable 1: Summary of Financial Performance\nYears Ended December 31 (Millions, except percentages and per share amounts)\n                                                     2022       2021       2020\nTotal revenues net of interest expense            $52,862    $42,380    $36,087\nProvisions for credit losses                        2,182     (1,419)     4,730\nExpenses                                           41,095     33,110     27,061\nPretax income                                       9,585     10,689      4,296\nIncome tax provision                                2,071      2,629      1,161\nNet income                                          7,514      8,060      3,135\nEarnings per common share — diluted                 $9.85     $10.02      $3.77\nCash dividends declared per common share            $2.08      $1.72      $1.72\nReturn on average equity                            32.3%      33.7%      14.2%\nEffective tax rate                                 21.6%      24.6%      27.0%\nCommon Equity Tier 1                               10.3%      10.5%      13.5%\nCard Member loans                                 107,964     88,562     73,373\nCustomer deposits                                 110,239     84,382     86,875\n\nThe effective tax rate dropped from 24.6% in FY2021 to 21.6% in FY2022. As a\nfinancial-services company, American Express measures performance through Net\nInterest Margin rather than operating or gross margin. Common stock trades on the\nNew York Stock Exchange under the trading symbol AXP."
+      },
+      {
+        "chunkId": "4780cdce-6ee8-3508-8ebe-49e0a34a60e9",
+        "documentId": "43fd31be-a241-38cd-abcc-70df56f5e653",
+        "clearance": "analyst",
+        "text": "3M Company — MD&A, Worldwide Sales Change by Business Segment (Year ended December 31, 2022)\n\nBusiness Segment            Organic  Acquisitions  Divestitures  Translation  Total\nSafety and Industrial         1.0%        --            --         (4.2)%     (3.2)%\nTransportation and Electronics 1.2        --          (0.5)        (4.6)      (3.9)\nHealth Care                   3.2         --          (1.4)        (3.8)      (2.0)\nConsumer                     (0.9)        --          (0.4)        (2.6)      (3.9)\nTotal Company                 1.2         --          (0.5)        (3.9)      (3.2)\n\nSales and operating income by business segment (Dollars in millions):\n                              2022 Net Sales  % of Total  2022 Operating Income\nSafety and Industrial            $11,604        33.9%          $1,199\nTransportation and Electronics     8,902        26.0            1,012\nHealth Care                        8,421        24.6            1,815\nConsumer                           5,298        15.5              994\nTotal Company                    $34,229       100.0%          $6,539\n\nExcluding the impact of M&A, the Consumer segment shrank by 0.9% organically,\ndragging on the company's overall organic growth for 2022."
+      },
+      {
+        "chunkId": "7c3cc729-7b1a-3aab-accd-dc8e34068571",
+        "documentId": "d39146f8-3b6e-3205-ab5a-838f7cefd1ef",
+        "clearance": "public",
+        "text": "# BSA/AML Regulatory Reference (Public Summary)\n\nThis non-confidential reference summarizes the principal U.S. anti-money-laundering\nobligations relevant to Atlas Bank staff. It contains no customer information.\n\n## Core obligations\n- **Customer Identification Program (CIP):** verify the identity of each customer\n  at account opening.\n- **Customer Due Diligence (CDD):** understand the nature and purpose of customer\n  relationships and develop a risk profile.\n- **Enhanced Due Diligence (EDD):** apply heightened scrutiny to higher-risk\n  customers, including those with complex ownership or exposure to high-risk\n  jurisdictions.\n- **Ongoing monitoring:** detect and report suspicious activity.\n\n## Structuring\n\"Structuring\" means breaking a large transaction into smaller amounts to evade the\n$10,000 CTR reporting threshold. Structuring is itself a federal offense regardless\nof whether the underlying funds are legitimate.\n\n## Recordkeeping\nRecords supporting CTRs and SARs must be retained for **five years**."
+      }
+    ]
+  }
+}

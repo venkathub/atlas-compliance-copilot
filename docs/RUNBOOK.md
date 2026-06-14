@@ -298,12 +298,13 @@ LANGFUSE_OTEL_AUTH_HEADER=$(printf 'Basic %s' "$(printf '%s:%s' "$LANGFUSE_PUBLI
 Trace **content** stays metadata-only unless `ATLAS_TRACE_CONTENT=full` (local dev only — redaction-gated).
 
 ### 6.2 Pull the judge model (one-time, on the resumed GPU)
-The routine LLM-as-judge is `llama3.1:8b-instruct` — a **cross-family** judge (llama judging the qwen RAG
+The routine LLM-as-judge is `llama3.1:8b` — a **cross-family** judge (llama judging the qwen RAG
 subject) to reduce self-bias — served on the **same** Cloud Ollama endpoint as the RAG model (co-resident
-footprint ≈ 8 GB VRAM — fits the L4/A5000, no upgrade needed):
+footprint ≈ 8 GB VRAM — fits the L4/A5000, no upgrade needed). (The published Ollama tag is `llama3.1:8b`,
+which *is* the instruct model; `llama3.1:8b-instruct` is not a real tag.)
 ```bash
 make -C infra gpu-up                          # auto-resume + health-poll + export OLLAMA_BASE_URL (ADR D-P2-9)
-ssh/console into the Ollama instance, then:  ollama pull llama3.1:8b-instruct
+ssh/console into the Ollama instance, then:  ollama pull llama3.1:8b
 ```
 
 ### 6.3 Run the eval gate locally

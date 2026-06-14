@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "question": "What is the amount and typology of exception EX-2026-0142 for the Northwind account?",
+    "clearance": "compliance"
+  },
+  "response": {
+    "answer": "[EX-2026-0142] is of typology [Structuring (sub-$10k cash deposits)], with an amount of $47,900 USD.",
+    "citations": [],
+    "retrieval": {
+      "denseHits": 20,
+      "sparseHits": 1,
+      "fused": 20,
+      "reranked": 6,
+      "clearanceApplied": "compliance"
+    },
+    "contexts": [
+      {
+        "chunkId": "6380cece-d127-300f-aabb-283cc9ce0468",
+        "documentId": "43548f70-c671-3b93-b0a8-607cab56b446",
+        "clearance": "compliance",
+        "text": "# Northwind Trading LLC — Open AML Exceptions (2026 Q2)\n\nAccount: **NW-4471-08** · Risk rating: **High** · Reviewer: Compliance Desk\n\nThis summary lists the **open** AML exceptions for the Northwind account for the\ncurrent quarter. Three of the four open exceptions individually or in aggregate\nexceed the **$5,000 SAR consideration threshold**; EX-2026-0142 also shows a\n**structuring** pattern below the $10,000 CTR threshold.\n\n| Exception ID | Opened | Typology | Amount (USD) | Status |\n|---|---|---|---|---|\n| EX-2026-0142 | 2026-04-09 | Structuring (sub-$10k cash deposits) | 47,900 | Open |\n| EX-2026-0155 | 2026-04-22 | Rapid movement of funds / pass-through | 312,000 | Open |\n| EX-2026-0171 | 2026-05-11 | Counterparty in high-risk jurisdiction | 88,500 | Open |\n| EX-2026-0188 | 2026-05-30 | Round-dollar wires inconsistent with profile | 9,800 | Open |\n\n## Assessment\nEX-2026-0142 (structuring) and EX-2026-0155 (pass-through) **breach the reporting\nthreshold** and warrant a Suspicious Activity Report. Recommend preparing a draft\nSAR covering EX-2026-0142 and EX-2026-0155 for BSA Officer review. EX-2026-0171\nremains under review pending counterparty screening (see restricted OFAC note)."
+      },
+      {
+        "chunkId": "b024b820-fafa-3e08-a0f3-3628637dec98",
+        "documentId": "26d2d478-07d7-3ba7-af71-7f1263312361",
+        "clearance": "compliance",
+        "text": "# Northwind Trading LLC — AML Exception Register (Detail)\n\nDetailed dispositions backing the Q2 exception summary. Compliance access only.\n\n## EX-2026-0142 — Structuring\nBetween 2026-04-01 and 2026-04-08, eight cash deposits of $5,900–$6,100 were made\nacross three branches, aggregating **$47,900**. Each deposit fell below the\n$10,000 CTR threshold. Pattern is consistent with **structuring** to evade\nreporting. Recommended for SAR.\n\n## EX-2026-0155 — Rapid movement of funds\nAn incoming wire of **$312,000** from a UAE counterparty was followed within 48\nhours by outgoing wires to two Southeast Asian beneficiaries, leaving a near-zero\nbalance (pass-through). No documented commercial rationale. Recommended for SAR.\n\n## EX-2026-0171 — High-risk jurisdiction counterparty\nA **$88,500** wire involved a counterparty flagged for high-risk-jurisdiction\nexposure. Disposition pending sanctions screening; see the restricted OFAC\nscreening note.\n\n## EX-2026-0188 — Round-dollar wires\nFour round-dollar wires totaling **$9,800**, inconsistent with the stated import\nprofile. Monitoring; not currently recommended for SAR."
+      },
+      {
+        "chunkId": "5049f726-8818-315f-93e2-10796e967c37",
+        "documentId": "351992a5-343c-3c8a-af84-d64e7af520fd",
+        "clearance": "compliance",
+        "text": "# Transaction Review Note — Northwind Trading LLC (EX-2026-0142)\n\nReviewer: Compliance Desk · Alert: structuring · Account: NW-4471-08\n\n## Observed pattern\nThe monitoring system flagged a burst of sub-threshold cash deposits. Branch and\ntiming detail:\n\n| Date | Branch | Amount (USD) |\n|---|---|---|\n| 2026-04-01 | BR-12 | 6,100 |\n| 2026-04-02 | BR-12 | 5,900 |\n| 2026-04-03 | BR-07 | 6,000 |\n| 2026-04-04 | BR-19 | 5,950 |\n| 2026-04-05 | BR-07 | 6,050 |\n| 2026-04-07 | BR-12 | 5,900 |\n| 2026-04-08 | BR-19 | 6,000 |\n| 2026-04-08 | BR-07 | 6,000 |\n\nTotal: **$47,900** across 8 deposits, all individually below the $10,000 CTR\nthreshold, spread across three branches within eight days.\n\n## Conclusion\nThe pattern is a textbook **structuring** typology and has no documented\ncommercial justification consistent with the customer's import/export profile.\nEscalated for SAR consideration as EX-2026-0142."
+      },
+      {
+        "chunkId": "cf89ca92-a681-33ad-9e99-4119c179bc66",
+        "documentId": "8b323f69-9698-3b4b-9930-f5cb7a7e8312",
+        "clearance": "analyst",
+        "text": "# AML Monitoring — Quarterly Desk Metrics (2026 Q2)\n\nAggregate, de-identified monitoring statistics for the commercial portfolio. No\nsingle-customer case detail appears in this note (analyst clearance).\n\n| Metric | 2026 Q1 | 2026 Q2 |\n|---|---|---|\n| Alerts generated | 1,284 | 1,412 |\n| Alerts escalated to compliance | 96 | 121 |\n| Accounts under enhanced monitoring | 38 | 41 |\n| Median alert disposition time (days) | 6.2 | 5.4 |\n\n## Commentary\nEscalations rose 26% quarter-over-quarter, driven primarily by cash-structuring\ntypologies in the cash-intensive trade segment. High-risk accounts continue to\naccount for a disproportionate share of escalations. Specific account\nidentifiers and case narratives are restricted to compliance reviewers."
+      },
+      {
+        "chunkId": "d409499f-10eb-30f4-94cc-787291582c8d",
+        "documentId": "5e26966f-b291-3541-a5f1-4650b79789ee",
+        "clearance": "compliance",
+        "text": "# Suspicious Activity Report (SAR) — Narrative Template\n\nUse this template to draft the SAR narrative. The narrative must answer **who,\nwhat, when, where, why, and how**. Do not disclose the existence of this SAR to\nthe subject.\n\n## Header\n- Filing institution: Atlas Bank\n- Subject account: `{{account_number}}`\n- Subject name: `{{subject_legal_name}}`\n- Suspicious activity period: `{{start_date}}` to `{{end_date}}`\n- Aggregate amount: `{{amount_usd}}`\n- Primary typology: `{{typology}}`\n\n## Narrative (5W + H)\n> On `{{detection_date}}`, Atlas Bank detected `{{summary_of_activity}}` involving\n> account `{{account_number}}` held by `{{subject_legal_name}}`. The activity\n> aggregated `{{amount_usd}}` and is characterized as `{{typology}}` because\n> `{{reason}}`. Funds `{{source_and_disposition}}`. The activity is inconsistent\n> with the customer's expected profile (`{{expected_profile}}`).\n\n## Required attachments\n- Exception register entries supporting the filing.\n- Transaction detail (dates, amounts, branches/counterparties).\n\n## Approval\nSAR filings require **BSA Officer** approval before submission to FinCEN."
+      },
+      {
+        "chunkId": "7c3cc729-7b1a-3aab-accd-dc8e34068571",
+        "documentId": "d39146f8-3b6e-3205-ab5a-838f7cefd1ef",
+        "clearance": "public",
+        "text": "# BSA/AML Regulatory Reference (Public Summary)\n\nThis non-confidential reference summarizes the principal U.S. anti-money-laundering\nobligations relevant to Atlas Bank staff. It contains no customer information.\n\n## Core obligations\n- **Customer Identification Program (CIP):** verify the identity of each customer\n  at account opening.\n- **Customer Due Diligence (CDD):** understand the nature and purpose of customer\n  relationships and develop a risk profile.\n- **Enhanced Due Diligence (EDD):** apply heightened scrutiny to higher-risk\n  customers, including those with complex ownership or exposure to high-risk\n  jurisdictions.\n- **Ongoing monitoring:** detect and report suspicious activity.\n\n## Structuring\n\"Structuring\" means breaking a large transaction into smaller amounts to evade the\n$10,000 CTR reporting threshold. Structuring is itself a federal offense regardless\nof whether the underlying funds are legitimate.\n\n## Recordkeeping\nRecords supporting CTRs and SARs must be retained for **five years**."
+      }
+    ]
+  }
+}

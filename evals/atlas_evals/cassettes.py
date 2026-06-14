@@ -19,8 +19,9 @@ from typing import Any
 
 class Mode(StrEnum):
     OFF = "off"  # pass-through: always call live, never touch cassettes
-    RECORD = "record"  # call live, then persist the response
+    RECORD = "record"  # call live, then persist the response (overwrites)
     REPLAY = "replay"  # serve from cassette only; a miss is a hard error
+    FILL = "fill"  # serve existing cassettes; record only the missing ones (resumable record)
 
     @classmethod
     def from_value(cls, value: str | None) -> Mode:
@@ -70,6 +71,8 @@ class CassetteStore:
             return self.get(key)  # miss -> CassetteMiss (loud)
         if self.mode is Mode.OFF:
             return produce()
-        response = produce()  # RECORD
+        if self.mode is Mode.FILL and self._path(key).exists():
+            return self.get(key)  # resumable record: keep what we already have
+        response = produce()  # RECORD, or a FILL miss
         self.put(key, response, meta)
         return response

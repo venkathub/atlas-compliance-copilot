@@ -1,0 +1,67 @@
+{
+  "meta": {
+    "question": "What is the risk rating and account number for Northwind Trading LLC?",
+    "clearance": "analyst"
+  },
+  "response": {
+    "answer": "[1] Northwind Trading LLC has a risk rating of \"High\" and the account number is NW-4471-08. [1]",
+    "citations": [
+      {
+        "marker": 1,
+        "chunkId": "71186826-2a3f-3b7f-b428-e517619e959a",
+        "documentId": "f2af13eb-64e1-3554-bcae-2fc8b6526e6e",
+        "docId": "l2-northwind-kyc-summary",
+        "title": "Northwind Trading LLC — KYC / Onboarding Summary",
+        "sourceUri": "atlas://kyc/northwind-trading-llc/onboarding-summary.md",
+        "clearance": "analyst",
+        "score": 0.03278688524590164,
+        "snippet": "# Northwind Trading LLC — KYC / Onboarding Summary | Field | Value | |---|---| | Legal entity | Northwind Trading LLC | | Account number | NW-4471-08 | | Entity type | Limited liability company (import/export trading) | | Incorporated | Del…"
+      }
+    ],
+    "retrieval": {
+      "denseHits": 16,
+      "sparseHits": 1,
+      "fused": 16,
+      "reranked": 6,
+      "clearanceApplied": "analyst"
+    },
+    "contexts": [
+      {
+        "chunkId": "71186826-2a3f-3b7f-b428-e517619e959a",
+        "documentId": "f2af13eb-64e1-3554-bcae-2fc8b6526e6e",
+        "clearance": "analyst",
+        "text": "# Northwind Trading LLC — KYC / Onboarding Summary\n\n| Field | Value |\n|---|---|\n| Legal entity | Northwind Trading LLC |\n| Account number | NW-4471-08 |\n| Entity type | Limited liability company (import/export trading) |\n| Incorporated | Delaware, USA |\n| Relationship opened | 2021-03-14 |\n| Risk rating | **High** (cash-intensive trade, multi-jurisdiction counterparties) |\n| Relationship manager | Desk 7 (Commercial) |\n\n## Business profile\nNorthwind Trading LLC describes itself as a wholesale importer of consumer\nelectronics and industrial components, with counterparties in the EU, UAE, and\nSoutheast Asia. Expected activity at onboarding: wire transfers in the\n$50k–$500k range, modest cash deposits.\n\n## Notes\nThe account was rated **high risk** at onboarding due to its cash-intensive\nprofile and exposure to higher-risk jurisdictions. Enhanced monitoring applies.\nThis summary is available to analysts for alert triage; sensitive investigative\ndetail is held under compliance/restricted access."
+      },
+      {
+        "chunkId": "31f662e1-5efb-3f9d-9a70-5762853a376b",
+        "documentId": "9aeb4449-6063-3495-a74f-715ed5364e59",
+        "clearance": "public",
+        "text": "American Express Company\nTable 1: Summary of Financial Performance\nYears Ended December 31 (Millions, except percentages and per share amounts)\n                                                     2022       2021       2020\nTotal revenues net of interest expense            $52,862    $42,380    $36,087\nProvisions for credit losses                        2,182     (1,419)     4,730\nExpenses                                           41,095     33,110     27,061\nPretax income                                       9,585     10,689      4,296\nIncome tax provision                                2,071      2,629      1,161\nNet income                                          7,514      8,060      3,135\nEarnings per common share — diluted                 $9.85     $10.02      $3.77\nCash dividends declared per common share            $2.08      $1.72      $1.72\nReturn on average equity                            32.3%      33.7%      14.2%\nEffective tax rate                                 21.6%      24.6%      27.0%\nCommon Equity Tier 1                               10.3%      10.5%      13.5%\nCard Member loans                                 107,964     88,562     73,373\nCustomer deposits                                 110,239     84,382     86,875\n\nThe effective tax rate dropped from 24.6% in FY2021 to 21.6% in FY2022. As a\nfinancial-services company, American Express measures performance through Net\nInterest Margin rather than operating or gross margin. Common stock trades on the\nNew York Stock Exchange under the trading symbol AXP."
+      },
+      {
+        "chunkId": "7c3cc729-7b1a-3aab-accd-dc8e34068571",
+        "documentId": "d39146f8-3b6e-3205-ab5a-838f7cefd1ef",
+        "clearance": "public",
+        "text": "# BSA/AML Regulatory Reference (Public Summary)\n\nThis non-confidential reference summarizes the principal U.S. anti-money-laundering\nobligations relevant to Atlas Bank staff. It contains no customer information.\n\n## Core obligations\n- **Customer Identification Program (CIP):** verify the identity of each customer\n  at account opening.\n- **Customer Due Diligence (CDD):** understand the nature and purpose of customer\n  relationships and develop a risk profile.\n- **Enhanced Due Diligence (EDD):** apply heightened scrutiny to higher-risk\n  customers, including those with complex ownership or exposure to high-risk\n  jurisdictions.\n- **Ongoing monitoring:** detect and report suspicious activity.\n\n## Structuring\n\"Structuring\" means breaking a large transaction into smaller amounts to evade the\n$10,000 CTR reporting threshold. Structuring is itself a federal offense regardless\nof whether the underlying funds are legitimate.\n\n## Recordkeeping\nRecords supporting CTRs and SARs must be retained for **five years**."
+      },
+      {
+        "chunkId": "cf89ca92-a681-33ad-9e99-4119c179bc66",
+        "documentId": "8b323f69-9698-3b4b-9930-f5cb7a7e8312",
+        "clearance": "analyst",
+        "text": "# AML Monitoring — Quarterly Desk Metrics (2026 Q2)\n\nAggregate, de-identified monitoring statistics for the commercial portfolio. No\nsingle-customer case detail appears in this note (analyst clearance).\n\n| Metric | 2026 Q1 | 2026 Q2 |\n|---|---|---|\n| Alerts generated | 1,284 | 1,412 |\n| Alerts escalated to compliance | 96 | 121 |\n| Accounts under enhanced monitoring | 38 | 41 |\n| Median alert disposition time (days) | 6.2 | 5.4 |\n\n## Commentary\nEscalations rose 26% quarter-over-quarter, driven primarily by cash-structuring\ntypologies in the cash-intensive trade segment. High-risk accounts continue to\naccount for a disproportionate share of escalations. Specific account\nidentifiers and case narratives are restricted to compliance reviewers."
+      },
+      {
+        "chunkId": "62fcc769-595c-3fe1-90f1-f5a3bc45849a",
+        "documentId": "4a1b8d55-2ec0-3a67-bd5b-0e7d6afb3fd6",
+        "clearance": "public",
+        "text": "3M Company and Subsidiaries\nConsolidated Balance Sheet (Unaudited)\n(Dollars in millions, except per share amount)\n                                              June 30, 2023   December 31, 2022\nAssets\nCash and cash equivalents                          $4,258           $3,655\nMarketable securities current                          56              238\nAccounts receivable net of allowances              4,947            4,532\nTotal inventories                                  5,280            5,372\nTotal current assets                              15,754           14,688\nProperty, plant and equipment net                  9,211            9,178\nTotal assets                                      $48,880          $46,455\nLiabilities\nShort-term borrowings and current portion of LT debt $3,033          $1,938\nAccounts payable                                   3,231            3,183\nTotal current liabilities                         10,936            9,523\nLong-term debt                                    12,954           14,001\nTotal liabilities                                $41,023          $31,685\n\nQuick ratio note: (Total current assets - Total inventories) / Total current\nliabilities = (15,754 - 5,280) / 10,936 = 0.96 as of June 30, 2023."
+      },
+      {
+        "chunkId": "7defbf83-6bc9-3af6-a5c3-be8bcfba6800",
+        "documentId": "8cb9042a-cacf-31f4-b878-7abf7ee76518",
+        "clearance": "public",
+        "text": "Activision Blizzard, Inc. and Subsidiaries\nConsolidated Balance Sheets\n(Amounts in millions, except share data)\n                                              At December 31, 2019   At December 31, 2018\nAssets\nCurrent assets:\nCash and cash equivalents                            $5,794                $4,225\nAccounts receivable, net of allowances                  848                 1,035\nInventories, net                                         32                    43\nSoftware development                                    322                   264\nOther current assets                                    296                   539\nTotal current assets                                  7,292                 6,106\nSoftware development (non-current)                       54                    65\nProperty and equipment, net                             253                   282\nDeferred income taxes, net                            1,293                   458\nIntangible assets, net                                  531                   735\nGoodwill                                              9,764                 9,762\nTotal assets                                        $19,845               $17,890\n\nNote: FY2019 revenue / average PP&E (FY2018-FY2019) gives a fixed asset turnover\nratio of 24.26 (Total net revenues divided by average Property and equipment, net)."
+      }
+    ]
+  }
+}

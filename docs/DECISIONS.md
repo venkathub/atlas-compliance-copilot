@@ -230,6 +230,13 @@
   **minus a margin**, with `max_regression` catching slow slides.
 - **Consequences:** Thresholds written into `evals/data/baseline.json` from the first calibrated run; judge runs
   at **temperature 0**, pinned, recorded; entity-recall/citation must be calibrated before any promotion to a gate.
+- **Implementation note (Task 8, 2026-06-14):** First calibrated `baseline.json` from a live run (qwen2.5:3b RAG
+  + llama3.1:8b judge @ temp 0, RAGAS 0.2.15, 22 golden tuples): **faithfulness 0.799 (floor 0.749), answer_relevancy
+  0.698 (floor 0.648), context_recall 0.781 (floor 0.711)** gating; context_precision 0.834, context_entity_recall
+  0.074, citation_correctness 1.0 report-only. Floors = recorded − margin (0.05/0.05/0.07). **Adversarial gate:
+  pass-rate 1.000 (0 violations)** across the 10 red-team cases. `noise_sensitivity` dropped this run (RAGAS
+  per-metric timeouts — report-only; raise the run-config timeout next calibration). Gate verified green in pure
+  replay with RAGAS **not** installed.
 
 ### ADR-0023 — Eval-context exposure on /v1/query (`includeContexts`)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §2.4, §3 (D-P2-3)
@@ -269,6 +276,9 @@
   (`ATLAS_EVAL_JUDGE_MODEL`, `ATLAS_EVAL_JUDGE_BASE_URL`→`OLLAMA_BASE_URL`); the judge model + RAGAS version are
   baked into each per-sample cassette key, so a judge change forces a re-record. RAGAS is a lazy dep (RECORD
   only); the actual judged numbers are produced in the Task 8 calibration session.
+- **Tag correction (Task 8, 2026-06-14):** the published Ollama tag is **`llama3.1:8b`** (which *is* the instruct
+  build); `llama3.1:8b-instruct` is **not** a real tag (`pull` 404s). `ATLAS_EVAL_JUDGE_MODEL` defaults to
+  `llama3.1:8b` and the calibrated `baseline.json` pins it. Cross-family-judge rationale is unchanged.
 
 ### ADR-0021 — Eval LLM in CI: cassette-replay gate + live calibration
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §2.5, §3 (D-P2-1)

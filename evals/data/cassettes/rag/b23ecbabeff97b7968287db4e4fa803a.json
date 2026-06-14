@@ -1,0 +1,78 @@
+{
+  "meta": {
+    "question": "Describe the rapid-movement-of-funds exception (EX-2026-0155) for Northwind.",
+    "clearance": "compliance"
+  },
+  "response": {
+    "answer": "The rapid movement-of-funds exception (EX-2026-0155) for Northwind concerns an incoming wire of USD 312,000 from a UAE counterparty that was followed by two outgoing wires to Southeast Asian beneficiaries within 48 hours, leaving the account with near-zero balance. The movement appears to be designed as \"pass-through\", which is a pattern consistent with \"structuring\" to evade reporting requirements. This situation has triggered a recommendation for the filing of a Suspicious Activity Report (SAR). [2], [3]",
+    "citations": [
+      {
+        "marker": 2,
+        "chunkId": "6380cece-d127-300f-aabb-283cc9ce0468",
+        "documentId": "43548f70-c671-3b93-b0a8-607cab56b446",
+        "docId": "l2-northwind-aml-exceptions-2026q2",
+        "title": "Northwind Trading LLC — Open AML Exceptions (2026 Q2)",
+        "sourceUri": "atlas://compliance/northwind-trading-llc/aml-exceptions-2026Q2.md",
+        "clearance": "compliance",
+        "score": 0.016129032258064516,
+        "snippet": "# Northwind Trading LLC — Open AML Exceptions (2026 Q2) Account: **NW-4471-08** · Risk rating: **High** · Reviewer: Compliance Desk This summary lists the **open** AML exceptions for the Northwind account for the current quarter. Three of t…"
+      },
+      {
+        "marker": 3,
+        "chunkId": "417be379-73ed-305e-bc9b-307d590e0a6a",
+        "documentId": "81ecc34d-3b30-371e-8d2a-e38d006bcec3",
+        "docId": "l2-aml-policy-overview",
+        "title": "Atlas Bank — Anti-Money-Laundering (AML) Program Policy",
+        "sourceUri": "atlas://policy/aml-program-overview.md",
+        "clearance": "public",
+        "score": 0.015873015873015872,
+        "snippet": "# Atlas Bank — Anti-Money-Laundering (AML) Program Policy ## Purpose This policy establishes Atlas Bank's program to detect, prevent, and report money laundering and terrorist financing in accordance with the Bank Secrecy Act (BSA) and appl…"
+      }
+    ],
+    "retrieval": {
+      "denseHits": 20,
+      "sparseHits": 0,
+      "fused": 20,
+      "reranked": 6,
+      "clearanceApplied": "compliance"
+    },
+    "contexts": [
+      {
+        "chunkId": "b024b820-fafa-3e08-a0f3-3628637dec98",
+        "documentId": "26d2d478-07d7-3ba7-af71-7f1263312361",
+        "clearance": "compliance",
+        "text": "# Northwind Trading LLC — AML Exception Register (Detail)\n\nDetailed dispositions backing the Q2 exception summary. Compliance access only.\n\n## EX-2026-0142 — Structuring\nBetween 2026-04-01 and 2026-04-08, eight cash deposits of $5,900–$6,100 were made\nacross three branches, aggregating **$47,900**. Each deposit fell below the\n$10,000 CTR threshold. Pattern is consistent with **structuring** to evade\nreporting. Recommended for SAR.\n\n## EX-2026-0155 — Rapid movement of funds\nAn incoming wire of **$312,000** from a UAE counterparty was followed within 48\nhours by outgoing wires to two Southeast Asian beneficiaries, leaving a near-zero\nbalance (pass-through). No documented commercial rationale. Recommended for SAR.\n\n## EX-2026-0171 — High-risk jurisdiction counterparty\nA **$88,500** wire involved a counterparty flagged for high-risk-jurisdiction\nexposure. Disposition pending sanctions screening; see the restricted OFAC\nscreening note.\n\n## EX-2026-0188 — Round-dollar wires\nFour round-dollar wires totaling **$9,800**, inconsistent with the stated import\nprofile. Monitoring; not currently recommended for SAR."
+      },
+      {
+        "chunkId": "6380cece-d127-300f-aabb-283cc9ce0468",
+        "documentId": "43548f70-c671-3b93-b0a8-607cab56b446",
+        "clearance": "compliance",
+        "text": "# Northwind Trading LLC — Open AML Exceptions (2026 Q2)\n\nAccount: **NW-4471-08** · Risk rating: **High** · Reviewer: Compliance Desk\n\nThis summary lists the **open** AML exceptions for the Northwind account for the\ncurrent quarter. Three of the four open exceptions individually or in aggregate\nexceed the **$5,000 SAR consideration threshold**; EX-2026-0142 also shows a\n**structuring** pattern below the $10,000 CTR threshold.\n\n| Exception ID | Opened | Typology | Amount (USD) | Status |\n|---|---|---|---|---|\n| EX-2026-0142 | 2026-04-09 | Structuring (sub-$10k cash deposits) | 47,900 | Open |\n| EX-2026-0155 | 2026-04-22 | Rapid movement of funds / pass-through | 312,000 | Open |\n| EX-2026-0171 | 2026-05-11 | Counterparty in high-risk jurisdiction | 88,500 | Open |\n| EX-2026-0188 | 2026-05-30 | Round-dollar wires inconsistent with profile | 9,800 | Open |\n\n## Assessment\nEX-2026-0142 (structuring) and EX-2026-0155 (pass-through) **breach the reporting\nthreshold** and warrant a Suspicious Activity Report. Recommend preparing a draft\nSAR covering EX-2026-0142 and EX-2026-0155 for BSA Officer review. EX-2026-0171\nremains under review pending counterparty screening (see restricted OFAC note)."
+      },
+      {
+        "chunkId": "417be379-73ed-305e-bc9b-307d590e0a6a",
+        "documentId": "81ecc34d-3b30-371e-8d2a-e38d006bcec3",
+        "clearance": "public",
+        "text": "# Atlas Bank — Anti-Money-Laundering (AML) Program Policy\n\n## Purpose\nThis policy establishes Atlas Bank's program to detect, prevent, and report money\nlaundering and terrorist financing in accordance with the Bank Secrecy Act (BSA)\nand applicable regulations. It applies to all employees, contractors, and lines\nof business.\n\n## Key reporting thresholds\n- **Currency Transaction Report (CTR):** filed for cash transactions exceeding\n  **$10,000** in aggregate by or on behalf of one person in a single business day.\n- **Suspicious Activity Report (SAR):** filed when the bank knows, suspects, or has\n  reason to suspect that a transaction (or pattern) aggregating **$5,000 or more**\n  involves funds from illegal activity, is designed to evade BSA requirements\n  (including **structuring** to avoid the CTR threshold), or has no apparent lawful\n  purpose. SARs must be filed within **30 calendar days** of initial detection.\n\n## Roles\n- **Analysts** monitor alerts and document dispositions.\n- **Compliance officers** review exceptions, approve SAR filings, and own the case\n  record.\n- The **BSA Officer** has final authority over the program.\n\n## Confidentiality\nThe existence or contents of a SAR, and any supporting investigative material,\nare strictly confidential and may not be disclosed outside authorized personnel."
+      },
+      {
+        "chunkId": "5049f726-8818-315f-93e2-10796e967c37",
+        "documentId": "351992a5-343c-3c8a-af84-d64e7af520fd",
+        "clearance": "compliance",
+        "text": "# Transaction Review Note — Northwind Trading LLC (EX-2026-0142)\n\nReviewer: Compliance Desk · Alert: structuring · Account: NW-4471-08\n\n## Observed pattern\nThe monitoring system flagged a burst of sub-threshold cash deposits. Branch and\ntiming detail:\n\n| Date | Branch | Amount (USD) |\n|---|---|---|\n| 2026-04-01 | BR-12 | 6,100 |\n| 2026-04-02 | BR-12 | 5,900 |\n| 2026-04-03 | BR-07 | 6,000 |\n| 2026-04-04 | BR-19 | 5,950 |\n| 2026-04-05 | BR-07 | 6,050 |\n| 2026-04-07 | BR-12 | 5,900 |\n| 2026-04-08 | BR-19 | 6,000 |\n| 2026-04-08 | BR-07 | 6,000 |\n\nTotal: **$47,900** across 8 deposits, all individually below the $10,000 CTR\nthreshold, spread across three branches within eight days.\n\n## Conclusion\nThe pattern is a textbook **structuring** typology and has no documented\ncommercial justification consistent with the customer's import/export profile.\nEscalated for SAR consideration as EX-2026-0142."
+      },
+      {
+        "chunkId": "7c3cc729-7b1a-3aab-accd-dc8e34068571",
+        "documentId": "d39146f8-3b6e-3205-ab5a-838f7cefd1ef",
+        "clearance": "public",
+        "text": "# BSA/AML Regulatory Reference (Public Summary)\n\nThis non-confidential reference summarizes the principal U.S. anti-money-laundering\nobligations relevant to Atlas Bank staff. It contains no customer information.\n\n## Core obligations\n- **Customer Identification Program (CIP):** verify the identity of each customer\n  at account opening.\n- **Customer Due Diligence (CDD):** understand the nature and purpose of customer\n  relationships and develop a risk profile.\n- **Enhanced Due Diligence (EDD):** apply heightened scrutiny to higher-risk\n  customers, including those with complex ownership or exposure to high-risk\n  jurisdictions.\n- **Ongoing monitoring:** detect and report suspicious activity.\n\n## Structuring\n\"Structuring\" means breaking a large transaction into smaller amounts to evade the\n$10,000 CTR reporting threshold. Structuring is itself a federal offense regardless\nof whether the underlying funds are legitimate.\n\n## Recordkeeping\nRecords supporting CTRs and SARs must be retained for **five years**."
+      },
+      {
+        "chunkId": "03fa7ed6-69aa-36f7-9fd1-10ec6ce5d3fa",
+        "documentId": "92d25c01-e371-3169-be6e-319338a35eef",
+        "clearance": "analyst",
+        "text": "3M Company — MD&A, Financial Condition (Form 10-Q, Q2 2023)\n\nIn November 2018, 3M's Board of Directors replaced the Company's February 2016\nrepurchase program with a new repurchase program. This new program authorizes the\nrepurchase of up to $10 billion of 3M's outstanding common stock, with no\npre-established end date. In the first six months of 2023, the Company purchased\n$29 million of its own stock, compared to $773 million of stock purchases in the\nfirst six months of 2022. As of June 30, 2023, approximately $4.2 billion\nremained available under the authorization.\n\nIn February 2023, 3M's Board of Directors declared a first-quarter 2023 dividend\nof $1.50 per share, an increase of 1 percent. This marked the 65th consecutive\nyear of dividend increases for 3M. In May 2023, 3M's Board of Directors declared\na second-quarter 2023 dividend of $1.50 per share."
+      }
+    ]
+  }
+}
