@@ -161,6 +161,13 @@
   ground truth is authoritative (FinanceBench tuples) or authored (Layer-2).
 - **Consequences:** `evals/data/golden.jsonl` committed/versioned; growing beyond the subset requires expanding
   Layer-1 (new ADR superseding 0020).
+- **Implementation note (Task 5, 2026-06-14):** Shipped **22 golden tuples** = 12 Layer-1 (authoritative
+  FinanceBench `question`/`answer` pulled for each committed `financebench_id`, clearance per the manifest) +
+  10 authored Layer-2 Northwind/AML tuples. The 6 negative-access cases are carried in **`adversarial.jsonl`**
+  (10 cases: 4 injection/jailbreak/system-leak + 6 access-bypass) as the access-bypass lane, **referencing** the
+  P1 fixtures (`poisoned/expectations.json`, `negative_access.json`) rather than duplicating them so P1↔P2 cannot
+  drift. Loaders validate every `expected_source_docs`/fixture reference resolves to a real corpus doc; 12 pytest
+  cases green. (Used the cheaper end of the ~25–40 band — 22+10 — sized to the 12-snippet corpus.)
 
 ### ADR-0027 — Cross-encoder reranker (eval-gated A/B)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §3 (D-P2-7) · **Refines:** ADR-0014
