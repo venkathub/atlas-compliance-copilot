@@ -191,6 +191,23 @@
 - **Rationale:** P2 is exactly where the reranker's value can be measured rather than asserted.
 - **Consequences:** Additive behind the `Reranker` seam; the **P1 D4/D7 hard gates must stay green** if
   retrieval changes; keep/re-defer is recorded either way.
+- **Outcome (Task 10, 2026-06-14) — RE-DEFERRED on the evidence.** Implemented `LlmReranker` (LLM-as-reranker
+  via Ollama, option c — a true cross-encoder would need a new GPU sidecar; out of proportion for a 24-chunk
+  corpus) + `websearch_to_tsquery`, both flag-gated (`atlas.retrieval.reranker`, `…sparse-query`, default OFF).
+  Live A/B (qwen2.5:3b + llama3.1:8b judge, 22 tuples) RRF+plainto **vs** LLM-rerank+websearch:
+
+  | metric | baseline | variant | Δ |
+  |---|---|---|---|
+  | faithfulness *(gating)* | 0.799 | 0.770 | **−0.029** |
+  | answer_relevancy *(gating)* | 0.698 | 0.772 | +0.074 |
+  | context_precision *(report)* | 0.834 | 0.905 | +0.071 |
+  | context_recall *(gating)* | 0.781 | 0.737 | **−0.044** |
+
+  Mixed: precision/relevancy up, but **two of the three gating metrics (faithfulness, recall) regress**, plus a
+  per-query LLM call. Not the "clear, broad lift" the keep-criterion requires. **Decision: keep RRF + plainto as
+  the defaults; ship the reranker/websearch capability flag-gated OFF (unit-tested), re-evaluate when the corpus
+  grows (the A/B is one `atlas_evals.ab` run away).** The committed baseline/cassettes are unchanged. This is the
+  spec's anticipated evidence-based re-deferral — the harness, not opinion, made the call.
 
 ### ADR-0026 — Spring AI inline evaluators as a cheap pre-filter
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §3 (D-P2-6)

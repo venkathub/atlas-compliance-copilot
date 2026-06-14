@@ -103,6 +103,12 @@ Config under `atlas.security.*` (`ATLAS_SECURITY_HEADER_USER`, `..._HEADER_CLEAR
 
 Config under `atlas.retrieval.*` (`ATLAS_RETRIEVAL_DENSE_K`, `..._SPARSE_K`, `..._RRF_K`, `..._TOP_K`).
 
+**Eval-gated knobs (P2, ADR-0027 / D-P2-7), default OFF:** `atlas.retrieval.reranker=llm` swaps in
+`LlmReranker` (LLM-as-reranker via Ollama) behind the seam; `atlas.retrieval.sparse-query=websearch`
+uses `websearch_to_tsquery`. The harness A/B (`atlas_evals.ab`) found these gave **no clear, broad lift**
+on the 24-chunk corpus (precision/relevancy up, but faithfulness + recall — gating metrics — regressed),
+so they ship **flag-gated OFF**; RRF + `plainto_tsquery` remain the defaults. Re-evaluate as the corpus grows.
+
 > **RBAC hard gate:** the D4 negative-access IT asserts **0 cross-clearance leaks** across dense-only,
 > sparse-only, and hybrid paths (6 golden cases × 3 paths). Any leak fails the build.
 

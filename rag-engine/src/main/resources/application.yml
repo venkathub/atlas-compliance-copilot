@@ -76,6 +76,9 @@ atlas:
     sparse-k: ${ATLAS_RETRIEVAL_SPARSE_K:20}
     rrf-k: ${ATLAS_RETRIEVAL_RRF_K:60}
     top-k: ${ATLAS_RETRIEVAL_TOP_K:6}
+    # Eval-gated knobs (ADR-0027 / D-P2-7). Defaults = P1 behaviour; flip only if the A/B proves lift.
+    reranker: ${ATLAS_RETRIEVAL_RERANKER:rrf}            # rrf | llm
+    sparse-query: ${ATLAS_RETRIEVAL_SPARSE_QUERY:plainto} # plainto | websearch
   # Prompt-injection guardrail (LLM01, ADR-0015). Default phrase set is in code; override to extend.
   guardrail:
     enabled: ${ATLAS_GUARDRAIL_ENABLED:true}

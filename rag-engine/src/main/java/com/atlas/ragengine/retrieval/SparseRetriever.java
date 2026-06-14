@@ -15,23 +15,35 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public class SparseRetriever {
 
     private static final ChunkRowMapper MAPPER = new ChunkRowMapper();
+    // Allow-list: this value is interpolated into SQL, so it must never be caller-controlled.
+    private static final java.util.Set<String> ALLOWED_FNS =
+            java.util.Set.of("plainto_tsquery", "websearch_to_tsquery");
 
     private final JdbcTemplate jdbc;
     private final RbacFilterBuilder rbac;
+    private final String tsqueryFn;
 
     public SparseRetriever(JdbcTemplate jdbc, RbacFilterBuilder rbac) {
+        this(jdbc, rbac, "plainto_tsquery");
+    }
+
+    public SparseRetriever(JdbcTemplate jdbc, RbacFilterBuilder rbac, String tsqueryFn) {
         this.jdbc = jdbc;
         this.rbac = rbac;
+        if (!ALLOWED_FNS.contains(tsqueryFn)) {
+            throw new IllegalArgumentException("unsupported tsquery function: " + tsqueryFn);
+        }
+        this.tsqueryFn = tsqueryFn;
     }
 
     public List<RetrievedChunk> retrieve(String query, ClearanceLevel caller, int k) {
         RbacPredicate rbacPredicate = rbac.predicate("clearance", caller);
 
         String sql = "SELECT id, document_id, content, clearance, metadata, "
-                + "ts_rank_cd(content_tsv, plainto_tsquery('english', ?)) AS score "
+                + "ts_rank_cd(content_tsv, " + tsqueryFn + "('english', ?)) AS score "
                 + "FROM atlas_chunk "
                 + "WHERE " + rbacPredicate.sqlFragment() + " "
-                + "AND content_tsv @@ plainto_tsquery('english', ?) "
+                + "AND content_tsv @@ " + tsqueryFn + "('english', ?) "
                 + "ORDER BY score DESC "
                 + "LIMIT ?";
 

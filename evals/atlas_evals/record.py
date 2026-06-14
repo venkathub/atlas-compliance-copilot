@@ -10,6 +10,7 @@ the live judge and records per-sample scores. The committed cassettes then drive
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from atlas_evals.cassettes import CassetteStore, Mode
 from atlas_evals.client import AtlasRagClient, CassettingClient
@@ -19,8 +20,8 @@ from atlas_evals.datasets.golden import load_golden
 from atlas_evals.metrics.ragas_runner import RagasRunner
 from atlas_evals.metrics.ragas_scorer import RagasScorer
 
-RAG_CASSETTES = DATA_DIR / "cassettes" / "rag"
-JUDGE_CASSETTES = DATA_DIR / "cassettes" / "judge"
+RAG_CASSETTES = Path(os.environ.get("ATLAS_CASSETTE_ROOT", str(DATA_DIR / "cassettes"))) / "rag"
+JUDGE_CASSETTES = Path(os.environ.get("ATLAS_CASSETTE_ROOT", str(DATA_DIR / "cassettes"))) / "judge"
 
 
 def _fingerprint() -> str:
