@@ -34,8 +34,11 @@ tests/                   # pytest: loaders, cassettes, client, samples, citation
 The PR gate is **offline, deterministic, and free**: every LLM-dependent call is served from a
 committed cassette (a **miss fails loudly** — it never silently calls a live endpoint). Two boundaries
 are cassetted:
-- **RAG answers** — `/v1/query` responses, keyed by `(query, clearance, topK, includeContexts, fingerprint)`
-  where `fingerprint` = RAG/embed model tags (a model/corpus change busts the cassette).
+- **RAG answers** — `/v1/query` responses, keyed by `(query, clearance, topK, includeContexts, rag_fingerprint)`
+  where `rag_fingerprint` = RAG/embed model tags **+ a hash of the rag-engine behaviour source**
+  (prompts, guardrail, retrieval/fusion/rerank). The gate **recomputes this live from the checked-out
+  code**, so a PR that changes how answers/contexts are produced → new key → **loud miss → re-record**
+  (catches a RAG-behaviour regression on the PR, not just at calibration time).
 - **Judge scores** — RAGAS metrics are cassetted **per sample**, keyed by
   `(judge_model, ragas_version, question, answer, contexts, ground_truth)`. Consequence: **REPLAY needs
   neither RAGAS nor a judge installed** (the gate just reads committed scores), and a changed RAG answer

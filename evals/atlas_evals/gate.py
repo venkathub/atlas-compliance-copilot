@@ -75,9 +75,10 @@ def _run(recalibrate: bool) -> tuple[MetricReport, AdversarialReport, Baseline]:
     adv_cases = load_adversarial()
     baseline = None if recalibrate else load_baseline()
 
-    # Replay-only fingerprints: read from baseline when it exists (so CI — no ragas — matches the
-    # record env); fall back to live computation during the first recalibration.
-    rag_fp = baseline.rag_fingerprint if baseline else rag_fingerprint()
+    # The RAG fingerprint is recomputed LIVE from the checked-out code (model tags + behaviour hash)
+    # so a rag-engine change busts the cassette -> loud miss -> re-record. The RAGAS fingerprint +
+    # judge model come from baseline (CI replay has no RAGAS installed and can't recompute them).
+    rag_fp = rag_fingerprint()
     ragas_fp = baseline.ragas_fingerprint if baseline else ragas_fingerprint()
     judge_model = baseline.judge_model if baseline else os.environ.get(
         "ATLAS_EVAL_JUDGE_MODEL", "llama3.1:8b"

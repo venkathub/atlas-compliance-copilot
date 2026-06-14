@@ -559,7 +559,9 @@ guarantees it back down; the merge gate that guards `main` never touches it.
 5. **Cassette granularity (D-P2-1):** judge cassettes store **per-sample metric scores** (keyed by
    judge+ragas-version+answer+contexts+ground_truth), not every individual judge/embedding HTTP call. Same
    deterministic/offline guarantee (and the gate needs neither RAGAS nor a judge in CI); coarser than "every
-   model + embedding response", and a changed answer busts the key (loud re-record).
+   model + embedding response", and a changed answer busts the key (loud re-record). *(RAG-side: the RAG
+   cassette key now includes a hash of the rag-engine behaviour source — see post-merge hardening below — so
+   a prompt/retrieval change also busts the cassette, closing the original gap.)*
 6. **`noise_sensitivity`** (report-only) was **dropped from the first calibration** — RAGAS hit per-metric
    timeouts on it; the other report-only metrics (precision/entity-recall/citation) recorded fine. Raise the
    RAGAS run-config timeout next calibration.
@@ -571,6 +573,17 @@ guarantees it back down; the merge gate that guards `main` never touches it.
    is fully live.
 9. **Inline Spring AI evaluators (D-P2-6):** implemented but **OFF by default** — the spec called them "free",
    but each is a real extra LLM call on a metered GPU, so they are opt-in (`ATLAS_EVAL_INLINE_ENABLED`).
+
+### 6.2 Post-merge hardening (2026-06-14, after the "is the gate actually working?" review)
+Two honest gaps surfaced when the gate was challenged after merge, both now fixed (PR #3):
+- **Gate is now *enforced*, not just present.** `main` has **branch protection** requiring the `Eval gate`,
+  Java, Python, secret-scan, vuln-scan, and image checks — a red gate now actually blocks merge (previously
+  no branch protection existed, so checks reported but weren't required).
+- **The RAG cassette key now includes a hash of the rag-engine behaviour source** (prompts, guardrail,
+  retrieval/fusion/rerank), recomputed **live** by the gate. Previously the key was model-tag-only, so a
+  prompt/retrieval change in Java would silently replay stale cassette answers and the gate would miss the
+  regression. Now such a change busts the key → loud miss → forced re-record (matching the spec's
+  "cassette key = hash(prompt + model + inputs)" intent). Verified: editing `QueryService.java` fails the gate.
 
 ---
 
