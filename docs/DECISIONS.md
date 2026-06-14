@@ -13,6 +13,14 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0040 | 2026-06-14 | Cost-units model & cost-delta reporting | Accepted | P3 |
+| 0039 | 2026-06-14 | Circuit-breaker scope & fallback | Accepted | P3 |
+| 0038 | 2026-06-14 | Gateway resource controls (rate-limit, budget caps, LLM10) | Accepted | P3 |
+| 0037 | 2026-06-14 | PII egress redaction + output handling (LLM02/LLM05) | Accepted | P3 |
+| 0036 | 2026-06-14 | Clearance-partitioned, poison-resistant semantic cache (Redis Stack) | Accepted | P3 |
+| 0035 | 2026-06-14 | Cost-aware model router (declarative rules + model-cascade) | Accepted | P3 |
+| 0034 | 2026-06-14 | Simulated-IdP verified-clearance trust boundary | Accepted | P3 |
+| 0033 | 2026-06-14 | API Gateway framework (Spring Cloud Gateway WebMVC) | Accepted | P3 |
 | 0032 | 2026-06-14 | Katzilla external primary-source data (post-P5 backlog) | Proposed | P6 |
 | 0031 | 2026-06-14 | Adversarial breadth: fixtures gate + Promptfoo OWASP sweep | Accepted | P2 |
 | 0030 | 2026-06-14 | Trace content-capture & redaction policy (LLM02/LLM07) | Accepted | P2 |
@@ -29,7 +37,7 @@
 | 0019 | 2026-06-13 | Testcontainers ITs: docker-java API pin + exec-classifier jar | Accepted | P1 |
 | 0018 | 2026-06-13 | Answer generation scope & citation granularity | Accepted | P1 |
 | 0017 | 2026-06-13 | Final Layer-1 corpus subset (FinanceBench) | Accepted | P1 |
-| 0016 | 2026-06-13 | Clearance transport in P1 (pre-IdP shim) | Accepted | P1 |
+| 0016 | 2026-06-13 | Clearance transport in P1 (pre-IdP shim) | Superseded by ADR-0034 | P1 |
 | 0015 | 2026-06-13 | Prompt-injection guardrail approach (LLM01) | Accepted | P1 |
 | 0014 | 2026-06-13 | Reranking approach (seam now, cross-encoder in P2) | Accepted | P1 |
 | 0013 | 2026-06-13 | Hybrid search fusion method (RRF) | Accepted | P1 |
@@ -50,12 +58,141 @@
 > decisions made while implementing P0.** **ADR-0011–0020 are the P1 grooming + implementation decisions**
 > (`docs/phases/P1_SPEC.md` §3). **ADR-0021–0031 are the P2 grooming decisions** (`docs/phases/P2_SPEC.md` §3),
 > owner-confirmed 2026-06-14 before P2 implementation begins; **ADR-0032 is a Proposed post-P5 backlog item**
-> (`ROADMAP.md` §8). Each remains open to revision with a new superseding ADR if a later phase surfaces
-> evidence against it.
+> (`ROADMAP.md` §8). **ADR-0033–0040 are the P3 grooming decisions** (`docs/phases/P3_SPEC.md` §3 + §8
+> web-validated gap analysis), owner-confirmed 2026-06-14 before P3 implementation begins; **ADR-0034 supersedes
+> ADR-0016** by replacing the P1 clearance-header shim with the simulated-IdP verified-clearance trust boundary.
+> Each remains open to revision with a new superseding ADR if a later phase surfaces evidence against it.
 
 ---
 
 ## 2. Decisions
+
+### ADR-0040 — Cost-units model & cost-delta reporting
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-8), §8.3
+- **Context:** Self-hosted Ollama tiers have no per-token $ price, yet the portfolio thesis is "cost as a
+  feature" and needs a credible cost story plus a headline cost-delta ("X% cheaper at equal eval score").
+- **Options considered:** (a) a configured **cost-units table** — synthetic per-1k for self-hosted tiers
+  (derived from GPU ₹/hr ÷ throughput), real $ for the frontier tier; (b) tokens/latency only, no cost;
+  (c) real $ on the frontier tier only, tokens elsewhere.
+- **Decision:** **(a)** — a documented cost-units table backs the Micrometer cost meters and a cost-delta
+  report; target band **≥30% cheaper at equal eval score**, anchored to RouteLLM's 45–85% learned-router band
+  (§8.3) as future upside.
+- **Rationale:** makes the Grafana dashboard tell a true *relative* story for self-hosted tiers and a real one
+  for frontier spend; the target is honest and eval-gated rather than an arbitrary claim.
+- **Consequences:** self-hosted numbers are an estimate (documented as such); the measured cost-delta is
+  recorded in `gateway-baseline.json` from the live calibration run, not hardcoded.
+
+### ADR-0039 — Circuit-breaker scope & fallback
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-7)
+- **Context:** A stalled/paused GPU (ADR-0006) or a model error must not cascade into the Gateway and take the
+  whole front door down (R5).
+- **Options considered:** (a) **Resilience4j breaker around the rag-engine/model call; fallback = a fresh cache
+  hit if any, else a typed `503` + retry-after**; (b) breaker + automatic tier-downgrade on trip (cheaper
+  degraded answers, but risks dropping below the eval floor); (c) timeouts only, no breaker.
+- **Decision:** **(a)**, with **(b)** considered only when the downgrade target is itself eval-passing.
+- **Rationale:** bounds the blast radius with honest UX, and never silently drops below the P2 eval floor (R2).
+- **Consequences:** breaker thresholds tuned + covered by ITs; the fallback path is explicitly tested.
+
+### ADR-0038 — Gateway resource controls (rate-limit, budget caps, LLM10)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-6), §8 (G-P3-6)
+- **Context:** OWASP **LLM10 Unbounded Consumption** is a named P3 control; naive model use can drain the
+  budget or DoS the system. June-2026 research (G-P3-6) shows the LLM10 taxonomy is broader than rate-limit +
+  budget alone.
+- **Options considered:** (a) **token-bucket (Spring Cloud Gateway `RequestRateLimiter` / Bucket4j on Redis)
+  for rate + Redis daily counters for budget**, plus **per-request input-size validation + max-output-token
+  caps + timeouts + a cost-spike anomaly alert**; (b) fixed-window counters (bursty at edges); (c) in-memory
+  limits (wrong with >1 instance).
+- **Decision:** **(a)** — distributed, restart-safe, with the full LLM10 surface (input/output caps, throttling,
+  anomaly detection) folded in.
+- **Rationale:** idiomatic and production-shaped; covers the whole LLM10 surface, not just rate + budget.
+- **Consequences:** Redis atomic-op care for correctness; budget = pre-request estimate + post-request
+  accounting; the anomaly alert surfaces on the Grafana dashboard.
+
+### ADR-0037 — PII egress redaction + output handling (LLM02/LLM05)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-4), §8 (G-P3-5)
+- **Context:** Financial/compliance data must not leak through prompts/responses (**LLM02**), and model output
+  must be sanitized at egress (**LLM05**). Finance-PII (account #s, SSN/TIN, passport, DOB, restricted-doc
+  names) is a known, bounded set.
+- **Options considered:** (a) **hybrid** — a deterministic Java redactor + output sanitizer on the hot path,
+  with **Microsoft Presidio + LLM Guard** as a periodic off-path deep-scan; (b) Presidio sidecar **inline** on
+  every request (best recall, but a Python hop + latency + non-determinism on the hot path); (c) Java-only
+  deterministic (fastest, narrower recall).
+- **Decision:** **(a)** — deterministic Java redaction + sanitization inline; Presidio + LLM Guard off-path
+  periodic deep-scan, with findings distilled back into the hot-path rules.
+- **Rationale:** keeps the hot path fast and the CI gate deterministic/cassette-friendly while gaining NER
+  breadth off-path; mirrors the P2 fixture-gate + Promptfoo-sweep split (ADR-0031).
+- **Consequences:** redaction events traced **metadata-only** (counts/types, never the PII — consistent with
+  ADR-0030); a second off-path service when Presidio/LLM Guard is enabled; PII-egress + output-handling are
+  P3 hard gates.
+
+### ADR-0036 — Clearance-partitioned, poison-resistant semantic cache (Redis Stack)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-2), §8 (G-P3-4)
+- **Context:** Semantic caching cuts cost/latency (30–70% in 2026 literature), but a naive cache **leaks across
+  clearances** (R1) and is vulnerable to **semantic-cache poisoning / collision** attacks (NDSS 2026;
+  multi-tenant RAG "response-cache cross-talk").
+- **Options considered:** (a) **Redis Stack vector search**; (b) reuse pgvector (one vector engine, but mixes
+  ephemeral TTL cache with the system-of-record DB + hand-rolled expiry); (c) Caffeine exact-match (not
+  *semantic* — fails the phase intent).
+- **Decision:** **(a)** Redis Stack vector search with **clearance-partitioned keys**, **trusted-write only**
+  (cache only answers that passed RBAC + the P1 guardrail + grounding), an **eval-calibrated conservative
+  similarity threshold**, **optional re-grounding on hit**, and **corpus-version invalidation**.
+- **Rationale:** native TTL fits a cache; partitioning makes cross-clearance hits structurally impossible;
+  trusted-write + a calibrated threshold resist poisoning/collision — the cache can never hold an answer the
+  live path would have refused.
+- **Consequences:** Redis Stack image (ARM-supported) replaces vanilla Redis; **cross-clearance** and
+  **poisoning/collision** are P3 hard gates; the similarity threshold is recorded in `gateway-baseline.json`.
+
+### ADR-0035 — Cost-aware model router (declarative rules + model-cascade)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-3), §8 (G-P3-3)
+- **Context:** Route each request to the cheapest adequate model — small/quantized by default (ADR-0005),
+  escalate only by policy, and **never below the P2 eval floor** (R2).
+- **Options considered:** (a) **declarative rules + model-cascade** (escalate when the tier-1 answer fails the
+  cheap inline `FactCheckingEvaluator`/low-confidence check); (b) heuristic complexity classifier; (c)
+  LLM-as-router (adds a model call + cost + non-determinism to every request).
+- **Decision:** **(a)** — deterministic rules + cascade; selectable tiers are limited to **eval-passing**
+  models; the frontier tier is budget-gated and off by default. Learned routers (RouteLLM / `semantic-router`)
+  are explicit future work.
+- **Rationale:** transparent, CI-deterministic, and dashboard-friendly; the cascade is a stronger-yet-still
+  deterministic middle ground than pure static rules; the cost-delta report (ADR-0040) proves it.
+- **Consequences:** router escalation thresholds are eval-calibrated and recorded; `never_below_eval_floor` is
+  enforced and tested; learned routing deferred.
+
+### ADR-0034 — Simulated-IdP verified-clearance trust boundary (supersedes ADR-0016)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-5) · **Realizes:** ADR-0003 · **Supersedes:** ADR-0016
+- **Context:** P3 stands up the simulated IdP (ADR-0003). The Gateway becomes the **single trust boundary** and
+  must convey a **cryptographically verifiable** clearance to `rag-engine`, retiring the P1 client-trusted
+  `X-Atlas-Clearance` shim (ADR-0016).
+- **Options considered:** (a) **Gateway-signed internal header / short-lived internal token** that `rag-engine`
+  independently validates; (b) **JWT passthrough** (forward the client JWT; `rag-engine` validates it directly —
+  spreads IdP-verification into a second service); (c) **network-trust only** (a single misconfig re-opens the
+  LLM08 leak).
+- **Decision:** **(a)** — the simulated IdP (`POST /v1/auth/token`) mints a signed JWT clearance claim; the
+  Gateway validates signature/`exp`/`iss`, resolves clearance, and **re-asserts a verified clearance to
+  `rag-engine` as a signed internal value the engine independently validates**; client-set `X-Atlas-Clearance`
+  is **ignored** on the Gateway path.
+- **Rationale:** keeps the Gateway the single trust boundary while letting `rag-engine` independently verify
+  (defense-in-depth; matches the P4 "tools re-check clearance" ethos) and realizes the verifiable claim ADR-0003
+  requires.
+- **Consequences:** **supersedes ADR-0016** (the shim is retired on the Gateway path; permitted only for
+  `local`/test direct-to-`rag-engine` calls); a signing key + an internal shared secret are env-managed (no
+  secrets in code, LLM03); auth failure → `401`. The P1 abstract `Clearance` seam means the swap touches only
+  the resolver.
+
+### ADR-0033 — API Gateway framework (Spring Cloud Gateway Server WebMVC)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-1), §8.1 (G-P3-1)
+- **Context:** P3 needs a single front door (routing, filters, rate-limit, circuit breaker). Spring Cloud
+  Gateway on **Spring Boot 4 / Framework 7** ships **both** a reactive server *and* a non-reactive
+  `gateway-server-webmvc` server.
+- **Options considered:** (a) **`gateway-server-webmvc`** (blocking, Servlet — matches the `rag-engine`/Spring AI
+  idiom); (b) reactive WebFlux server (idiomatic reactive, but Mono/Flux in front of a blocking stack); (c)
+  Nginx/Envoy + a thin Spring policy service (pushes the cost-router logic — the whole point — out of Spring).
+- **Decision:** **(a) `spring-cloud-starter-gateway-server-webmvc`.** Reactive (b) was first confirmed, then
+  **reversed after June-2026 research (§8.1)**: the Gateway proxies rather than streams model tokens, so
+  reactive's benefit is marginal while its complexity cost is real for a blocking stack + a solo Java engineer.
+- **Rationale:** lower-risk and idiom-matched, while still demonstrating the "Spring Cloud Gateway" skill
+  (routes, filters, `RequestRateLimiter`, Resilience4j).
+- **Consequences:** reactive is reconsidered only if/when the Gateway must itself stream model tokens (a P5/UX
+  concern, not P3).
 
 ### ADR-0032 — Katzilla external primary-source data (post-P5 backlog)
 - **Date:** 2026-06-14 · **Status:** Proposed · **Phase:** P6 (post-P5) · **Spec:** `ROADMAP.md` §8
@@ -443,7 +580,7 @@
   Ollama). If a commercial-clean corpus is ever needed, switch to EDGAR via a new ADR.
 
 ### ADR-0016 — Clearance transport in P1 (pre-IdP shim)
-- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 (superseded by ADR-0003's IdP in P3) · **Spec:** P1_SPEC §3 (D-P1-6)
+- **Date:** 2026-06-13 · **Status:** **Superseded by ADR-0034** (P3) · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-6)
 - **Context:** RBAC retrieval needs a caller clearance now, but the simulated identity/clearance provider is
   scheduled for P3 (ADR-0003). P1 must not be blocked waiting on it.
 - **Options considered:** (a) **Trusted request header `X-Atlas-Clearance` + a dev user→clearance map (D3),
