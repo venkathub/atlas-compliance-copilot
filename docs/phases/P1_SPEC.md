@@ -1,8 +1,9 @@
 # P1 — Permission-aware RAG engine + pgvector store — SPEC
 
-> Status: **DRAFT — grooming, awaiting owner approval. No application code until approved.**
-> Phase owner doc set: `CLAUDE.md` · `docs/ROADMAP.md` (§2 P1) · `docs/DECISIONS.md` (ADR-0002/0004/0005) · `docs/RUNBOOK.md`.
-> Date drafted: 2026-06-13.
+> Status: **COMPLETE — implemented, live-validated against the real cloud LLM, merged to `main` via PR #1 (2026-06-13).**
+> (Originally drafted as a grooming spec; the eight §3 decisions were confirmed and logged as ADR-0011–0018.)
+> Phase owner doc set: `CLAUDE.md` · `docs/ROADMAP.md` (§2 P1) · `docs/DECISIONS.md` (ADR-0002/0004/0005, 0011–0020) · `docs/RUNBOOK.md`.
+> Date drafted: 2026-06-13 · Date completed: 2026-06-13.
 
 This phase builds the **core and hardest-correctness** subsystem: given a user + clearance, retrieve
 **only** authorized documents and answer **with citations**, resisting prompt injection. It is entirely a
@@ -313,27 +314,53 @@ LLM08 (RBAC at retrieval / no cross-clearance leakage), LLM09 (grounded citation
 
 ## 6. Definition of Done (P1 — generic DoD from CLAUDE.md, instantiated)
 
-- [ ] **Code complete & matches this spec.** Ingestion + hybrid+RBAC retrieval + cited QA + guardrail
+> **Status: DONE (2026-06-13).** Verified at merge of PR #1 (`main` @ `1352c46`). Test totals: **92 tests —
+> 58 unit + 34 Testcontainers IT**, all green in CI (5/5 required checks). Honest caveats are called out inline.
+
+- [x] **Code complete & matches this spec.** Ingestion + hybrid+RBAC retrieval + cited QA + guardrail
       implemented in `rag-engine`; config env-swappable (no hardcoded models/creds).
-- [ ] **Unit + integration tests pass in CI.** Including Testcontainers ITs. The **D4 negative-access RBAC
+      *Honest deviation:* the grounded prompt is assembled **directly** (`ChatModel` + `SystemMessage`/
+      `UserMessage`) rather than via the stock `QuestionAnswerAdvisor`/`RetrievalAugmentationAdvisor` named in
+      §2.2/§2.5 — the numbered-`[n]` citation + spotlighting + guardrail contract is custom (logged in ADR-0018).
+      Same outcome, custom assembly.
+- [x] **Unit + integration tests pass in CI.** Including Testcontainers ITs. The **D4 negative-access RBAC
       test is a hard gate — 0 chunks/citations above clearance** across dense/sparse/hybrid paths.
-- [ ] **Eval thresholds:** *N/A as automated gate in P1 (deferred to P2).* P1 records a **manual quality
+      *Evidence:* `RbacNegativeAccessIT` = 6 cases × 3 paths = **18/18, 0 leaks**; CI "Java build & test" green
+      (runs the ITs on the runner's Docker).
+- [x] **Eval thresholds:** *N/A as automated gate in P1 (deferred to P2).* P1 records a **manual quality
       baseline** in the README; the **D7 prompt-injection IT** and **D4 RBAC IT** pass.
-- [ ] **Roadmap P1 exit criteria met:** dataset finalized & ingested; ingestion integrity (LLM04); RBAC
-      no-leak proven; hybrid (HNSW + tsvector) + reranking seam; inline citations; stack pinned
-      (pgvector ≥0.7 / PG16, Spring AI Advisors); injection guardrail passes.
-- [ ] **`rag-engine/README.md` updated** (purpose, architecture, setup, how to run tests, baseline metrics).
-- [ ] **`docs/DECISIONS.md` updated** with ADRs 0011… for confirmed D-P1-1…D-P1-8.
-- [ ] **Runs cleanly from scratch:** fresh clone + `.env` + `make -C infra up` + ingest → query returns a
-      cited answer.
-- [ ] **30-second demo path:** `POST /v1/query` (Northwind question) at `compliance` → cited answer; same at
-      `public` → grounded refusal; documented one-liner.
-- [ ] **Resume-ready quantified bullet** drafted in `docs/PORTFOLIO.md` (e.g. "permission-aware hybrid RAG
-      over pgvector; 0 cross-clearance leaks across N negative-access cases; p95 retrieval <Xms").
+      *Honest scope:* the manual baseline is **10 hand-checked Q&A** against the real model (10/10 citation
+      resolution, 0 above-clearance citations, 3/3 grounded refusals on PII/SAR probes, full-quality answers
+      8/10 on a 3B model) — not an automated faithfulness score. A **live *adversarial* injection test (a
+      poisoned doc reaching the real model) was NOT run**; P1 relies on pre-model quarantine (`PromptInjectionIT`,
+      3/3) and defers live red-teaming to P2 (ADR-0015).
+- [x] **Roadmap P1 exit criteria met:** dataset finalized & ingested (24 docs / 24 chunks); ingestion integrity
+      (LLM04: trusted-source allow-list + SHA-256); RBAC no-leak proven (0/18); hybrid (HNSW + tsvector) +
+      reranking **seam** (RRF order is the rerank in P1 per ADR-0014 — no cross-encoder); inline citations;
+      stack pinned (pgvector 0.8.2 / PG16, Spring AI 1.0); injection guardrail passes.
+      *Known P2 follow-up (not a P1 defect):* `plainto_tsquery` ANDs every lexeme, so long conversational
+      questions yield `sparseHits = 0` (dense carried retrieval) — switch to `websearch_to_tsquery`/OR in P2.
+- [x] **`rag-engine/README.md` updated** (purpose, architecture, setup, how to run tests, baseline metrics).
+- [x] **`docs/DECISIONS.md` updated** with ADRs 0011… for confirmed D-P1-1…D-P1-8 (plus 0019–0020 +
+      implementation notes on 0011/0012/0013/0015/0018 captured during build).
+- [x] **Runs cleanly from scratch:** fresh clone + `.env` + `make -C infra up` + ingest → query returns a
+      cited answer. *Verified live:* `POST /v1/admin/ingest` (24 docs) → `POST /v1/query` returned a 6-source
+      cited compliance answer.
+- [x] **30-second demo path:** `POST /v1/query` (Northwind question) at `compliance` → cited answer; same at
+      `public` → grounded refusal; documented one-liner (README + RUNBOOK §4).
+      *Honest nuance:* the public caller gets a **grounded answer from public docs** for general questions, and a
+      **grounded refusal** when the question targets content above its clearance (e.g. "open AML exceptions" /
+      "beneficial owners") — both observed live; restricted docs were never cited by any caller.
+- [x] **Resume-ready quantified bullet** drafted in `docs/PORTFOLIO.md` ("permission-aware hybrid RAG over
+      pgvector; 0/18 cross-clearance leaks; live `POST /v1/query` p50 ≈ 2.8 s / p95 ≈ 6.8 s").
 
 ---
 
 ## 7. Open questions for the owner (please confirm before I log ADRs)
+
+> **RESOLVED (2026-06-13).** All eight §3 decisions were confirmed and logged as ADR-0011–0018; D-P1-7 (corpus)
+> was further confirmed as committed FinanceBench evidence snippets (ADR-0020). Section retained for history.
+
 The eight decisions in §3 each carry a recommendation. The four most consequential — **D-P1-4 (reranker in P1
 or defer to P2)**, **D-P1-2 (RBAC mechanism)**, **D-P1-7 (corpus = FinanceBench vs EDGAR & size)**, and
 **D-P1-6 (clearance transport shim)** — are surfaced as focused questions. The rest I'll proceed with as
