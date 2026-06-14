@@ -47,3 +47,6 @@ trivy-*.json
 # ── OS ─────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+
+# GPU lifecycle helper runtime lock (infra/gpu)
+infra/gpu/.gpu-session.lock

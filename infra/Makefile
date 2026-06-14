@@ -17,7 +17,7 @@ export
 
 DC := docker compose -p atlas -f -
 
-.PHONY: up down clean health psql redis-cli logs ps seed-config obs-health
+.PHONY: up down clean health psql redis-cli logs ps seed-config obs-health gpu-up gpu-down gpu-test
 
 up:
 	@echo "Starting data stores (postgres, redis, clickhouse, minio)..."
@@ -79,6 +79,20 @@ psql:
 
 redis-cli:
 	@docker exec -it atlas-redis redis-cli
+
+# ── GPU lifecycle (P2, ADR-0029 / D-P2-9) ───────────────────────────────────
+# Fail-safe resume/pause of the Cloud Ollama GPU. `gpu-up` resumes + discovers the
+# fresh OLLAMA_BASE_URL (written back into $(ENV_FILE)) + arms the idle watchdog;
+# `gpu-down` GUARANTEES a pause. Stdlib-only Python helper in infra/gpu.
+gpu-up:
+	@uv run --directory gpu python -m atlas_gpu up --write-env $(abspath $(ENV_FILE))
+	@echo "↻ re-source env to pick up the new endpoint:  set -a && . $(ENV_FILE) && set +a"
+
+gpu-down:
+	@uv run --directory gpu python -m atlas_gpu down
+
+gpu-test:
+	@uv run --directory gpu --with pytest pytest -q
 
 logs:
 	@cat docker-compose.yml | $(DC) logs -f

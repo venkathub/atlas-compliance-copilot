@@ -36,7 +36,15 @@ make -C infra down      # stop (keeps data volumes)
 make -C infra clean     # stop + delete data + config volumes
 make -C infra psql      # psql shell into atlas-postgres
 make -C infra ps|logs   # status / follow logs
+make -C infra gpu-up    # resume Cloud Ollama GPU + discover OLLAMA_BASE_URL + arm watchdog
+make -C infra gpu-down  # GUARANTEED pause + cancel watchdog
+make -C infra gpu-test  # unit tests for the fail-safe pause path
 ```
+
+The **GPU lifecycle helper** lives in `infra/gpu/` (stdlib-only Python, ADR-0029) — see
+`infra/gpu/README.md`. It enforces ADR-0006 cost discipline: resume → health-poll →
+discover the fresh `OLLAMA_BASE_URL` → run → **guaranteed pause** (`finally`/trap) + an
+idle-timeout watchdog, so the GPU is never left billing.
 
 Config comes from the repo-root `.env` (see `.env.example`). Defaults: Postgres on
 `:5432` (db/user `atlas`), Redis on `:6379`, Langfuse on `:3000`, Grafana on `:3001`,

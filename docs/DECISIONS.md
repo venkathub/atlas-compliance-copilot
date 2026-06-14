@@ -124,6 +124,20 @@
   the merge gate.
 - **Consequences:** `GPU_API_KEY` is a managed secret (OWASP LLM03) behind the driver; `make gpu-up/gpu-down`;
   wired into the live-calibration job; provider coupling abstracted by the driver (E2E fallback).
+- **Implementation note (Task 2, 2026-06-14):** stdlib-only Python package `infra/gpu/atlas_gpu` (no runtime
+  deps, so the pause guarantee never hangs on a fragile CI env). `GpuSession` pauses in `__exit__` **and** in
+  `__enter__` on a failed resume/health-poll (TDD + the live run caught that `__enter__` raising would otherwise
+  leak a running GPU). `Watchdog` is the detached second net. 24 unit tests assert the guaranteed-pause invariant
+  via an injectable transport.
+- **Live verification (Task 2, 2026-06-14):** the JarvisLabs driver was implemented against the **real backend
+  API** (not a placeholder seam) and a **full resume→health-poll→discover→run→guaranteed-pause cycle was run
+  against a live instance** (confirmed Paused afterwards = billing stopped). The live run caught three bugs that
+  wrong-assumption unit tests had hidden: (1) the `users/fetch/{id}` route 404s — use the list route; (2)
+  `resume()` was outside the pause-guard; (3) **`machine_id` changes on every resume** — the driver now adopts
+  the new id from the resume response and falls back to the sole instance if the configured id has drifted.
+  Region-aware base URL (`backendprod`/`backendn`/`backendeu`); pause = `misc/pause?machine_id=` (success is the
+  string `"True"`); resume = `templates/{framework}/resume`. The `E2EProvider` generic seam keeps its
+  calibration-time TODO; JarvisLabs is the verified default.
 
 ### ADR-0028 — Golden eval set size & composition
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §3 (D-P2-8)
