@@ -7,18 +7,39 @@ the Gateway (P3) and Agents (P4) consume; it never imports Java internals.
 ## Layout
 ```
 atlas_evals/
-  client.py              # thin /v1/query HTTP client (clearance header + includeContexts)
+  client.py              # thin /v1/query client (+ CassettingClient for the RAG-side cassette)
+  cassettes.py           # CassetteStore: record/replay/off; key=sha256(inputs); miss-fails-loud
+  record.py              # live RECORD entrypoint (run in the GPU calibration session, Task 8)
   datasets/
     corpus.py            # resolves doc-ids/fixtures against the REAL corpus (no P1↔P2 drift)
     golden.py            # GoldenTuple + load_golden() + schema validation
     adversarial.py       # AdversarialCase + load_adversarial() (references P1 fixtures)
+  metrics/
+    samples.py           # (golden tuple + /v1/query response) -> EvalSample (RAGAS-free)
+    citation.py          # deterministic citation-resolution signal (report-only)
+    ragas_runner.py      # RAGAS-free orchestration: build samples -> Scorer -> MetricReport
+    ragas_scorer.py      # concrete RAGAS scorer (lazy import) + per-sample judge cassettes
 data/
   golden.jsonl           # committed golden set (versioned)
   adversarial.jsonl      # committed red-team set (references P1 fixtures by ref)
-tests/                   # pytest: loaders, schema, ref-resolution, client shaping
+  cassettes/{rag,judge}/ # committed cassettes that drive the offline gate (recorded in Task 8)
+tests/                   # pytest: loaders, cassettes, client, samples, citation, runner, scorer-replay
 ```
-> RAGAS runner + judge + cassettes (Task 6), adversarial scorer (Task 7), and the merge **gate**
-> + baseline + Langfuse sync (Task 8) land in subsequent P2 commits.
+> The merge **gate** + baseline + Langfuse sync (Task 8) and the adversarial scorer (Task 7) land in
+> subsequent P2 commits.
+
+## Cassette-replay gate (D-P2-1c)
+The PR gate is **offline, deterministic, and free**: every LLM-dependent call is served from a
+committed cassette (a **miss fails loudly** — it never silently calls a live endpoint). Two boundaries
+are cassetted:
+- **RAG answers** — `/v1/query` responses, keyed by `(query, clearance, topK, includeContexts, fingerprint)`
+  where `fingerprint` = RAG/embed model tags (a model/corpus change busts the cassette).
+- **Judge scores** — RAGAS metrics are cassetted **per sample**, keyed by
+  `(judge_model, ragas_version, question, answer, contexts, ground_truth)`. Consequence: **REPLAY needs
+  neither RAGAS nor a judge installed** (the gate just reads committed scores), and a changed RAG answer
+  → new key → loud miss → re-record. Live computation (RECORD) runs the real judge at **temperature 0**.
+
+Cassettes are (re)recorded by the periodic **live calibration** job (GPU on); the PR gate only replays.
 
 ## Datasets (committed, versioned — ADR-0028)
 - **`golden.jsonl` — 22 Q/A tuples:** 12 **Layer-1** seeded from authoritative **FinanceBench**
@@ -37,4 +58,13 @@ doc, and every adversarial fixture ref must resolve — a dangling reference fai
 uv run --directory evals --with pytest pytest -q
 uvx ruff check evals
 ```
-Requires no GPU, no Ollama, no running rag-engine (datasets + loaders are pure-Python).
+Requires no GPU, no Ollama, no running rag-engine (datasets, cassettes, loaders, and the
+metric orchestration are pure-Python; RAGAS is a lazy dep only for live RECORD/calibration).
+
+## Record cassettes (live, GPU on — calibration session)
+```bash
+make -C infra gpu-up                      # resume + discover OLLAMA_BASE_URL (then re-source .env)
+mvn -pl rag-engine spring-boot:run &      # rag-engine up + ingested
+uv run --directory evals --group ragas python -m atlas_evals.record
+make -C infra gpu-down                     # GUARANTEED pause
+```

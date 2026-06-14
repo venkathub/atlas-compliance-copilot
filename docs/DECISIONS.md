@@ -259,6 +259,11 @@
   pin the judge, prefer a stronger judge than the subject) validates this.
 - **Consequences:** ~+5 GB VRAM during eval runs (fits the L4/A5000, co-resident ≈ 8 GB); env
   `ATLAS_EVAL_JUDGE_MODEL`; swapping the judge requires a recalibration + a new ADR.
+- **Implementation note (Task 6, 2026-06-14):** `RagasScorer` builds the judge as a
+  `LangchainLLMWrapper(ChatOllama(..., temperature=0))` with `nomic-embed-text` embeddings, env-pinned
+  (`ATLAS_EVAL_JUDGE_MODEL`, `ATLAS_EVAL_JUDGE_BASE_URL`→`OLLAMA_BASE_URL`); the judge model + RAGAS version are
+  baked into each per-sample cassette key, so a judge change forces a re-record. RAGAS is a lazy dep (RECORD
+  only); the actual judged numbers are produced in the Task 8 calibration session.
 
 ### ADR-0021 — Eval LLM in CI: cassette-replay gate + live calibration
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §2.5, §3 (D-P2-1)
@@ -274,6 +279,12 @@
 - **Consequences:** Cassette key = `hash(prompt + model + inputs)`; a **miss fails loudly** (never a silent live
   call); cassettes are refreshed whenever the prompt/model/corpus/golden set changes; the live lane uses the
   GPU helper (ADR-0029) and the Promptfoo sweep (ADR-0031).
+- **Implementation note (Task 6, 2026-06-14):** `CassetteStore` (record/replay/off, sha256 keys, miss→
+  `CassetteMiss`) cassettes **two boundaries**: the `/v1/query` RAG responses (`CassettingClient`, key includes a
+  model/corpus fingerprint) and the RAGAS judge scores **per sample** (`RagasScorer`, key includes
+  judge_model+ragas_version+answer+contexts+ground_truth). Per-sample score cassettes mean **REPLAY needs neither
+  RAGAS nor a judge** — the merge gate just reads committed scores, keeping CI light; a changed RAG answer busts
+  the key → loud re-record. The committed cassettes themselves are recorded live in Task 8.
 
 ### ADR-0020 — Layer-1 ingestion form: committed FinanceBench evidence snippets
 - **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §5 (Task 2) ·

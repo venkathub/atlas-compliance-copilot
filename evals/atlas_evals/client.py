@@ -12,6 +12,8 @@ import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from atlas_evals.cassettes import CassetteStore, cassette_key
+
 # transport: (method, url, headers, body_bytes|None) -> parsed JSON dict
 Transport = Callable[[str, str, dict, bytes | None], dict]
 
@@ -56,3 +58,37 @@ class AtlasRagClient:
         url = self.base_url.rstrip("/") + "/v1/query"
         transport = self.transport or _urllib_transport(self.timeout_s)
         return transport("POST", url, headers, body)
+
+
+@dataclass
+class CassettingClient:
+    """Wraps ``AtlasRagClient`` so ``/v1/query`` responses are recorded/replayed.
+
+    The cassette key includes a ``fingerprint`` (corpus + RAG/embed model tags) so a model or
+    corpus change busts the cassette (a miss in REPLAY then fails loudly rather than scoring stale
+    answers). This is the RAG-side half of the offline gate (judge side is cassetted separately).
+    """
+
+    client: AtlasRagClient
+    store: CassetteStore
+    fingerprint: str = ""
+
+    def query(
+        self,
+        question: str,
+        clearance: str,
+        *,
+        user: str | None = None,
+        top_k: int | None = None,
+        include_contexts: bool = True,
+    ) -> dict:
+        key = cassette_key(
+            "v1/query", self.fingerprint, question, clearance, top_k, include_contexts
+        )
+        return self.store.record_or_replay(
+            key,
+            lambda: self.client.query(
+                question, clearance, user=user, top_k=top_k, include_contexts=include_contexts
+            ),
+            meta={"question": question, "clearance": clearance},
+        )
