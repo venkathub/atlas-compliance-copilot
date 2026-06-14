@@ -87,3 +87,7 @@ atlas:
   # prompt/response capture, LOCAL DEV ONLY — never a shared/prod stack.
   trace:
     content: ${ATLAS_TRACE_CONTENT:off}
+  # Spring AI inline evaluators (P2, ADR-0026 / D-P2-6) — cheap per-request relevancy + fact-check
+  # pre-filter that ANNOTATES the trace (never the gate). OFF by default: each is an extra LLM call.
+  eval:
+    inline-enabled: ${ATLAS_EVAL_INLINE_ENABLED:false}

@@ -1,5 +1,6 @@
 package com.atlas.ragengine.config;
 
+import com.atlas.ragengine.eval.InlineEvaluators;
 import com.atlas.ragengine.guardrail.InjectionGuardrail;
 import com.atlas.ragengine.observability.QueryTracer;
 import com.atlas.ragengine.qa.CitationExtractor;
@@ -21,8 +22,9 @@ public class QaConfig {
 
     @Bean
     QueryService queryService(HybridRetriever hybridRetriever, InjectionGuardrail injectionGuardrail,
-            CitationExtractor citationExtractor, ChatModel chatModel, QueryTracer queryTracer) {
-        return new QueryService(
-                hybridRetriever, injectionGuardrail, citationExtractor, chatModel, queryTracer);
+            CitationExtractor citationExtractor, ChatModel chatModel, QueryTracer queryTracer,
+            InlineEvaluators inlineEvaluators) {
+        return new QueryService(hybridRetriever, injectionGuardrail, citationExtractor, chatModel,
+                queryTracer, inlineEvaluators);
     }
 }

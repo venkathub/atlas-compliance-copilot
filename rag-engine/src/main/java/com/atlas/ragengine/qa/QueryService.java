@@ -1,5 +1,6 @@
 package com.atlas.ragengine.qa;
 
+import com.atlas.ragengine.eval.InlineEvaluators;
 import com.atlas.ragengine.guardrail.GuardrailResult;
 import com.atlas.ragengine.guardrail.InjectionGuardrail;
 import com.atlas.ragengine.observability.QueryTracer;
@@ -47,20 +48,30 @@ public class QueryService {
     private final CitationExtractor citationExtractor;
     private final ChatModel chatModel;
     private final QueryTracer tracer;
+    private final InlineEvaluators inlineEvaluators;
 
     public QueryService(HybridRetriever retriever, InjectionGuardrail guardrail,
-            CitationExtractor citationExtractor, ChatModel chatModel, QueryTracer tracer) {
+            CitationExtractor citationExtractor, ChatModel chatModel, QueryTracer tracer,
+            InlineEvaluators inlineEvaluators) {
         this.retriever = retriever;
         this.guardrail = guardrail;
         this.citationExtractor = citationExtractor;
         this.chatModel = chatModel;
         this.tracer = tracer;
+        this.inlineEvaluators = inlineEvaluators;
     }
 
-    /** Back-compat constructor (tests/no-tracing): emits to a no-op tracer. */
+    /** Convenience constructor: traced, no inline evaluators. */
+    public QueryService(HybridRetriever retriever, InjectionGuardrail guardrail,
+            CitationExtractor citationExtractor, ChatModel chatModel, QueryTracer tracer) {
+        this(retriever, guardrail, citationExtractor, chatModel, tracer, InlineEvaluators.disabled());
+    }
+
+    /** Back-compat constructor (tests/no-tracing): emits to a no-op tracer + no inline evaluators. */
     public QueryService(HybridRetriever retriever, InjectionGuardrail guardrail,
             CitationExtractor citationExtractor, ChatModel chatModel) {
-        this(retriever, guardrail, citationExtractor, chatModel, QueryTracer.noop());
+        this(retriever, guardrail, citationExtractor, chatModel, QueryTracer.noop(),
+                InlineEvaluators.disabled());
     }
 
     /** Answer result: the grounded answer, its citations, the retrieval trace, and the contexts. */
@@ -123,6 +134,8 @@ public class QueryService {
         tracer.recordContent(root, "gen_ai.completion", answer);
 
         List<Citation> citations = citationExtractor.extract(answer, sources, caller);
+        // Cheap inline Spring AI pre-filter (ADR-0026) — annotates the trace, never gates. OFF by default.
+        inlineEvaluators.annotate(root, query, sources, answer);
         // contexts = exactly what the model saw (post-guardrail, RBAC-filtered) — the eval harness
         // needs the full chunk text; the negative-access gate also runs against these (D-P2-3).
         return new QaResult(answer, citations, retrieval.stats(), sources);
