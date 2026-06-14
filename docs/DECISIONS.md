@@ -220,6 +220,13 @@
 - **Rationale:** Demonstrates idiomatic Spring AI + gives a cheap "smoke" signal without the full RAGAS cost,
   while keeping the gate in the dedicated harness.
 - **Consequences:** Informational only; never blocks merge on its own.
+- **Implementation note (Task 11, 2026-06-14):** `eval/InlineEvaluators` wraps Spring AI
+  `RelevancyEvaluator` + `FactCheckingEvaluator` (`org.springframework.ai.chat.evaluation`), invoked per
+  `/v1/query` in `QueryService` to **annotate the root `atlas.query` span** (`eval.relevancy.pass/score`,
+  `eval.factcheck.pass/score`). **OFF by default** (`atlas.eval.inline-enabled`, env
+  `ATLAS_EVAL_INLINE_ENABLED`) because each is an extra LLM call — a deliberate cost-discipline choice (the
+  spec framed them as "free", but on a metered GPU they are not). **Fail-soft**: any evaluator error is logged
+  and the query proceeds. 2 unit tests; full context boots with the evaluators wired.
 
 ### ADR-0025 — Self-hosted Langfuse (observability)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §3 (D-P2-5)
