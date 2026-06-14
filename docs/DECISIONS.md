@@ -332,6 +332,11 @@
   replay, no GPU, RAGAS not installed) and **blocks merge**. The live lane is a **manual-only**
   `workflow_dispatch` (`calibration.yml`, owner-confirmed — no cron): resume → pull judge → ingest → record →
   recalibrate → Promptfoo sweep → **guaranteed `gpu-down` in `if: always()`** → commit refreshed cassettes/baseline.
+- **Hardening (post-merge, 2026-06-14):** (1) `main` **branch protection** now *requires* the eval-gate (+ Java/
+  Python/secret/vuln/image) checks, so a red gate truly blocks merge (previously no protection existed). (2) The
+  **RAG cassette key now includes a live hash of the rag-engine behaviour source** (`fingerprint.py`), so a
+  prompt/retrieval change busts the cassette → loud miss → re-record, instead of the gate replaying stale
+  answers. Both verified with negative tests (floor breach, injected leak, deleted cassette, behaviour-file edit).
 
 ### ADR-0020 — Layer-1 ingestion form: committed FinanceBench evidence snippets
 - **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §5 (Task 2) ·
