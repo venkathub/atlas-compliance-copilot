@@ -17,29 +17,62 @@ export
 
 DC := docker compose -p atlas -f -
 
-.PHONY: up down clean health psql redis-cli logs ps
+.PHONY: up down clean health psql redis-cli logs ps seed-config obs-health
 
 up:
-	@cat docker-compose.yml | $(DC) up -d
+	@echo "Starting data stores (postgres, redis, clickhouse, minio)..."
+	@cat docker-compose.yml | $(DC) up -d postgres redis clickhouse minio
 	@echo "Waiting for Postgres to report healthy..."
 	@until [ "$$(docker inspect -f '{{.State.Health.Status}}' atlas-postgres 2>/dev/null)" = "healthy" ]; do sleep 1; done
 	@echo "Applying DB init (pgvector + pg_trgm)..."
 	@docker exec -i atlas-postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) < db/init/01-extensions.sql
-	@echo "✅ Infra up (postgres + redis healthy, extensions loaded)."
+	@echo "Applying Langfuse DB init..."
+	@docker exec -i atlas-postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) < db/init/02-langfuse-db.sql
+	@echo "Seeding observability configs into named volumes (Snap-Docker safe)..."
+	@$(MAKE) --no-print-directory seed-config
+	@echo "Starting observability stack (langfuse, prometheus, grafana)..."
+	@cat docker-compose.yml | $(DC) up -d
+	@echo "✅ Infra up (data stores + langfuse + prometheus + grafana)."
+
+# Stream Prometheus + Grafana config from repo files into named volumes. Snap-Docker
+# cannot bind-mount /data, so `make` (running as the user, which CAN read /data) reads
+# the files and pipes them to a throwaway busybox over stdin — same trick as the DB init.
+seed-config:
+	@docker volume create atlas-prometheus-config >/dev/null
+	@docker volume create atlas-grafana-config >/dev/null
+	@sed 's/$${RAG_ENGINE_PORT}/$(RAG_ENGINE_PORT)/g' prometheus/prometheus.yml \
+		| docker run --rm -i -v atlas-prometheus-config:/dest busybox sh -c 'cat > /dest/prometheus.yml'
+	@tar -C grafana -cf - . | docker run --rm -i -v atlas-grafana-config:/dest busybox tar -C /dest -xf -
 
 down:
 	@cat docker-compose.yml | $(DC) down
 
 clean:
 	@cat docker-compose.yml | $(DC) down -v
+	@docker volume rm -f atlas-prometheus-config atlas-grafana-config >/dev/null 2>&1 || true
 
 health:
 	@echo "== container health =="
-	@docker inspect -f '{{.Name}} -> {{.State.Health.Status}}' atlas-postgres atlas-redis
+	@docker inspect -f '{{.Name}} -> {{.State.Health.Status}}' atlas-postgres atlas-redis atlas-clickhouse 2>/dev/null || true
 	@echo "== postgres + pgvector =="
 	@docker exec -i atlas-postgres psql -tAc "SELECT 'vector ' || extversion FROM pg_extension WHERE extname='vector';" -U $(POSTGRES_USER) -d $(POSTGRES_DB)
+	@echo "== langfuse db =="
+	@docker exec -i atlas-postgres psql -tAc "SELECT datname FROM pg_database WHERE datname='langfuse';" -U $(POSTGRES_USER) -d $(POSTGRES_DB)
 	@echo "== redis =="
 	@docker exec atlas-redis redis-cli ping
+	@$(MAKE) --no-print-directory obs-health
+
+# Observability reachability from the host (Langfuse/Grafana have no in-image healthcheck).
+obs-health:
+	@echo "== langfuse web ($(LANGFUSE_HOST)) =="
+	@curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' "$(LANGFUSE_HOST)/api/public/health" || echo "unreachable (still booting? run: make -C infra logs)"
+	@echo "== prometheus targets =="
+	@curl -fsS "http://localhost:$(PROMETHEUS_PORT)/api/v1/targets" 2>/dev/null \
+		| sed 's/.*"job":"\(rag-engine\)".*"health":"\([a-z]*\)".*/  rag-engine target: \2/' | head -1 \
+		&& echo "" \
+		|| echo "  prometheus unreachable"
+	@echo "== grafana =="
+	@curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' "http://localhost:$(GRAFANA_PORT)/api/health" || echo "unreachable"
 
 psql:
 	@docker exec -it atlas-postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)

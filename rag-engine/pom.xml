@@ -24,6 +24,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- Micrometer Prometheus registry: exposes /actuator/prometheus for the P2
+             Prometheus scrape (eval/latency/trace-volume dashboards). -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <!-- Spring AI Ollama auto-configuration: ChatModel + EmbeddingModel beans. -->
         <dependency>
             <groupId>org.springframework.ai</groupId>

@@ -270,13 +270,23 @@ Ollama.** A live GPU is only needed when you *record* cassettes or run the *live
 
 ### 6.1 Bring up the observability stack
 ```bash
-make -C infra up                 # now also starts langfuse, grafana, prometheus
-# first run only: open Langfuse, create a project, copy its keys into .env:
-#   LANGFUSE_HOST / LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY
+make -C infra up                 # data stores + langfuse, grafana, prometheus (staged, Snap-safe)
+make -C infra health             # postgres/redis/clickhouse health + langfuse/grafana/prometheus reachability
 open http://localhost:3000       # Langfuse (traces + eval datasets)
 open http://localhost:3001       # Grafana (eval-score / latency / trace-volume panels)
+open http://localhost:9090       # Prometheus (Status → Targets shows the rag-engine scrape)
 ```
+Langfuse is **headless-bootstrapped**: `make up` auto-creates the `atlas`/`atlas-rag`
+org+project and wires the API keys straight from `.env` (`LANGFUSE_PUBLIC_KEY` /
+`LANGFUSE_SECRET_KEY`) — no manual "create a project" step. Log into the UI with
+`LANGFUSE_INIT_USER_EMAIL` / `LANGFUSE_INIT_USER_PASSWORD` only if you want to browse traces.
+Footprint note: Langfuse v3 **reuses** `atlas-postgres` (db `langfuse`) + `atlas-redis`,
+adding only ClickHouse + MinIO (owner-confirmed, D-P2-5).
+
 `rag-engine` exports OTel `gen_ai.*` spans to `OTEL_EXPORTER_OTLP_ENDPOINT`; one `/v1/query` → one trace.
+Prometheus scrapes `rag-engine` at `host.docker.internal:${RAG_ENGINE_PORT}/actuator/prometheus`
+(the engine runs on the host, not in the Compose network); its target shows **down** until
+the engine is running — that is expected.
 
 ### 6.2 Pull the judge model (one-time, on the resumed GPU)
 The routine LLM-as-judge is `llama3.1:8b-instruct` — a **cross-family** judge (llama judging the qwen RAG

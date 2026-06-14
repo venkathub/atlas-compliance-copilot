@@ -32,10 +32,15 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # `prometheus` exposes /actuator/prometheus for the P2 Prometheus scrape.
+        include: health,info,prometheus
   endpoint:
     health:
       show-details: never
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 # Ingestion pipeline (P1). All env-swappable; chunk sizing per ADR-0011, dim per ADR-0005.
 atlas:

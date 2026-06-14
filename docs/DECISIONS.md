@@ -174,6 +174,11 @@
 - **Rationale:** Keeps the all-local "runs from a fresh clone" promise and the compliance/no-egress story clean;
   Langfuse remains the 2026 OSS default and natively supports the GenAI conventions.
 - **Consequences:** Heavier `make -C infra up` (Langfuse + its Postgres/ClickHouse); part of the local stack.
+- **Implementation note (Task 1, 2026-06-14):** Langfuse v3 requires Postgres + Redis + ClickHouse + S3.
+  Footprint sub-decision (owner-confirmed): **reuse `atlas-postgres` (separate `langfuse` db) + `atlas-redis`,
+  add only ClickHouse + MinIO** — vs a fully isolated 4-container stack or EOL-track Langfuse v2. Langfuse is
+  **headless-bootstrapped** (`LANGFUSE_INIT_*`) so the `.env` API keys are pre-wired on a fresh clone. Prometheus
+  + Grafana provisioning is **seeded into named volumes** (Snap-Docker: no `/data` bind mounts).
 
 ### ADR-0024 — Eval metric set & gating thresholds
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §3 (D-P2-4), §4.4, §8 (E3)
