@@ -62,6 +62,32 @@ class QueryServiceTest {
         // only the safe source is numbered [1]; the poison chunk is not citable
         assertThat(result.citations()).extracting(Citation::docId).containsExactly("doc-a");
         assertThat(chat.lastPrompt().getContents()).doesNotContain("ignore all previous instructions");
+        // contexts expose exactly what the model saw — the quarantined poison chunk is excluded
+        // (closes the "leaked into context but not cited" hole, D-P2-3).
+        assertThat(result.contexts()).extracting(RetrievedChunk::docId).containsExactly("doc-a");
+    }
+
+    @Test
+    void contextsExposeTheSafeSourcesTheModelSaw() {
+        List<RetrievedChunk> chunks = List.of(src("public", "doc-a"), src("public", "doc-b"));
+        QueryService service = new QueryService(
+                fixedRetriever(chunks), guardrail, citations, new StubChatModel("[1][2]"));
+
+        QaResult result = service.answer("q", ClearanceLevel.COMPLIANCE, 6);
+
+        assertThat(result.contexts()).extracting(RetrievedChunk::docId).containsExactly("doc-a", "doc-b");
+        assertThat(result.contexts()).allSatisfy(c -> assertThat(c.content()).isNotBlank());
+    }
+
+    @Test
+    void refusalPathExposesNoContexts() {
+        QueryService service = new QueryService(
+                fixedRetriever(List.of()), guardrail, citations, new StubChatModel("unused"));
+
+        QaResult result = service.answer("q", ClearanceLevel.PUBLIC, 6);
+
+        assertThat(result.answer()).isEqualTo(QueryService.NO_AUTHORIZED_INFO);
+        assertThat(result.contexts()).isEmpty();
     }
 
     private static HybridRetriever fixedRetriever(List<RetrievedChunk> chunks) {

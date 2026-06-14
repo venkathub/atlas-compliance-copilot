@@ -63,8 +63,14 @@ public class QueryService {
         this(retriever, guardrail, citationExtractor, chatModel, QueryTracer.noop());
     }
 
-    /** Answer result: the grounded answer, its citations, and the retrieval trace. */
-    public record QaResult(String answer, List<Citation> citations, RetrievalStats retrieval) {
+    /** Answer result: the grounded answer, its citations, the retrieval trace, and the contexts. */
+    public record QaResult(String answer, List<Citation> citations, RetrievalStats retrieval,
+            List<RetrievedChunk> contexts) {
+
+        /** Back-compat: no exposed contexts (used where the eval-context flag is irrelevant). */
+        public QaResult(String answer, List<Citation> citations, RetrievalStats retrieval) {
+            this(answer, citations, retrieval, List.of());
+        }
     }
 
     /** Back-compat entry point; generates a request id. */
@@ -99,7 +105,7 @@ public class QueryService {
         if (sources.isEmpty()) {
             log.info("No authorized/safe sources for caller '{}' (quarantined={}) — grounded refusal",
                     caller.label(), guarded.quarantined().size());
-            return new QaResult(NO_AUTHORIZED_INFO, List.of(), retrieval.stats());
+            return new QaResult(NO_AUTHORIZED_INFO, List.of(), retrieval.stats(), List.of());
         }
 
         String userPrompt = userPrompt(query, sources);
@@ -117,7 +123,9 @@ public class QueryService {
         tracer.recordContent(root, "gen_ai.completion", answer);
 
         List<Citation> citations = citationExtractor.extract(answer, sources, caller);
-        return new QaResult(answer, citations, retrieval.stats());
+        // contexts = exactly what the model saw (post-guardrail, RBAC-filtered) — the eval harness
+        // needs the full chunk text; the negative-access gate also runs against these (D-P2-3).
+        return new QaResult(answer, citations, retrieval.stats(), sources);
     }
 
     private static List<KeyValue> retrievalAttrs(RetrievalStats stats) {

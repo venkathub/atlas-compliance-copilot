@@ -13,10 +13,12 @@ import com.atlas.ragengine.qa.Citation;
 import com.atlas.ragengine.qa.QueryService;
 import com.atlas.ragengine.qa.QueryService.QaResult;
 import com.atlas.ragengine.retrieval.HybridDocumentRetriever.RetrievalStats;
+import com.atlas.ragengine.retrieval.RetrievedChunk;
 import com.atlas.ragengine.security.ClearanceLevel;
 import com.atlas.ragengine.security.ClearanceResolver;
 import com.atlas.ragengine.security.RequestHeaders;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,7 +57,29 @@ class QueryControllerTest {
                 .andExpect(jsonPath("$.citations[0].marker").value(1))
                 .andExpect(jsonPath("$.citations[0].clearance").value("compliance"))
                 .andExpect(jsonPath("$.retrieval.clearanceApplied").value("compliance"))
-                .andExpect(jsonPath("$.retrieval.reranked").value(6));
+                .andExpect(jsonPath("$.retrieval.reranked").value(6))
+                .andExpect(jsonPath("$.contexts").doesNotExist()); // omitted unless opted in
+    }
+
+    @Test
+    void includeContextsReturnsFullRbacFilteredChunkText() throws Exception {
+        when(resolver.resolve(any(RequestHeaders.class))).thenReturn(ClearanceLevel.COMPLIANCE);
+        RetrievedChunk ctx = new RetrievedChunk(UUID.randomUUID(), UUID.randomUUID(),
+                "full context chunk text the model saw", "compliance",
+                Map.of("docId", "l2-x", "title", "T", "sourceUri", "atlas://x"), 0.83);
+        QaResult result = new QaResult("Open exceptions [1].", List.of(),
+                new RetrievalStats(20, 5, 12, 6, "compliance"), List.of(ctx));
+        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt(), anyString()))
+                .thenReturn(result);
+
+        mvc.perform(post("/v1/query")
+                        .header("X-Atlas-User", "priya")
+                        .contentType("application/json")
+                        .content("{\"query\":\"aml?\",\"topK\":6,\"includeContexts\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contexts[0].text").value("full context chunk text the model saw"))
+                .andExpect(jsonPath("$.contexts[0].clearance").value("compliance"))
+                .andExpect(jsonPath("$.contexts[0].chunkId").exists());
     }
 
     @Test

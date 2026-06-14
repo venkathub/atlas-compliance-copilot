@@ -127,8 +127,10 @@ out-of-range/duplicate markers and **re-checks `isVisible` per citation** (fail-
 source survives, it returns a grounded "no authorized information" refusal **without calling the model**.
 
 HTTP API:
-- **`POST /v1/query`** — body `{ "query": "...", "topK": 6 }`; caller clearance from the shim headers;
-  returns `{ answer, citations[], retrieval{denseHits,sparseHits,fused,reranked,clearanceApplied} }`.
+- **`POST /v1/query`** — body `{ "query": "...", "topK": 6, "includeContexts": false }`; caller clearance
+  from the shim headers; returns `{ answer, citations[], retrieval{denseHits,sparseHits,fused,reranked,clearanceApplied} }`.
+  With `includeContexts=true` (eval-harness opt-in, ADR-0023) the response adds `contexts[]` of
+  `{chunkId, documentId, clearance, text}` — the full RBAC-filtered chunks the model saw (omitted otherwise).
 - **`POST /v1/admin/ingest`** — full corpus rebuild; **guarded** (requires `restricted`/admin), returns
   `{documents, chunks, rejectedUntrusted}`.
 

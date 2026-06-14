@@ -2,7 +2,13 @@ package com.atlas.ragengine.retrieval;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.atlas.ragengine.guardrail.GuardrailProperties;
+import com.atlas.ragengine.guardrail.InjectionGuardrail;
+import com.atlas.ragengine.qa.CitationExtractor;
+import com.atlas.ragengine.qa.QueryService;
+import com.atlas.ragengine.qa.StubChatModel;
 import com.atlas.ragengine.security.ClearanceLevel;
+import com.atlas.ragengine.security.RbacFilterBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
@@ -48,6 +54,13 @@ class RbacNegativeAccessIT {
         JsonNode root = JSON.readTree(new PathMatchingResourcePatternResolver()
                 .getResource("classpath:fixtures/negative_access.json").getInputStream());
 
+        // QA pipeline over the same RBAC-filtered retriever — to gate contexts[] (D-P2-3): the eval
+        // harness's exposed context set must also never exceed caller clearance.
+        QueryService qa = new QueryService(harness.hybrid,
+                new InjectionGuardrail(GuardrailProperties.defaults()),
+                new CitationExtractor(new RbacFilterBuilder()),
+                new StubChatModel("grounded [1]"));
+
         List<DynamicTest> tests = new ArrayList<>();
         for (JsonNode c : root.get("cases")) {
             String caseId = c.get("id").asText();
@@ -64,6 +77,9 @@ class RbacNegativeAccessIT {
                             caller, forbiddenClearances, forbiddenDocIds)));
             tests.add(DynamicTest.dynamicTest(caseId + " :: hybrid", () ->
                     assertNoLeak(caseId, "hybrid", harness.hybrid.retrieve(query, caller, DEEP_K).chunks(),
+                            caller, forbiddenClearances, forbiddenDocIds)));
+            tests.add(DynamicTest.dynamicTest(caseId + " :: contexts", () ->
+                    assertNoLeak(caseId, "contexts", qa.answer(query, caller, DEEP_K).contexts(),
                             caller, forbiddenClearances, forbiddenDocIds)));
         }
         return tests;

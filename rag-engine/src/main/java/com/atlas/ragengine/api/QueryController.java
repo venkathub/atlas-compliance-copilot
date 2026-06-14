@@ -40,6 +40,6 @@ public class QueryController {
         log.info("Query [{}] at clearance '{}': {}", requestId, caller.label(), request.query());
         QueryService.QaResult result =
                 queryService.answer(request.query(), caller, request.topKOrDefault(), requestId);
-        return ResponseEntity.ok(QueryResponse.from(result));
+        return ResponseEntity.ok(QueryResponse.from(result, request.includeContextsOrDefault()));
     }
 }

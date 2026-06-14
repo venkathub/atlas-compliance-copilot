@@ -231,6 +231,11 @@
 - **Rationale:** One small, RBAC-safe field; evals exercise the **single** retrieval path exactly as prod does.
 - **Consequences:** The negative-access hard gate is **extended to `contexts[]`** (closing the
   "leaked-into-context-but-not-cited" hole); default false leaves normal callers/UI unaffected.
+- **Implementation note (Task 4, 2026-06-14):** `contexts[]` exposes the **post-guardrail safe sources**
+  (exactly what the model saw), as `{chunkId, documentId, clearance, text}`; omitted from the response unless
+  `includeContexts=true` (`@JsonInclude(NON_NULL)`), so the default contract is byte-for-byte unchanged. The D4
+  `RbacNegativeAccessIT` now runs a `:: contexts` case per golden tuple through `QueryService.answer()` (18→24
+  cases); full `mvn verify` green incl. D4/D7.
 
 ### ADR-0022 — LLM-as-judge model (cross-family `llama3.1:8b-instruct`)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §2.6, §3 (D-P2-2)
