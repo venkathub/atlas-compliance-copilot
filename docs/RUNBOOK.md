@@ -288,6 +288,15 @@ Prometheus scrapes `rag-engine` at `host.docker.internal:${RAG_ENGINE_PORT}/actu
 (the engine runs on the host, not in the Compose network); its target shows **down** until
 the engine is running — that is expected.
 
+**Enabling trace export to Langfuse (opt-in, ADR-0030).** Export is OFF by default so tests/CI never
+reach Langfuse. To stream traces in dev, set in `.env`:
+```bash
+OTEL_TRACES_EXPORT_ENABLED=true
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:3000/api/public/otel/v1/traces
+LANGFUSE_OTEL_AUTH_HEADER=$(printf 'Basic %s' "$(printf '%s:%s' "$LANGFUSE_PUBLIC_KEY" "$LANGFUSE_SECRET_KEY" | base64 -w0)")
+```
+Trace **content** stays metadata-only unless `ATLAS_TRACE_CONTENT=full` (local dev only — redaction-gated).
+
 ### 6.2 Pull the judge model (one-time, on the resumed GPU)
 The routine LLM-as-judge is `llama3.1:8b-instruct` — a **cross-family** judge (llama judging the qwen RAG
 subject) to reduce self-bias — served on the **same** Cloud Ollama endpoint as the RAG model (co-resident

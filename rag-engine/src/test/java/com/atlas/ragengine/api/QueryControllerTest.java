@@ -2,6 +2,7 @@ package com.atlas.ragengine.api;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -42,7 +43,8 @@ class QueryControllerTest {
                 "Northwind Exceptions", "atlas://x", "compliance", 0.83, "…snippet…");
         QaResult result = new QaResult("Open exceptions [1].", List.of(citation),
                 new RetrievalStats(20, 5, 12, 6, "compliance"));
-        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt())).thenReturn(result);
+        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt(), anyString()))
+                .thenReturn(result);
 
         mvc.perform(post("/v1/query")
                         .header("X-Atlas-User", "priya")

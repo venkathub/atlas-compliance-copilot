@@ -109,6 +109,15 @@
 - **Consequences:** A redaction IT asserts no above-clearance text / PII (the `poisoned/expectations.json`
   strings) reaches traces; GenAI semconv is **`Development`-status in 2026**, so the emitted version is pinned
   via `OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental` (recorded in `baseline.json`).
+- **Implementation note (Task 3, 2026-06-14):** Instrumented via the **Micrometer Observation API**
+  (not hand-rolled OTel spans) so Spring AI's `ChatModel`/`EmbeddingModel` auto-emit `gen_ai.*` spans and nest
+  under a root `atlas.query` span carrying `atlas.request_id`/`atlas.clearance`; child `retrieve` +
+  `guardrail.scan` spans carry stage stats. `QueryTracer` records the required `gen_ai.client.operation.duration`
+  Timer + `gen_ai.client.token.usage` summary. Content capture is OFF by default; `RedactionFilter` masks
+  structured PII (SSN/passport/account/email) + a configurable deny-list when `=full`. Export to Langfuse is
+  **opt-in** (`OTEL_TRACES_EXPORT_ENABLED`, Micrometer→OTel bridge + OTLP) so tests/CI never reach Langfuse;
+  spans are asserted offline via an in-memory observation recorder. Verified: 3 tracing/redaction tests +
+  full rag-engine `verify` green (incl. P1 D4/D7 hard gates).
 
 ### ADR-0029 — Automated fail-safe GPU lifecycle (pause/resume)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §2.6, §3 (D-P2-9)

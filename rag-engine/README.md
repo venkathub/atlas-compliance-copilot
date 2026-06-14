@@ -132,6 +132,21 @@ HTTP API:
 - **`POST /v1/admin/ingest`** — full corpus rebuild; **guarded** (requires `restricted`/admin), returns
   `{documents, chunks, rejectedUntrusted}`.
 
+## Observability — OTel `gen_ai.*` tracing (P2, ADR-0030)
+Every `/v1/query` emits a trace via the **Micrometer Observation API** (→ OTel bridge → OTLP → Langfuse):
+a root **`atlas.query`** span (attributes `atlas.request_id`, `atlas.clearance`, `atlas.top_k`) parents
+**`retrieve`** (dense/sparse/fused/reranked counts) and **`guardrail.scan`** (safe/quarantined counts)
+spans; Spring AI's `EmbeddingModel`/`ChatModel` auto-emit `gen_ai.embeddings`/`gen_ai.chat` spans that nest
+under it. `QueryTracer` records the OTel-required **`gen_ai.client.operation.duration`** Timer +
+**`gen_ai.client.token.usage`** summary (these feed the P3 cost story), exposed at `/actuator/prometheus`.
+
+- **Content capture is OFF by default (D-P2-10):** spans carry only ids/clearance/model/token/latency —
+  **never chunk text or PII**. `ATLAS_TRACE_CONTENT=full` (local dev only) attaches **redaction-filtered**
+  prompt/response content (`RedactionFilter` masks SSN/passport/account/email + a configurable deny-list).
+- **Export to Langfuse is opt-in:** set `OTEL_TRACES_EXPORT_ENABLED=true` + `LANGFUSE_OTEL_AUTH_HEADER`
+  (`Basic base64(pk:sk)`) — otherwise spans are created in-process but not shipped (tests/CI never reach Langfuse).
+- GenAI semconv is pinned via `OTEL_SEMCONV_STABILITY_OPT_IN` (still `Development`-status in 2026).
+
 ### 30-second demo (needs `make -C infra up` + a live Ollama; SPRING_PROFILES_ACTIVE=local)
 ```bash
 set -a && . ./.env && set +a && mvn -pl rag-engine spring-boot:run     # boots + runs Flyway

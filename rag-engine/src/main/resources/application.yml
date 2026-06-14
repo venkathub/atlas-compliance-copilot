@@ -41,6 +41,19 @@ management:
     metrics:
       export:
         enabled: true
+  # OTel tracing (P2, ADR-0030). gen_ai.* spans export over OTLP to Langfuse. Export is
+  # OPT-IN via OTEL_TRACES_EXPORT_ENABLED (default false) so tests/CI never try to reach
+  # Langfuse; spans are still created in-process. Langfuse needs Basic auth — see RUNBOOK §6.
+  tracing:
+    sampling:
+      probability: ${OTEL_TRACES_SAMPLING_PROBABILITY:1.0}
+    export:
+      enabled: ${OTEL_TRACES_EXPORT_ENABLED:false}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:3000/api/public/otel/v1/traces}
+      headers:
+        Authorization: ${LANGFUSE_OTEL_AUTH_HEADER:}
 
 # Ingestion pipeline (P1). All env-swappable; chunk sizing per ADR-0011, dim per ADR-0005.
 atlas:
@@ -66,3 +79,8 @@ atlas:
   # Prompt-injection guardrail (LLM01, ADR-0015). Default phrase set is in code; override to extend.
   guardrail:
     enabled: ${ATLAS_GUARDRAIL_ENABLED:true}
+  # Trace content-capture policy (P2, ADR-0030 / D-P2-10). 'off' (default) = metadata only
+  # (ids/clearance/model/token/latency, NO chunk text or PII). 'full' = redaction-filtered
+  # prompt/response capture, LOCAL DEV ONLY — never a shared/prod stack.
+  trace:
+    content: ${ATLAS_TRACE_CONTENT:off}

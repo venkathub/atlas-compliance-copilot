@@ -2,17 +2,23 @@ package com.atlas.ragengine.qa;
 
 import com.atlas.ragengine.guardrail.GuardrailResult;
 import com.atlas.ragengine.guardrail.InjectionGuardrail;
+import com.atlas.ragengine.observability.QueryTracer;
 import com.atlas.ragengine.retrieval.HybridDocumentRetriever.RetrievalResult;
 import com.atlas.ragengine.retrieval.HybridDocumentRetriever.RetrievalStats;
 import com.atlas.ragengine.retrieval.HybridRetriever;
 import com.atlas.ragengine.retrieval.RetrievedChunk;
 import com.atlas.ragengine.security.ClearanceLevel;
+import io.micrometer.common.KeyValue;
+import io.micrometer.observation.Observation;
+import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 
 /**
@@ -23,6 +29,11 @@ import org.springframework.ai.chat.prompt.Prompt;
  * <b>without</b> calling the model (no hallucination, no cost). We assemble the prompt directly rather
  * than via the stock QA advisor because the numbered-citation + spotlighting + guardrail contract is
  * custom.
+ *
+ * <p>Every stage is traced via {@link QueryTracer}: a root {@code atlas.query} span (carrying
+ * {@code atlas.request_id}/{@code atlas.clearance}) parents {@code retrieve} + {@code guardrail.scan}
+ * spans and the {@code gen_ai.client.operation.duration} metric (ADR-0030). Content capture is
+ * redaction-gated and OFF by default (D-P2-10).
  */
 public class QueryService {
 
@@ -35,22 +46,54 @@ public class QueryService {
     private final InjectionGuardrail guardrail;
     private final CitationExtractor citationExtractor;
     private final ChatModel chatModel;
+    private final QueryTracer tracer;
 
     public QueryService(HybridRetriever retriever, InjectionGuardrail guardrail,
-            CitationExtractor citationExtractor, ChatModel chatModel) {
+            CitationExtractor citationExtractor, ChatModel chatModel, QueryTracer tracer) {
         this.retriever = retriever;
         this.guardrail = guardrail;
         this.citationExtractor = citationExtractor;
         this.chatModel = chatModel;
+        this.tracer = tracer;
+    }
+
+    /** Back-compat constructor (tests/no-tracing): emits to a no-op tracer. */
+    public QueryService(HybridRetriever retriever, InjectionGuardrail guardrail,
+            CitationExtractor citationExtractor, ChatModel chatModel) {
+        this(retriever, guardrail, citationExtractor, chatModel, QueryTracer.noop());
     }
 
     /** Answer result: the grounded answer, its citations, and the retrieval trace. */
     public record QaResult(String answer, List<Citation> citations, RetrievalStats retrieval) {
     }
 
+    /** Back-compat entry point; generates a request id. */
     public QaResult answer(String query, ClearanceLevel caller, int topK) {
-        RetrievalResult retrieval = retriever.retrieve(query, caller, topK);
-        GuardrailResult guarded = guardrail.apply(retrieval.chunks());
+        return answer(query, caller, topK, UUID.randomUUID().toString());
+    }
+
+    public QaResult answer(String query, ClearanceLevel caller, int topK, String requestId) {
+        Observation root = tracer.startQuery(requestId, caller.label(), topK);
+        try (Observation.Scope scope = root.openScope()) {
+            return answerTraced(query, caller, topK, root);
+        } catch (RuntimeException e) {
+            root.error(e);
+            throw e;
+        } finally {
+            root.stop();
+        }
+    }
+
+    private QaResult answerTraced(String query, ClearanceLevel caller, int topK, Observation root) {
+        RetrievalResult retrieval = tracer.span(root, "retrieve",
+                () -> retriever.retrieve(query, caller, topK),
+                r -> retrievalAttrs(r.stats()));
+
+        GuardrailResult guarded = tracer.span(root, "guardrail.scan",
+                () -> guardrail.apply(retrieval.chunks()),
+                g -> List.of(
+                        KeyValue.of("guardrail.safe", Integer.toString(g.safe().size())),
+                        KeyValue.of("guardrail.quarantined", Integer.toString(g.quarantined().size()))));
         List<RetrievedChunk> sources = guarded.safe();
 
         if (sources.isEmpty()) {
@@ -59,13 +102,31 @@ public class QueryService {
             return new QaResult(NO_AUTHORIZED_INFO, List.of(), retrieval.stats());
         }
 
-        Prompt prompt = new Prompt(List.of(
-                new SystemMessage(systemPrompt()),
-                new UserMessage(userPrompt(query, sources))));
-        String answer = chatModel.call(prompt).getResult().getOutput().getText();
+        String userPrompt = userPrompt(query, sources);
+        Prompt prompt = new Prompt(List.of(new SystemMessage(systemPrompt()), new UserMessage(userPrompt)));
+
+        long startNanos = System.nanoTime();
+        ChatResponse response = chatModel.call(prompt);
+        Duration elapsed = Duration.ofNanos(System.nanoTime() - startNanos);
+        String model = response.getMetadata() == null ? null : response.getMetadata().getModel();
+        tracer.recordModelCall("chat", model, elapsed, response.getMetadata());
+
+        String answer = response.getResult().getOutput().getText();
+        // Redaction-gated content capture (OFF by default — only ids/metadata reach the trace).
+        tracer.recordContent(root, "gen_ai.prompt", userPrompt);
+        tracer.recordContent(root, "gen_ai.completion", answer);
 
         List<Citation> citations = citationExtractor.extract(answer, sources, caller);
         return new QaResult(answer, citations, retrieval.stats());
+    }
+
+    private static List<KeyValue> retrievalAttrs(RetrievalStats stats) {
+        return List.of(
+                KeyValue.of("retrieve.dense_hits", Integer.toString(stats.denseHits())),
+                KeyValue.of("retrieve.sparse_hits", Integer.toString(stats.sparseHits())),
+                KeyValue.of("retrieve.fused", Integer.toString(stats.fused())),
+                KeyValue.of("retrieve.reranked", Integer.toString(stats.reranked())),
+                KeyValue.of("atlas.clearance", stats.clearanceApplied()));
     }
 
     private static String systemPrompt() {
