@@ -310,7 +310,7 @@ ssh/console into the Ollama instance, then:  ollama pull llama3.1:8b
 ### 6.3 Run the eval gate locally
 ```bash
 # (a) OFFLINE — the CI gate. Replays committed cassettes; NO GPU, NO Ollama needed:
-uv run -m atlas_evals.gate                 # → metrics report + green/red verdict (exit code)
+uv run --directory evals python -m atlas_evals.gate   # → metrics report + green/red verdict (exit code)
 
 # (b) LIVE record/calibrate — needs infra up + a RESUMED GPU with both models pulled.
 #     gpu-up resumes + discovers OLLAMA_BASE_URL; gpu-down GUARANTEES the pause afterwards:
@@ -318,18 +318,27 @@ make -C infra gpu-up
 set -a && . ./.env && set +a
 mvn -pl rag-engine spring-boot:run &        # boot rag-engine; ingest the corpus (admin)
 curl -sX POST localhost:8081/v1/admin/ingest -H 'X-Atlas-User: bsa-admin' | jq
-uv run -m atlas_evals.record               # records cassettes vs live RAG + llama3.1 judge
-uv run -m atlas_evals.gate --recalibrate   # rewrites data/baseline.json from the live run
+uv run --directory evals --group ragas python -m atlas_evals.record   # cassettes vs live RAG + judge
+uv run --directory evals --group ragas python -m atlas_evals.gate --recalibrate  # rewrite baseline.json
 make -C infra gpu-down                       # pause the GPU (also auto-paused on idle-timeout)
 ```
 > Cassette key = hash(prompt + model + inputs); a **miss fails loudly** (never a silent live call). Refresh
 > cassettes whenever the prompt, model tag, corpus, or golden set changes — then pause the GPU again (§2.4).
 
-### 6.4 Live calibration job (periodic, not the PR gate)
-A manual `workflow_dispatch` GitHub Actions workflow calls the GPU helper end-to-end: **resume → record →
-`--recalibrate` → guaranteed pause** against the live endpoint (optionally the frontier judge
-`ATLAS_EVAL_JUDGE_FRONTIER_MODEL`), committing refreshed cassettes + baseline and recording drift. The
-per-PR `evals` job stays GPU-free.
+### 6.4 Live calibration job (manual, not the PR gate)
+A **manual** `workflow_dispatch` workflow (`.github/workflows/calibration.yml` → *Eval calibration
+(live)*) calls the GPU helper end-to-end: **resume → pull judge → boot rag-engine + ingest → record
+cassettes → `--recalibrate` → Promptfoo OWASP sweep → guaranteed pause** against the live endpoint,
+then commits the refreshed cassettes + `baseline.json`. It is **manual-only** (owner-confirmed cost
+discipline — no nightly cron). Requires repo secrets `GPU_API_KEY` + `GPU_INSTANCE_ID`.
+
+The per-PR **merge gate** (`ci.yml` → *Eval gate*) is the opposite: `python -m atlas_evals.gate`
+**replays the committed cassettes offline** — no GPU, no Ollama, RAGAS not even installed — and blocks
+merge on a RAGAS-floor / no-regression / adversarial-pass-rate breach.
+
+The **Promptfoo OWASP sweep** (`evals/promptfoo/promptfooconfig.yaml`) targets `/v1/query` at `public`
+clearance with OWASP LLM plugins (injection, PII, RBAC/BOLA, prompt-extraction, jailbreak); it runs only
+in the calibration lane (GPU up), report-only — findings are distilled into the committed fixtures.
 
 ## 7. Production deploy — *added in P5*
 Oracle Cloud Ampere A1 (arm64) deploy steps; Hetzner fallback. The P0 multi-arch image already targets arm64.

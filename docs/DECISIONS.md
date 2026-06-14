@@ -97,6 +97,10 @@
   leaked-string (answer vs `must_not_contain`), above-clearance (contexts[] + citations[] vs `must_not_cite_above`),
   forbidden-doc (citations[].docId vs `negative_access` forbidden ids); **0-tolerance** (`passed` only at
   pass_rate 1.0; a missing response is a failure). 12 unit tests; the Promptfoo live sweep is wired in Task 9.
+- **CI wiring (Task 9, 2026-06-14):** the deterministic scorer runs in the per-PR `evals-gate` (replay). The
+  **Promptfoo OWASP sweep** (`evals/promptfoo/promptfooconfig.yaml`, plugins `owasp:llm`/`pii`/`rbac`/`bola`/
+  `prompt-extraction` + jailbreak/injection strategies) targets `/v1/query` at `public` clearance and runs only
+  in the manual `calibration.yml` lane (GPU up), report-only — findings distil into committed fixtures.
 
 ### ADR-0030 — Trace content-capture & redaction policy (LLM02/LLM07)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §2.4, §3 (D-P2-10), §8 (E1)
@@ -300,6 +304,10 @@
   judge_model+ragas_version+answer+contexts+ground_truth). Per-sample score cassettes mean **REPLAY needs neither
   RAGAS nor a judge** — the merge gate just reads committed scores, keeping CI light; a changed RAG answer busts
   the key → loud re-record. The committed cassettes themselves are recorded live in Task 8.
+- **CI wiring (Task 9, 2026-06-14):** `ci.yml` job **`evals-gate`** runs `python -m atlas_evals.gate` (cassette
+  replay, no GPU, RAGAS not installed) and **blocks merge**. The live lane is a **manual-only**
+  `workflow_dispatch` (`calibration.yml`, owner-confirmed — no cron): resume → pull judge → ingest → record →
+  recalibrate → Promptfoo sweep → **guaranteed `gpu-down` in `if: always()`** → commit refreshed cassettes/baseline.
 
 ### ADR-0020 — Layer-1 ingestion form: committed FinanceBench evidence snippets
 - **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 · **Spec:** P1_SPEC §5 (Task 2) ·

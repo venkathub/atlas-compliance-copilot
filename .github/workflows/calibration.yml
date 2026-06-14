@@ -1,0 +1,124 @@
+name: Eval calibration (live)
+
+# Manual-only (cost discipline, owner-confirmed): resumes the Cloud Ollama GPU, re-records
+# cassettes, recalibrates baseline.json, runs the Promptfoo OWASP red-team sweep, then GUARANTEES
+# a GPU pause. This is OFF the per-PR critical path — the merge gate (ci.yml `evals-gate`) only
+# replays committed cassettes and never touches the GPU. See ADR-0021/0029/0031, RUNBOOK §6.4.
+
+on:
+  workflow_dispatch:
+    inputs:
+      recalibrate:
+        description: "Rewrite baseline.json from this run"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write # to commit refreshed cassettes + baseline
+
+concurrency:
+  group: eval-calibration
+  cancel-in-progress: false
+
+jobs:
+  calibrate:
+    name: Record cassettes + recalibrate + OWASP sweep
+    runs-on: ubuntu-latest
+    env:
+      # GPU lifecycle (managed secrets — never in code, OWASP LLM03).
+      GPU_PROVIDER: jarvislabs
+      GPU_API_KEY: ${{ secrets.GPU_API_KEY }}
+      GPU_INSTANCE_ID: ${{ secrets.GPU_INSTANCE_ID }}
+      GPU_IDLE_TIMEOUT_MIN: "30"
+      # Pinned models (ADR-0005 / ADR-0022).
+      OLLAMA_CHAT_MODEL: qwen2.5:3b-instruct
+      OLLAMA_EMBED_MODEL: nomic-embed-text
+      ATLAS_EVAL_JUDGE_MODEL: llama3.1:8b
+      RAG_ENGINE_URL: http://localhost:8081
+      # rag-engine datasource (the Postgres service below).
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: atlas
+      POSTGRES_USER: atlas
+      POSTGRES_PASSWORD: atlas
+      OTEL_SEMCONV_STABILITY_OPT_IN: gen_ai_latest_experimental
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: atlas
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U atlas -d atlas"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - uses: astral-sh/setup-uv@v8.2.0
+
+      - name: Enable pgvector + pg_trgm
+        run: |
+          PGPASSWORD=atlas psql -h localhost -U atlas -d atlas \
+            -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+
+      - name: Resume GPU + discover OLLAMA_BASE_URL
+        run: |
+          BASE=$(uv run --directory infra/gpu python -m atlas_gpu up --no-watchdog)
+          echo "OLLAMA_BASE_URL=$BASE" >> "$GITHUB_ENV"
+          echo "Resumed; OLLAMA_BASE_URL=$BASE"
+
+      - name: Pull the judge model (idempotent)
+        run: |
+          curl -fsS --max-time 1200 "$OLLAMA_BASE_URL/api/pull" \
+            -d "{\"name\":\"$ATLAS_EVAL_JUDGE_MODEL\",\"stream\":false}"
+
+      - name: Boot rag-engine + ingest the corpus
+        run: |
+          mvn -B -pl rag-engine -am package -DskipTests
+          nohup mvn -B -pl rag-engine spring-boot:run > rag-engine.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS -o /dev/null "$RAG_ENGINE_URL/actuator/health" && break || sleep 3
+          done
+          curl -fsS -X POST "$RAG_ENGINE_URL/v1/admin/ingest" -H 'X-Atlas-User: bsa-admin'
+
+      - name: Record cassettes (RAG + judge)
+        run: uv run --directory evals --group ragas python -m atlas_evals.record
+
+      - name: Recalibrate baseline
+        if: ${{ inputs.recalibrate }}
+        run: |
+          GIT_SHA=$(git rev-parse --short HEAD) \
+            uv run --directory evals --group ragas python -m atlas_evals.gate --recalibrate
+
+      - name: Promptfoo OWASP red-team sweep (report-only)
+        continue-on-error: true
+        run: npx --yes promptfoo@latest redteam run -c evals/promptfoo/promptfooconfig.yaml || true
+
+      - name: Pause GPU (GUARANTEED)
+        if: always()
+        run: uv run --directory infra/gpu python -m atlas_gpu down
+
+      - name: Commit refreshed cassettes + baseline
+        if: ${{ inputs.recalibrate }}
+        run: |
+          git config user.name "atlas-calibration[bot]"
+          git config user.email "atlas-calibration@users.noreply.github.com"
+          git add evals/data/cassettes evals/data/baseline.json
+          git commit -m "chore(evals): refresh cassettes + baseline (live calibration)" || echo "no changes"
+          git push || echo "push skipped"
+
+      - name: Upload calibration logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: calibration-logs
+          path: |
+            rag-engine.log
+            evals/report/*
+          if-no-files-found: ignore
