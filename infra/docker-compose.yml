@@ -30,9 +30,12 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+    # Redis Stack (RediSearch) — P3 semantic cache uses vector search (ADR-0036 / D-P3-2). Multi-arch
+    # (amd64 + arm64), so the same digest runs on the Oracle Ampere A1 prod target. Replaces vanilla
+    # redis:7-alpine; Langfuse + the P3 rate-limiter/budget counters share this instance.
+    image: redis/redis-stack-server:7.4.0-v3@sha256:7d8e657d60d525534d6abe96e7645ab30ef1b4f1ffedc6eeb2d4d4283b3a49b9
     container_name: atlas-redis
-    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    command: ["redis-stack-server", "--save", "60", "1", "--loglevel", "warning"]
     ports:
       - "${REDIS_PORT}:6379"
     volumes:

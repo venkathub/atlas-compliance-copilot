@@ -141,6 +141,21 @@
   live path would have refused.
 - **Consequences:** Redis Stack image (ARM-supported) replaces vanilla Redis; **cross-clearance** and
   **poisoning/collision** are P3 hard gates; the similarity threshold is recorded in `gateway-baseline.json`.
+- **Implementation note (2026-06-17, P3 task 5):** hand-rolled on **Jedis + RediSearch** (`RedisSemanticCache`)
+  for full control over the structural invariant, native TTL, and trusted-write. Keys are
+  `atlas:cache:<clearance>:<corpusVersion>:<uuid>`; every KNN query carries a **mandatory**
+  `@clearance:{<caller>} @corpus_version:{<ver>}` pre-filter built from the *verified* clearance, plus a
+  read-time `entry.clearance == caller` assertion — so a cross-clearance hit is impossible by construction
+  (proven by `RedisSemanticCacheIT` against real Redis Stack: **0 cross-clearance hits**). HNSW/COSINE index
+  (`similarity = 1 − distance`), conservative threshold `ATLAS_CACHE_SIM_THRESHOLD=0.95` (calibrated in task
+  10 → `gateway-baseline.json`), **native per-key EXPIRE** TTL, query embedding via Spring AI Ollama
+  `nomic-embed-text` on the hot path (abstracted behind `QueryEmbedder` so gate ITs are model-free). The
+  cache lookup is **before routing** (a hit skips the model call); writes happen only after a 2xx rag-engine
+  answer (**trusted-write**: the Gateway only caches RBAC+guardrail+grounding-passed answers). Redis image
+  swapped to `redis/redis-stack-server:7.4.0-v3` (multi-arch, digest-pinned); when `atlas.cache.enabled=false`
+  a `NoOpSemanticCache` is wired and the gateway boots without Redis. **Partial:** `corpus_version` is a
+  configurable `ATLAS_CACHE_CORPUS_VERSION` bumped manually on re-ingest; auto-deriving it from rag-engine is
+  a follow-up. `reground-on-hit` is bound but inert (reserved).
 
 ### ADR-0035 — Cost-aware model router (declarative rules + model-cascade)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-3), §8 (G-P3-3)

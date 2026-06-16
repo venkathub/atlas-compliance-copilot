@@ -41,6 +41,21 @@
             <groupId>com.nimbusds</groupId>
             <artifactId>nimbus-jose-jwt</artifactId>
         </dependency>
+
+        <!-- Spring AI Ollama: EmbeddingModel (nomic-embed-text) for the semantic cache query embedding
+             (ADR-0036). Calls the remote OLLAMA_BASE_URL; never runs a model locally (CLAUDE.md). -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-ollama</artifactId>
+        </dependency>
+
+        <!-- Jedis: hand-rolled clearance-partitioned RediSearch vector cache (ADR-0036) — structural
+             clearance-prefixed keys, mandatory clearance+corpus KNN pre-filter, native per-key TTL.
+             Version managed by the Spring Boot BOM. -->
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+        </dependency>
         <!-- Micrometer Prometheus registry: exposes /actuator/prometheus for the P3 cost dashboard. -->
         <dependency>
             <groupId>io.micrometer</groupId>
@@ -63,6 +78,14 @@
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>mockwebserver</artifactId>
             <version>4.12.0</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers: spin up redis/redis-stack-server for the clearance-safe semantic-cache
+             hard-gate ITs (RediSearch vector search). BOM-managed; needs Docker (not a GPU). -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

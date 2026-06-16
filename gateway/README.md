@@ -9,26 +9,25 @@ When complete, the gateway provides: simulated-IdP auth + verified-clearance tru
 egress redaction + output sanitization (ADR-0037), rate limiting + budget caps + circuit breaker
 (ADR-0038/0039, LLM10), and a cost-units cost model (ADR-0040) surfaced on a Grafana dashboard.
 
-## Status — P3 task 4 (cost-aware model router)
+## Status — P3 task 5 (clearance-safe semantic cache)
 
 Implemented so far:
-- **Module skeleton** (task 1): Spring Cloud Gateway WebMVC app + actuator health/Prometheus.
-- **Simulated IdP + verified-clearance trust boundary** (task 2, ADR-0034).
-- **Query passthrough** (task 3): `POST /v1/query` proxies to `rag-engine` with the verified clearance.
-- **Cost-aware model router** (task 4, ADR-0035/0040): default tier1-small; escalate to tier2-mid only
-  on `X-Atlas-Quality: high` or a long query; frontier reserved + never auto-selected; eval-floor guard.
-  The selected tier is forwarded as `X-Atlas-Model-Tier`; `rag-engine` maps it to the chat model. The
-  response now carries a `routing` section. A `CostTable` (cost-units/1k per tier) backs later metering.
+- **Module skeleton** (task 1) · **Simulated IdP + trust boundary** (task 2, ADR-0034) ·
+  **Query passthrough** (task 3) · **Cost-aware model router** (task 4, ADR-0035/0040).
+- **Clearance-safe semantic cache** (task 5, ADR-0036): hand-rolled Jedis + RediSearch vector cache,
+  **clearance-partitioned keys** + mandatory clearance/corpus KNN pre-filter (cross-clearance hit
+  structurally impossible — hard gate proven against real Redis Stack), native per-key TTL,
+  conservative threshold, trusted-write only. Lookup runs **before routing** (a hit skips the model
+  call); the response gains a `cache` section.
 
-Not yet: semantic cache (task 5), rate-limit/budget/breaker (task 6), PII redaction + output
-sanitization (task 7), cost metering (task 8). **Deferred (see DECISIONS ADR-0035 note / spec §6.1):**
-the model-cascade + `retrieved_context_tokens` rule (post-generation signals).
+Not yet: rate-limit/budget/breaker (task 6), PII redaction + output sanitization (task 7), cost
+metering (task 8). **Deferred:** model-cascade + context-token rule (task 4 note); cache re-grounding
+on hit + auto-derived corpus version (ADR-0036 note).
 
 ### Response shape (incremental)
 
-The relayed `rag-engine` JSON (`answer` + `citations` + `retrieval`) is now augmented with a `routing`
-section (`{modelTier, model, escalated}`) — the first §2.3 envelope section. The remaining sections
-(`cache` / `redaction` / `cost`) are added in tasks 5–8; Task 4 does not fabricate them.
+The relayed `rag-engine` JSON now carries `routing` (task 4) and `cache` (task 5) sections. The
+remaining §2.3 sections (`redaction` / `cost`) are added in tasks 7–8.
 
 ## Auth — mint + use a clearance token (dev)
 

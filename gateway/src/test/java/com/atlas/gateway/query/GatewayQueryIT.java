@@ -52,6 +52,9 @@ class GatewayQueryIT {
         registry.add("atlas.gateway.rag-engine-url", () -> RAG_ENGINE.url("/").toString());
         registry.add("atlas.gateway.internal-secret", () -> INTERNAL_SECRET);
         registry.add("atlas.idp.signing-key", () -> "it-signing-key");
+        // This IT exercises the auth + routing + passthrough path; the semantic cache (which needs Redis
+        // + an embedding call) is covered by RedisSemanticCacheIT, so disable it here to stay Redis-free.
+        registry.add("atlas.cache.enabled", () -> "false");
     }
 
     @AfterAll

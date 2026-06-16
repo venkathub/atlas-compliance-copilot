@@ -10,6 +10,17 @@ spring:
       # is the skeleton; the query path (task 3) and rate-limit filters (task 6) are added later.
       mvc:
         enabled: true
+  ai:
+    ollama:
+      # EmbeddingModel for the semantic-cache query embedding (ADR-0036). Remote GPU endpoint,
+      # env-swappable; never auto-pull (the endpoint already hosts the model). The gateway uses no
+      # ChatModel (routing only forwards a tier; rag-engine owns chat serving).
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      init:
+        pull-model-strategy: never
+      embedding:
+        options:
+          model: ${ATLAS_CACHE_EMBED_MODEL:${OLLAMA_EMBED_MODEL:nomic-embed-text}}
 
 management:
   endpoints:
@@ -56,4 +67,12 @@ atlas:
     tier1-units-per-1k: ${ATLAS_COST_TIER1_UNITS_PER_1K:0.30}
     tier2-units-per-1k: ${ATLAS_COST_TIER2_UNITS_PER_1K:0.70}
     frontier-units-per-1k: ${ATLAS_COST_FRONTIER_UNITS_PER_1K:5.00}
+  # Clearance-partitioned, poison-resistant semantic cache (ADR-0036, Redis Stack / RediSearch).
+  cache:
+    enabled: ${ATLAS_CACHE_ENABLED:true}
+    sim-threshold: ${ATLAS_CACHE_SIM_THRESHOLD:0.95}
+    ttl-seconds: ${ATLAS_CACHE_TTL_SECONDS:86400}
+    corpus-version: ${ATLAS_CACHE_CORPUS_VERSION:v1}
+    reground-on-hit: ${ATLAS_CACHE_REGROUND_ON_HIT:false}
+
 
