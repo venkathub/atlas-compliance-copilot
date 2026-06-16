@@ -32,6 +32,15 @@
           on the Boot 4 / Spring Cloud 2025+ train the spec's §8.1 refers to).
         -->
         <spring-cloud.version>2024.0.1</spring-cloud.version>
+
+        <!--
+          Nimbus JOSE+JWT — used DIRECTLY by the P3 gateway (mint/verify the simulated-IdP clearance
+          JWT + sign the internal-hop assertion) and rag-engine (verify the internal assertion). The
+          Spring Boot 3.4 BOM does not manage this coordinate (it arrives only transitively via the
+          Spring Security OAuth2 JOSE starter, which we deliberately do not use — we keep the trust
+          boundary an explicit, testable filter). So pin it here as the monorepo single source of truth.
+        -->
+        <nimbus-jose-jwt.version>9.48</nimbus-jose-jwt.version>
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
         <maven-failsafe-plugin.version>3.5.2</maven-failsafe-plugin.version>
@@ -86,6 +95,12 @@
                 <version>${spring-cloud.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <!-- Nimbus JOSE+JWT (P3 trust boundary, ADR-0034) — pinned (not BOM-managed). -->
+            <dependency>
+                <groupId>com.nimbusds</groupId>
+                <artifactId>nimbus-jose-jwt</artifactId>
+                <version>${nimbus-jose-jwt.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

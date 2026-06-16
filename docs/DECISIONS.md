@@ -177,6 +177,20 @@
   `local`/test direct-to-`rag-engine` calls); a signing key + an internal shared secret are env-managed (no
   secrets in code, LLM03); auth failure → `401`. The P1 abstract `Clearance` seam means the swap touches only
   the resolver.
+- **Implementation note (2026-06-17, P3 task 2):** both hops are **HS256 JWTs via Nimbus JOSE+JWT** (used
+  directly — no Spring Security OAuth2 starter — so the trust boundary is an explicit, unit-tested `OncePerRequestFilter`).
+  (1) **Client token:** signed with `ATLAS_IDP_SIGNING_KEY`, claims `{sub, clearance, iss, iat, exp, jti}`,
+  TTL `ATLAS_IDP_TOKEN_TTL_SECONDS`; validated by the Gateway's `JwtClearanceFilter` on every route except
+  `/v1/auth/**` + `/actuator/**`. (2) **Internal hop:** the Gateway's `DownstreamClearanceSigner` mints a
+  **short-lived (~60 s)** JWT signed with the *separate* `ATLAS_GATEWAY_INTERNAL_SECRET`, issuer `atlas-gateway`,
+  carried in header **`X-Atlas-Internal-Clearance`**; `rag-engine`'s `DownstreamClearanceVerifier` +
+  `DownstreamClearanceFilter` re-verify signature/`exp`/`iss` and, when valid, the `QueryController` uses that
+  clearance and **ignores** the `X-Atlas-Clearance` shim (proven by `QueryControllerTest`; P1 D4
+  `RbacNegativeAccessIT` 24/24 still green). **Key derivation:** HS256 needs ≥256-bit keys, so both modules
+  derive the MAC key as **`SHA-256(secret)`** (identical `SecurityKeys.deriveHs256` logic on each side) — any
+  operator secret length works, incl. the `.env.example` placeholder and a real `openssl rand -base64 32` key.
+  Nimbus is **not** managed by the Boot 3.4 BOM, so it is pinned in the parent (`nimbus-jose-jwt 9.48`). The
+  signer is wired now; it is attached to the proxied request in P3 task 3.
 
 ### ADR-0033 — API Gateway framework (Spring Cloud Gateway Server WebMVC)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-1), §8.1 (G-P3-1)

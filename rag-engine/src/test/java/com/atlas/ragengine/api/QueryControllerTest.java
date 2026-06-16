@@ -88,4 +88,27 @@ class QueryControllerTest {
         mvc.perform(post("/v1/query").contentType("application/json").content("{\"query\":\"  \"}"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void verifiedInternalClearanceWinsOverHeaderShim() throws Exception {
+        // The Gateway-fronted path: DownstreamClearanceFilter has stashed a verified clearance. The
+        // controller must use it and IGNORE the client X-Atlas-Clearance shim (ADR-0034).
+        Citation citation = new Citation(1, UUID.randomUUID(), UUID.randomUUID(), "l2-x",
+                "Northwind Exceptions", "atlas://x", "compliance", 0.83, "…snippet…");
+        QaResult result = new QaResult("Open exceptions [1].", List.of(citation),
+                new RetrievalStats(20, 5, 12, 6, "compliance"));
+        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt(), anyString()))
+                .thenReturn(result);
+
+        mvc.perform(post("/v1/query")
+                        .requestAttr(DownstreamClearanceFilter.ATTRIBUTE, ClearanceLevel.COMPLIANCE)
+                        .header("X-Atlas-Clearance", "restricted") // attacker-supplied shim header — must be ignored
+                        .contentType("application/json")
+                        .content("{\"query\":\"aml?\",\"topK\":6}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieval.clearanceApplied").value("compliance"));
+
+        // The shim resolver must NOT have been consulted when a verified assertion is present.
+        Mockito.verifyNoInteractions(resolver);
+    }
 }

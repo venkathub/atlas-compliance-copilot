@@ -86,6 +86,12 @@ The RBAC core (ADR-0012) lives in `com.atlas.ragengine.security`:
   from `X-Atlas-Clearance` (explicit, wins) or `X-Atlas-User` → the D3 map (`dev/clearance-users.json`),
   else the configured default (`public`, fail-closed). **Profile-gated to `local`/`test`** (`SecurityConfig`);
   outside those profiles the shim is absent and the system fails closed. The P3 simulated IdP supersedes it.
+- **`DownstreamClearanceVerifier` + `DownstreamClearanceFilter`** (P3, ADR-0034) — the Gateway-fronted trust
+  boundary. The Gateway re-asserts the caller's verified clearance as a short-lived HS256 JWT (header
+  `X-Atlas-Internal-Clearance`, signed with the shared `ATLAS_GATEWAY_INTERNAL_SECRET`, key = `SHA-256(secret)`).
+  `rag-engine` **independently** verifies signature/`exp`/`iss=atlas-gateway`; when valid, the `QueryController`
+  uses that clearance and **ignores** the client `X-Atlas-Clearance` shim. Absent a valid assertion the filter
+  is a no-op (P1 behaviour intact — D4 `RbacNegativeAccessIT` stays green). Config under `atlas.gateway.*`.
 
 Config under `atlas.security.*` (`ATLAS_SECURITY_HEADER_USER`, `..._HEADER_CLEARANCE`,
 `..._DEFAULT_CLEARANCE`, `..._CLEARANCE_USERS`) — env-swappable.

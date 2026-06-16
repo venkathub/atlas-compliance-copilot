@@ -32,6 +32,15 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+
+        <!-- Nimbus JOSE+JWT (version managed by the Spring Boot BOM): mint/verify the simulated-IdP
+             clearance JWT (ADR-0034) and re-sign the verified clearance for the internal hop to
+             rag-engine. Used directly (no full Spring Security starter) to keep the trust-boundary
+             filter explicit and unit-testable. -->
+        <dependency>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+        </dependency>
         <!-- Micrometer Prometheus registry: exposes /actuator/prometheus for the P3 cost dashboard. -->
         <dependency>
             <groupId>io.micrometer</groupId>

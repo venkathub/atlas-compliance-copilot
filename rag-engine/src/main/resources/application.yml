@@ -70,6 +70,11 @@ atlas:
     header-user: ${ATLAS_SECURITY_HEADER_USER:X-Atlas-User}
     header-clearance: ${ATLAS_SECURITY_HEADER_CLEARANCE:X-Atlas-Clearance}
     default-clearance: ${ATLAS_SECURITY_DEFAULT_CLEARANCE:public}
+  # P3 Gateway trust boundary (ADR-0034 / D-P3-5). Shared HMAC secret used to verify the
+  # Gateway-asserted internal clearance JWT (X-Atlas-Internal-Clearance). The Gateway holds the SAME
+  # value. When a valid assertion is present it wins over the shim header above.
+  gateway:
+    internal-secret: ${ATLAS_GATEWAY_INTERNAL_SECRET:change-me-locally}
   # Hybrid retrieval tuning (ADR-0013 RRF). All env-swappable.
   retrieval:
     dense-k: ${ATLAS_RETRIEVAL_DENSE_K:20}

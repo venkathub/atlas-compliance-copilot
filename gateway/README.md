@@ -9,10 +9,36 @@ When complete, the gateway provides: simulated-IdP auth + verified-clearance tru
 egress redaction + output sanitization (ADR-0037), rate limiting + budget caps + circuit breaker
 (ADR-0038/0039, LLM10), and a cost-units cost model (ADR-0040) surfaced on a Grafana dashboard.
 
-## Status — P3 task 1 (skeleton)
+## Status — P3 task 2 (simulated IdP + trust boundary)
 
-Module skeleton only: a Spring Cloud Gateway (WebMVC) app exposing **actuator health + Prometheus
-metrics**. No proxy routes, auth, router, cache, or redaction yet — those land in P3 tasks 2–8.
+Implemented so far:
+- **Module skeleton** (task 1): Spring Cloud Gateway WebMVC app + actuator health/Prometheus.
+- **Simulated IdP + verified-clearance trust boundary** (task 2, ADR-0034): `POST /v1/auth/token`
+  mints a signed JWT clearance claim; `JwtClearanceFilter` validates it on every protected request
+  (the trust boundary); `DownstreamClearanceSigner` re-asserts the verified clearance to `rag-engine`
+  over a signed internal hop the engine independently verifies (it ignores client `X-Atlas-Clearance`).
+
+Not yet: the query passthrough that attaches the internal assertion (task 3), router, cache,
+redaction, metering (tasks 4–8).
+
+## Auth — mint + use a clearance token (dev)
+
+```bash
+GW=http://localhost:${GATEWAY_PORT:-8080}
+
+# 1) Mint a signed clearance JWT for a dev user (simulated IdP, ADR-0034)
+TOKEN=$(curl -fsS -X POST "$GW/v1/auth/token" \
+          -H 'Content-Type: application/json' \
+          -d '{"user":"priya"}' | jq -r .token)
+
+# 2) Call a protected route with the Bearer token (query path lands in task 3)
+curl -i -X POST "$GW/v1/query" -H "Authorization: Bearer $TOKEN" \
+     -H 'Content-Type: application/json' -d '{"query":"...","topK":6}'
+```
+
+Dev users (simulated IdP directory, `dev/clearance-users.json`): `guest-public` (public),
+`analyst-bob` (analyst), `priya` (compliance), `bsa-admin` (restricted). A missing/expired/forged
+token → `401`; `/v1/auth/**` and `/actuator/**` are unauthenticated.
 
 ## Architecture (target)
 

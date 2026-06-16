@@ -31,3 +31,13 @@ atlas:
     # Downstream RAG Engine the Gateway proxies to (it is no longer called directly by clients).
     # Wired into the actual query path in P3 task 3.
     rag-engine-url: ${ATLAS_GATEWAY_RAG_ENGINE_URL:http://localhost:8081}
+    # Shared secret for the Gateway→rag-engine internal verified-clearance assertion (ADR-0034 /
+    # D-P3-5). rag-engine holds the SAME value and independently verifies (defense-in-depth).
+    internal-secret: ${ATLAS_GATEWAY_INTERNAL_SECRET:change-me-locally}
+  # Simulated IdP (ADR-0034, realizes ADR-0003) — mints/validates the signed clearance JWT. DEV ONLY.
+  idp:
+    signing-key: ${ATLAS_IDP_SIGNING_KEY:change-me-locally}
+    issuer: ${ATLAS_IDP_ISSUER:atlas-sim-idp}
+    token-ttl-seconds: ${ATLAS_IDP_TOKEN_TTL_SECONDS:3600}
+    dev-users: ${ATLAS_IDP_DEV_USERS:classpath:dev/clearance-users.json}
+

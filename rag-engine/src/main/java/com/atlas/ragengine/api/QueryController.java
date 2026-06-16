@@ -35,11 +35,25 @@ public class QueryController {
         if (request == null || request.query() == null || request.query().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "query is required");
         }
-        ClearanceLevel caller = clearanceResolver.resolve(HttpRequestHeaders.of(http));
+        ClearanceLevel caller = resolveClearance(http);
         String requestId = UUID.randomUUID().toString();
         log.info("Query [{}] at clearance '{}': {}", requestId, caller.label(), request.query());
         QueryService.QaResult result =
                 queryService.answer(request.query(), caller, request.topKOrDefault(), requestId);
         return ResponseEntity.ok(QueryResponse.from(result, request.includeContextsOrDefault()));
+    }
+
+    /**
+     * Prefer the Gateway-asserted, verified clearance (ADR-0034): on the Gateway-fronted path the
+     * {@link DownstreamClearanceFilter} has already verified the internal assertion and stashed the
+     * clearance, so the client {@code X-Atlas-Clearance} shim is ignored. Only when no verified
+     * assertion is present (direct/test access) do we fall back to the P1 {@link ClearanceResolver}.
+     */
+    private ClearanceLevel resolveClearance(HttpServletRequest http) {
+        Object verified = http.getAttribute(DownstreamClearanceFilter.ATTRIBUTE);
+        if (verified instanceof ClearanceLevel level) {
+            return level;
+        }
+        return clearanceResolver.resolve(HttpRequestHeaders.of(http));
     }
 }

@@ -49,6 +49,14 @@
             <artifactId>spring-ai-starter-model-ollama</artifactId>
         </dependency>
 
+        <!-- Nimbus JOSE+JWT (version managed by the Spring Boot BOM): verify the Gateway-asserted
+             internal clearance JWT on the Gateway-fronted path (ADR-0034 / D-P3-5). Independent
+             verification with the shared internal secret = defense-in-depth trust boundary. -->
+        <dependency>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+        </dependency>
+
         <!-- JDBC datasource for the custom pgvector schema (P1). We manage the schema
              ourselves (custom DocumentRetriever, hybrid + RBAC), so plain JDBC, not JPA. -->
         <dependency>
