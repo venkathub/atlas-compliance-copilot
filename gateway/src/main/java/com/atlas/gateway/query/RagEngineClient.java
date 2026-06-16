@@ -20,6 +20,9 @@ public class RagEngineClient {
     /** Header conveying the router-selected model tier to rag-engine (mirrors rag-engine's resolver). */
     public static final String MODEL_TIER_HEADER = "X-Atlas-Model-Tier";
 
+    /** Header conveying the per-request max-output-token cap to rag-engine (LLM10, ADR-0038). */
+    public static final String MAX_OUTPUT_TOKENS_HEADER = "X-Atlas-Max-Output-Tokens";
+
     private final RestClient restClient;
 
     public RagEngineClient(RestClient ragEngineRestClient) {
@@ -27,18 +30,22 @@ public class RagEngineClient {
     }
 
     /**
-     * Forward {@code request} to rag-engine with the signed internal clearance assertion + model tier.
+     * Forward {@code request} to rag-engine with the signed internal clearance assertion + model tier +
+     * max-output-token cap.
      *
      * @param internalAssertion serialized internal-hop JWT from {@link DownstreamClearanceSigner}
      * @param modelTier         the router-selected tier label (e.g. {@code tier1-small})
+     * @param maxOutputTokens   per-request generation cap (LLM10)
      * @param request           the client query to forward
      * @return rag-engine's JSON response body
      */
-    public JsonNode query(String internalAssertion, String modelTier, GatewayQueryRequest request) {
+    public JsonNode query(String internalAssertion, String modelTier, int maxOutputTokens,
+            GatewayQueryRequest request) {
         return restClient.post()
                 .uri("/v1/query")
                 .header(DownstreamClearanceSigner.HEADER, internalAssertion)
                 .header(MODEL_TIER_HEADER, modelTier)
+                .header(MAX_OUTPUT_TOKENS_HEADER, Integer.toString(maxOutputTokens))
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(request)
                 .retrieve()

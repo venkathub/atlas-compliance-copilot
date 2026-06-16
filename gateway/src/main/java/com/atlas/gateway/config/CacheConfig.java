@@ -16,8 +16,8 @@ import redis.clients.jedis.JedisPooled;
 
 /**
  * Wires the clearance-safe semantic cache (ADR-0036). When {@code atlas.cache.enabled=true} (default) a
- * RediSearch-backed cache is used; otherwise a {@link NoOpSemanticCache} (every lookup a miss). The
- * {@link JedisPooled} connects lazily (no connection at context start), so the gateway boots without Redis.
+ * RediSearch-backed cache is used (over the shared {@link JedisPooled} from {@link RedisConfig});
+ * otherwise a {@link NoOpSemanticCache} (every lookup a miss), so the gateway boots without Redis.
  */
 @Configuration
 @EnableConfigurationProperties(CacheProperties.class)
@@ -30,16 +30,9 @@ public class CacheConfig {
 
     @Bean
     @ConditionalOnProperty(name = "atlas.cache.enabled", havingValue = "true", matchIfMissing = true)
-    JedisPooled cacheJedis(@Value("${REDIS_HOST:localhost}") String host,
-            @Value("${REDIS_PORT:6379}") int port) {
-        return new JedisPooled(host, port);
-    }
-
-    @Bean
-    @ConditionalOnProperty(name = "atlas.cache.enabled", havingValue = "true", matchIfMissing = true)
-    SemanticCache redisSemanticCache(JedisPooled cacheJedis, CacheProperties props,
+    SemanticCache redisSemanticCache(JedisPooled gatewayJedis, CacheProperties props,
             @Value("${EMBED_DIM:768}") int embeddingDim) {
-        return new RedisSemanticCache(cacheJedis, "atlas-cache-idx", embeddingDim,
+        return new RedisSemanticCache(gatewayJedis, "atlas-cache-idx", embeddingDim,
                 props.simThreshold(), props.ttlSeconds());
     }
 

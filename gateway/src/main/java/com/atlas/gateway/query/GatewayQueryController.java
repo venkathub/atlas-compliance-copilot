@@ -5,7 +5,13 @@ import com.atlas.gateway.auth.DownstreamClearanceSigner;
 import com.atlas.gateway.cache.CacheProperties;
 import com.atlas.gateway.cache.QueryEmbedder;
 import com.atlas.gateway.cache.SemanticCache;
+import com.atlas.gateway.router.CostTable;
 import com.atlas.gateway.router.ModelRouter;
+import com.atlas.gateway.router.ModelTier;
+import com.atlas.gateway.resilience.BudgetGuard;
+import com.atlas.gateway.resilience.ModelCircuitBreaker;
+import com.atlas.gateway.resilience.RateLimiter;
+import com.atlas.gateway.resilience.RequestLimits;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -24,12 +30,12 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * {@code POST /v1/query} — the public query entry point (P3_SPEC §2.5).
  *
- * <p>Pipeline so far: clearance verified by {@code JwtClearanceFilter} (ADR-0034) → <b>semantic-cache
- * lookup within the caller's clearance partition</b> (ADR-0036): on a hit, return the cached answer with
- * near-zero cost and <b>skip routing + the model call</b>; on a miss, the {@link ModelRouter} selects a
- * cost-aware tier (ADR-0035), the controller re-asserts the verified clearance to {@code rag-engine}, and
- * <b>trusted-writes</b> the (RBAC+guardrail+grounding-passed) answer into the cache. Rate-limit/budget/
- * breaker (task 6), PII redaction + sanitization (task 7), and cost metering (task 8) follow.
+ * <p>Pipeline: clearance verified by {@code JwtClearanceFilter} (ADR-0034) → <b>rate limit</b> (429) →
+ * <b>budget pre-check</b> (402) → <b>input-size cap</b> (413) → <b>semantic-cache lookup</b> within the
+ * caller's clearance partition (ADR-0036; a hit skips the model call) → <b>cost-aware routing</b>
+ * (ADR-0035) → downstream call <b>wrapped in the circuit breaker</b> + read timeout (ADR-0039; 503
+ * fallback) → <b>trusted-write</b> + <b>budget post-accounting</b>. PII redaction + sanitization (task 7)
+ * and full cost metering (task 8) follow. (LLM10 resource controls: ADR-0038.)
  */
 @RestController
 @RequestMapping("/v1")
@@ -43,17 +49,28 @@ public class GatewayQueryController {
     private final SemanticCache cache;
     private final QueryEmbedder embedder;
     private final CacheProperties cacheProps;
+    private final RateLimiter rateLimiter;
+    private final BudgetGuard budgetGuard;
+    private final RequestLimits requestLimits;
+    private final ModelCircuitBreaker circuitBreaker;
+    private final CostTable costTable;
     private final ObjectMapper mapper;
 
     public GatewayQueryController(RagEngineClient ragEngine, DownstreamClearanceSigner signer,
             ModelRouter router, SemanticCache cache, QueryEmbedder embedder, CacheProperties cacheProps,
-            ObjectMapper mapper) {
+            RateLimiter rateLimiter, BudgetGuard budgetGuard, RequestLimits requestLimits,
+            ModelCircuitBreaker circuitBreaker, CostTable costTable, ObjectMapper mapper) {
         this.ragEngine = ragEngine;
         this.signer = signer;
         this.router = router;
         this.cache = cache;
         this.embedder = embedder;
         this.cacheProps = cacheProps;
+        this.rateLimiter = rateLimiter;
+        this.budgetGuard = budgetGuard;
+        this.requestLimits = requestLimits;
+        this.circuitBreaker = circuitBreaker;
+        this.costTable = costTable;
         this.mapper = mapper;
     }
 
@@ -67,35 +84,55 @@ public class GatewayQueryController {
         if (!(attr instanceof CallerClearance caller)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "missing verified clearance");
         }
+        String user = caller.subject();
         String clearance = caller.clearance().label();
 
-        // 1) Semantic-cache lookup — within the caller's clearance partition only (ADR-0036).
+        // LLM10 resource controls (ADR-0038), cheapest checks first.
+        if (!rateLimiter.tryAcquire(user)) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "rate limit exceeded");
+        }
+        requestLimits.validateInputSize(request.query());
+        int inputTokens = RequestLimits.estimateTokens(request.query());
+        // Pre-check uses a conservative tier1 estimate over worst-case output (routing happens below).
+        double estimatedCost = costTable.costUnits(ModelTier.TIER1_SMALL, inputTokens, requestLimits.maxOutputTokens());
+        if (budgetGuard.wouldExceed(user, estimatedCost)) {
+            throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "daily budget exceeded");
+        }
+
+        // Semantic-cache lookup — within the caller's clearance partition only (ADR-0036).
         float[] queryVec = null;
         if (cacheProps.enabled()) {
             queryVec = embedder.embed(request.query());
-            Optional<SemanticCache.CacheHit> hit =
-                    cache.lookup(clearance, cacheProps.corpusVersion(), queryVec);
+            Optional<SemanticCache.CacheHit> hit = cache.lookup(clearance, cacheProps.corpusVersion(), queryVec);
             if (hit.isPresent()) {
-                log.info("Semantic-cache HIT for '{}' at '{}' (sim={})",
-                        caller.subject(), clearance, hit.get().similarity());
+                log.info("Semantic-cache HIT for '{}' at '{}' (sim={})", user, clearance, hit.get().similarity());
                 return ResponseEntity.ok(fromCache(hit.get()));
             }
         }
 
-        // 2) Miss → route + proxy to rag-engine with the verified clearance.
+        // Miss → route + proxy to rag-engine (wrapped in the circuit breaker + read timeout).
         ModelRouter.RoutingDecision decision = router.route(request.query(), http.getHeader(ModelRouter.QUALITY_HEADER));
-        String assertion = signer.sign(caller.subject(), caller.clearance());
+        String assertion = signer.sign(user, caller.clearance());
         log.info("Cache miss → proxying for '{}' at '{}' via tier '{}' (escalated={})",
-                caller.subject(), clearance, decision.tier().label(), decision.escalated());
-        JsonNode answer = ragEngine.query(assertion, decision.tier().label(), request);
+                user, clearance, decision.tier().label(), decision.escalated());
+        JsonNode answer = circuitBreaker.call(() ->
+                ragEngine.query(assertion, decision.tier().label(), requestLimits.maxOutputTokens(), request));
 
-        // 3) Trusted-write: only answers rag-engine actually returned (RBAC+guardrail+grounding-passed).
+        // Trusted-write + budget post-accounting (actual cost estimated from answer length; task 8 swaps
+        // in real token usage surfaced from rag-engine).
         if (cacheProps.enabled() && answer != null) {
             cache.put(clearance, cacheProps.corpusVersion(), queryVec,
                     new SemanticCache.CachedAnswer(answer.toString(), decision.model()));
         }
+        int completionTokens = RequestLimits.estimateTokens(answerText(answer));
+        budgetGuard.record(user, costTable.costUnits(decision.tier(), inputTokens, completionTokens));
+
         return ResponseEntity.ok(withSections(answer, decision.tier().label(), decision.model(),
                 decision.escalated(), false, 0.0));
+    }
+
+    private static String answerText(JsonNode body) {
+        return body != null && body.hasNonNull("answer") ? body.get("answer").asText() : "";
     }
 
     /** Build the response from a cache hit: parse the stored answer + add cache/routing sections. */
@@ -104,7 +141,6 @@ public class GatewayQueryController {
         try {
             body = mapper.readTree(hit.answerJson());
         } catch (Exception e) {
-            // A corrupt cache entry must never fail the request — treat as if absent.
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "cache decode error");
         }
         return withSections(body, "cache", hit.model(), false, true, hit.similarity());

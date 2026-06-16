@@ -116,6 +116,20 @@ class QueryServiceTest {
                 || chat.lastPrompt().getOptions().getModel() == null).isTrue();
     }
 
+    @Test
+    void maxOutputTokensCapIsAppliedToThePromptOptions() {
+        StubChatModel chat = new StubChatModel("[1]");
+        QueryService service = new QueryService(
+                fixedRetriever(List.of(src("public", "doc-a"))), guardrail, citations, chat);
+
+        service.answer("q", ClearanceLevel.PUBLIC, 6, "req-1", "qwen2.5:7b-instruct", 256);
+
+        // P3 LLM10 output cap (ADR-0038) reaches the model as ChatOptions.maxTokens, alongside the tier model.
+        assertThat(chat.lastPrompt().getOptions()).isNotNull();
+        assertThat(chat.lastPrompt().getOptions().getModel()).isEqualTo("qwen2.5:7b-instruct");
+        assertThat(chat.lastPrompt().getOptions().getMaxTokens()).isEqualTo(256);
+    }
+
     private static HybridRetriever fixedRetriever(List<RetrievedChunk> chunks) {
         RetrievalStats stats = new RetrievalStats(chunks.size(), 0, chunks.size(), chunks.size(), "compliance");
         RetrievalResult result = new RetrievalResult(chunks, stats);

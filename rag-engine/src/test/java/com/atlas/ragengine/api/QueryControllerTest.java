@@ -49,7 +49,7 @@ class QueryControllerTest {
                 "Northwind Exceptions", "atlas://x", "compliance", 0.83, "…snippet…");
         QaResult result = new QaResult("Open exceptions [1].", List.of(citation),
                 new RetrievalStats(20, 5, 12, 6, "compliance"));
-        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt(), anyString(), nullable(String.class)))
+        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt(), anyString(), nullable(String.class), nullable(Integer.class)))
                 .thenReturn(result);
 
         mvc.perform(post("/v1/query")
@@ -73,7 +73,7 @@ class QueryControllerTest {
                 Map.of("docId", "l2-x", "title", "T", "sourceUri", "atlas://x"), 0.83);
         QaResult result = new QaResult("Open exceptions [1].", List.of(),
                 new RetrievalStats(20, 5, 12, 6, "compliance"), List.of(ctx));
-        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt(), anyString(), nullable(String.class)))
+        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt(), anyString(), nullable(String.class), nullable(Integer.class)))
                 .thenReturn(result);
 
         mvc.perform(post("/v1/query")
@@ -101,7 +101,7 @@ class QueryControllerTest {
                 "Northwind Exceptions", "atlas://x", "compliance", 0.83, "…snippet…");
         QaResult result = new QaResult("Open exceptions [1].", List.of(citation),
                 new RetrievalStats(20, 5, 12, 6, "compliance"));
-        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt(), anyString(), nullable(String.class)))
+        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt(), anyString(), nullable(String.class), nullable(Integer.class)))
                 .thenReturn(result);
 
         mvc.perform(post("/v1/query")

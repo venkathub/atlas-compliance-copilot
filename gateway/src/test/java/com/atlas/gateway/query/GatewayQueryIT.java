@@ -52,9 +52,11 @@ class GatewayQueryIT {
         registry.add("atlas.gateway.rag-engine-url", () -> RAG_ENGINE.url("/").toString());
         registry.add("atlas.gateway.internal-secret", () -> INTERNAL_SECRET);
         registry.add("atlas.idp.signing-key", () -> "it-signing-key");
-        // This IT exercises the auth + routing + passthrough path; the semantic cache (which needs Redis
-        // + an embedding call) is covered by RedisSemanticCacheIT, so disable it here to stay Redis-free.
+        // This IT exercises auth + routing + passthrough + the circuit breaker; the Redis-backed semantic
+        // cache, rate limiter, and budget are disabled here (covered by their own Testcontainer ITs).
         registry.add("atlas.cache.enabled", () -> "false");
+        registry.add("atlas.resilience.rate-limit-enabled", () -> "false");
+        registry.add("atlas.resilience.budget-enabled", () -> "false");
     }
 
     @AfterAll
@@ -109,6 +111,22 @@ class GatewayQueryIT {
         ResponseEntity<String> response = rest.postForEntity("/v1/query",
                 "{\"query\":\"aml?\"}", String.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void downstreamErrorTripsTheBreakerFallbackTo503() throws Exception {
+        RAG_ENGINE.enqueue(new MockResponse().setResponseCode(500)); // rag-engine failure
+        String token = mintToken("priya");
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(token);
+        ResponseEntity<String> response = rest.exchange(
+                "/v1/query", org.springframework.http.HttpMethod.POST,
+                new HttpEntity<>("{\"query\":\"aml?\",\"topK\":6}", headers), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isNotBlank();
     }
 
     private String mintToken(String user) throws Exception {

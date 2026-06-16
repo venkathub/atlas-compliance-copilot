@@ -74,5 +74,17 @@ atlas:
     ttl-seconds: ${ATLAS_CACHE_TTL_SECONDS:86400}
     corpus-version: ${ATLAS_CACHE_CORPUS_VERSION:v1}
     reground-on-hit: ${ATLAS_CACHE_REGROUND_ON_HIT:false}
+  # Resource controls — rate limit + budget + circuit breaker (ADR-0038/0039, OWASP LLM10). Rate-limit
+  # and budget are Redis-backed and independently toggleable (off → gateway runs Redis-free).
+  resilience:
+    rate-limit-enabled: ${ATLAS_RATELIMIT_ENABLED:true}
+    requests-per-min: ${ATLAS_RATELIMIT_REQUESTS_PER_MIN:60}
+    budget-enabled: ${ATLAS_BUDGET_ENABLED:true}
+    budget-daily-cap-units: ${ATLAS_BUDGET_DAILY_CAP_UNITS:100}
+    max-input-tokens: ${ATLAS_MAX_INPUT_TOKENS:6000}
+    max-output-tokens: ${ATLAS_MAX_OUTPUT_TOKENS:1024}
+    request-timeout-ms: ${ATLAS_REQUEST_TIMEOUT_MS:30000}
+    cb-failure-rate-threshold-pct: ${ATLAS_CB_FAILURE_RATE_THRESHOLD_PCT:50}
+    cb-wait-duration-ms: ${ATLAS_CB_WAIT_DURATION_MS:10000}
 
 

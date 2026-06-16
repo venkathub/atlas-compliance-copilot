@@ -92,6 +92,14 @@
 - **Decision:** **(a)**, with **(b)** considered only when the downgrade target is itself eval-passing.
 - **Rationale:** bounds the blast radius with honest UX, and never silently drops below the P2 eval floor (R2).
 - **Consequences:** breaker thresholds tuned + covered by ITs; the fallback path is explicitly tested.
+- **Implementation note (2026-06-17, P3 task 6):** Resilience4j via **`spring-cloud-starter-circuitbreaker-resilience4j`**
+  (BOM-managed). `ModelCircuitBreaker` wraps the rag-engine call (`CircuitBreakerFactory.create("rag-engine")`,
+  thresholds from `ATLAS_CB_*`); the fallback throws a typed `DownstreamUnavailableException` → mapped by
+  `GatewayExceptionHandler` to **`503` + `Retry-After`**. The per-request **timeout is the `RestClient` read
+  timeout** (`ATLAS_REQUEST_TIMEOUT_MS`): a stalled/slow GPU trips it, surfacing as an exception the breaker
+  records as a failure. The "fresh cache hit" fallback of option (a) is moot on this path (the cache was
+  already checked pre-call and missed), so the fallback is the typed `503`. Proven by `GatewayQueryIT`
+  (downstream 500 → `503` + `Retry-After`) + a controller unit test.
 
 ### ADR-0038 — Gateway resource controls (rate-limit, budget caps, LLM10)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-6), §8 (G-P3-6)
@@ -107,6 +115,18 @@
 - **Rationale:** idiomatic and production-shaped; covers the whole LLM10 surface, not just rate + budget.
 - **Consequences:** Redis atomic-op care for correctness; budget = pre-request estimate + post-request
   accounting; the anomaly alert surfaces on the Grafana dashboard.
+- **Implementation note (2026-06-17, P3 task 6):** rate limit = a hand-rolled **atomic Lua token-bucket**
+  on the shared `JedisPooled` (`RedisRateLimiter`, key `atlas:ratelimit:<user>`, capacity = `requests-per-min`,
+  refill-on-read) → over-quota `429`. Budget = `RedisBudgetGuard` daily counter `atlas:budget:<user>:<yyyymmdd>`
+  (UTC, ~2-day TTL), pre-check `wouldExceed` → `402`, post-`record` increment. Input-size cap (`RequestLimits`,
+  deterministic ~4-chars/token estimate) → `413`; max-output-token cap forwarded as `X-Atlas-Max-Output-Tokens`
+  and applied in rag-engine via `ChatOptions.maxTokens`. Rate-limit + budget are independently toggleable
+  (`ATLAS_RATELIMIT_ENABLED`/`ATLAS_BUDGET_ENABLED`) so the gateway runs Redis-free when off. **Token-source
+  note:** budget cost is computed from a **gateway-side token estimate** (query length + worst-case output for
+  the pre-check; answer length for accounting) — **task 8 swaps in real token usage** surfaced from rag-engine
+  `ChatResponse` metadata, where the cost dashboard needs it. The **cost-spike anomaly alert** is a Grafana
+  panel → **deferred to task 8** (metering/dashboard). Enforcement proven by `RedisRateLimiterIT` /
+  `RedisBudgetGuardIT` (real Redis) + controller tests (429/402/413).
 
 ### ADR-0037 — PII egress redaction + output handling (LLM02/LLM05)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-4), §8 (G-P3-5)

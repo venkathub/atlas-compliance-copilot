@@ -51,10 +51,18 @@
 
         <!-- Jedis: hand-rolled clearance-partitioned RediSearch vector cache (ADR-0036) — structural
              clearance-prefixed keys, mandatory clearance+corpus KNN pre-filter, native per-key TTL.
+             Also backs the Lua token-bucket rate limiter + daily budget counters (ADR-0038, LLM10).
              Version managed by the Spring Boot BOM. -->
         <dependency>
             <groupId>redis.clients</groupId>
             <artifactId>jedis</artifactId>
+        </dependency>
+
+        <!-- Resilience4j circuit breaker around the rag-engine/model call (ADR-0039, LLM10). Managed by
+             the Spring Cloud BOM (no version pin); idiomatic CircuitBreakerFactory. -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
         </dependency>
         <!-- Micrometer Prometheus registry: exposes /actuator/prometheus for the P3 cost dashboard. -->
         <dependency>

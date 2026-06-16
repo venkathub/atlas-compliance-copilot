@@ -94,16 +94,23 @@ public class QueryService {
         return answer(query, caller, topK, requestId, null);
     }
 
-    /**
-     * Answer the query, optionally overriding the chat model for this request (P3 model router,
-     * ADR-0035): the Gateway selects a tier and rag-engine's {@code ModelTierResolver} maps it to a
-     * model name passed here. A blank/null {@code modelOverride} uses the default {@link ChatModel}
-     * (tier1-small, ADR-0005). The override is applied as a portable {@code ChatOptions.model(...)}.
-     */
     public QaResult answer(String query, ClearanceLevel caller, int topK, String requestId, String modelOverride) {
+        return answer(query, caller, topK, requestId, modelOverride, null);
+    }
+
+    /**
+     * Answer the query, optionally overriding the chat model and/or capping output for this request
+     * (P3 model router + LLM10, ADR-0035/0038): the Gateway selects a tier (→ {@code modelOverride} via
+     * {@code ModelTierResolver}) and forwards a max-output-token cap (→ {@code maxOutputTokens}). A
+     * blank/null {@code modelOverride} uses the default {@link ChatModel} (tier1-small, ADR-0005); a
+     * null/non-positive {@code maxOutputTokens} leaves the model default. Applied as portable
+     * {@code ChatOptions} ({@code model} + {@code maxTokens}).
+     */
+    public QaResult answer(String query, ClearanceLevel caller, int topK, String requestId,
+            String modelOverride, Integer maxOutputTokens) {
         Observation root = tracer.startQuery(requestId, caller.label(), topK);
         try (Observation.Scope scope = root.openScope()) {
-            return answerTraced(query, caller, topK, root, modelOverride);
+            return answerTraced(query, caller, topK, root, modelOverride, maxOutputTokens);
         } catch (RuntimeException e) {
             root.error(e);
             throw e;
@@ -113,7 +120,7 @@ public class QueryService {
     }
 
     private QaResult answerTraced(String query, ClearanceLevel caller, int topK, Observation root,
-            String modelOverride) {
+            String modelOverride, Integer maxOutputTokens) {
         RetrievalResult retrieval = tracer.span(root, "retrieve",
                 () -> retriever.retrieve(query, caller, topK),
                 r -> retrievalAttrs(r.stats()));
@@ -134,11 +141,23 @@ public class QueryService {
         String userPrompt = userPrompt(query, sources);
         List<org.springframework.ai.chat.messages.Message> messages =
                 List.of(new SystemMessage(systemPrompt()), new UserMessage(userPrompt));
-        // Per-request model override (P3 router, ADR-0035): portable ChatOptions so QueryService stays
-        // provider-agnostic. Blank/null → use the default ChatModel (tier1-small).
-        Prompt prompt = (modelOverride == null || modelOverride.isBlank())
-                ? new Prompt(messages)
-                : new Prompt(messages, ChatOptions.builder().model(modelOverride).build());
+        // Per-request overrides (P3, ADR-0035/0038): portable ChatOptions so QueryService stays
+        // provider-agnostic. Model from the router tier; maxTokens is the LLM10 output cap.
+        Prompt prompt;
+        boolean hasModel = modelOverride != null && !modelOverride.isBlank();
+        boolean hasMaxTokens = maxOutputTokens != null && maxOutputTokens > 0;
+        if (hasModel || hasMaxTokens) {
+            ChatOptions.Builder opts = ChatOptions.builder();
+            if (hasModel) {
+                opts.model(modelOverride);
+            }
+            if (hasMaxTokens) {
+                opts.maxTokens(maxOutputTokens);
+            }
+            prompt = new Prompt(messages, opts.build());
+        } else {
+            prompt = new Prompt(messages);
+        }
 
         long startNanos = System.nanoTime();
         ChatResponse response = chatModel.call(prompt);

@@ -41,15 +41,28 @@ public class QueryController {
         }
         ClearanceLevel caller = resolveClearance(http);
         // P3 model router (ADR-0035): the Gateway selects a tier; map it to a per-request model override
-        // (tier1-small/absent → default ChatModel).
+        // (tier1-small/absent → default ChatModel). Plus the LLM10 max-output-token cap (ADR-0038).
         String modelOverride = modelTierResolver.resolveModel(http.getHeader(ModelTierResolver.HEADER))
                 .orElse(null);
+        Integer maxOutputTokens = parseMaxOutputTokens(http.getHeader("X-Atlas-Max-Output-Tokens"));
         String requestId = UUID.randomUUID().toString();
         log.info("Query [{}] at clearance '{}' (model={}): {}",
                 requestId, caller.label(), modelOverride == null ? "default" : modelOverride, request.query());
-        QueryService.QaResult result =
-                queryService.answer(request.query(), caller, request.topKOrDefault(), requestId, modelOverride);
+        QueryService.QaResult result = queryService.answer(
+                request.query(), caller, request.topKOrDefault(), requestId, modelOverride, maxOutputTokens);
         return ResponseEntity.ok(QueryResponse.from(result, request.includeContextsOrDefault()));
+    }
+
+    private static Integer parseMaxOutputTokens(String header) {
+        if (header == null || header.isBlank()) {
+            return null;
+        }
+        try {
+            int v = Integer.parseInt(header.strip());
+            return v > 0 ? v : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**
