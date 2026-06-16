@@ -193,6 +193,15 @@
   (routes, filters, `RequestRateLimiter`, Resilience4j).
 - **Consequences:** reactive is reconsidered only if/when the Gateway must itself stream model tokens (a P5/UX
   concern, not P3).
+- **Implementation note (2026-06-17, P3 task 1):** the repo is on **Spring Boot 3.4.7 / Spring AI 1.0.0**, not
+  Boot 4, so the WebMVC gateway ships in the **Spring Cloud 2024.0.x** train where the starter artifact is
+  **`spring-cloud-starter-gateway-mvc`** (the `-gateway-server-webmvc` id is the Boot 4 / Spring Cloud 2025+
+  rename the spec §8.1 refers to). Pinned **`spring-cloud.version=2024.0.1`** in the parent BOM (the 3.4.x
+  compatibility verifier matches any `3.4.patch`, incl. 3.4.7 — build verified green). The decision (WebMVC,
+  blocking, Servlet) is unchanged; only the coordinate name/version is train-specific. The compose `gateway`
+  service is gated behind the **`app` Compose profile** (off by default) so `make up` still works from a fresh
+  clone without a pre-built jar; in dev the gateway runs on the host (`mvn spring-boot:run`) and is scraped via
+  `host.docker.internal:${GATEWAY_PORT}`, mirroring the established `rag-engine` pattern.
 
 ### ADR-0032 — Katzilla external primary-source data (post-P5 backlog)
 - **Date:** 2026-06-14 · **Status:** Proposed · **Phase:** P6 (post-P5) · **Spec:** `ROADMAP.md` §8

@@ -1,0 +1,33 @@
+server:
+  port: ${GATEWAY_PORT:8080}
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    gateway:
+      # Spring Cloud Gateway Server WebMVC (ADR-0033). No proxy routes are declared yet — P3 task 1
+      # is the skeleton; the query path (task 3) and rate-limit filters (task 6) are added later.
+      mvc:
+        enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # `prometheus` exposes /actuator/prometheus for the P3 cost/token/latency dashboard scrape.
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: never
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+# Gateway-specific config (all env-swappable, never hardcoded — CLAUDE.md).
+atlas:
+  gateway:
+    # Downstream RAG Engine the Gateway proxies to (it is no longer called directly by clients).
+    # Wired into the actual query path in P3 task 3.
+    rag-engine-url: ${ATLAS_GATEWAY_RAG_ENGINE_URL:http://localhost:8081}

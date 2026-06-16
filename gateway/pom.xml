@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.atlas</groupId>
+        <artifactId>atlas-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>gateway</artifactId>
+    <name>Atlas :: gateway</name>
+    <description>
+        Cost-aware API Gateway (Spring Cloud Gateway WebMVC, ADR-0033) — the single front door
+        in front of rag-engine: simulated-IdP auth, cost-aware model router, clearance-safe
+        semantic cache, rate limiting, budget caps, circuit breaker, PII egress redaction,
+        output sanitization, and token/cost/latency metering. P3 task 1: module skeleton only.
+    </description>
+
+    <dependencies>
+        <!-- Spring Cloud Gateway Server (WebMVC / Servlet, blocking) — ADR-0033. On the Boot 3.4
+             train this starter is `spring-cloud-starter-gateway-mvc`; it pulls in spring-boot-starter-web. -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-gateway-mvc</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- Micrometer Prometheus registry: exposes /actuator/prometheus for the P3 cost dashboard. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <!--
+                  classifier=exec mirrors rag-engine: the fat jar is published as
+                  gateway-<ver>-exec.jar so the MAIN artifact stays a thin jar (resources at the
+                  classpath root) and the Dockerfile copies the -exec jar.
+                -->
+                <configuration>
+                    <classifier>exec</classifier>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Failsafe runs *IT integration tests; `live` (real GPU) is excluded by default
+                 via the parent's failsafe.excluded.groups property. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <excludedGroups>${failsafe.excluded.groups}</excludedGroups>
+                    <systemPropertyVariables>
+                        <api.version>${docker.api.version}</api.version>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- Mirrors rag-engine: the `live` profile drops the `live` JUnit-tag exclusion so
+             live-tagged ITs (real GPU / real downstream) run too. -->
+        <profile>
+            <id>live</id>
+            <properties>
+                <failsafe.excluded.groups></failsafe.excluded.groups>
+            </properties>
+        </profile>
+    </profiles>
+</project>

@@ -24,6 +24,14 @@
         <!-- Centralized versions (monorepo single source of truth). -->
         <spring-boot.version>3.4.7</spring-boot.version>
         <spring-ai.version>1.0.0</spring-ai.version>
+        <!--
+          Spring Cloud release train for the P3 API Gateway (ADR-0033, gateway-server-webmvc).
+          2024.0.x (Moorgate) is the train that pairs with Spring Boot 3.4.x — the compatibility
+          verifier matches any 3.4.patch, so 3.4.7 is in range. On Boot 3.4 the WebMVC gateway
+          starter is `spring-cloud-starter-gateway-mvc` (renamed to `-gateway-server-webmvc` only
+          on the Boot 4 / Spring Cloud 2025+ train the spec's §8.1 refers to).
+        -->
+        <spring-cloud.version>2024.0.1</spring-cloud.version>
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
         <maven-failsafe-plugin.version>3.5.2</maven-failsafe-plugin.version>
@@ -49,7 +57,7 @@
 
     <modules>
         <module>rag-engine</module>
-        <!-- gateway   : added in P3 (cost-aware gateway + router).  -->
+        <module>gateway</module>
         <!-- mcp-tools : added in P4 (governed MCP tool servers).    -->
     </modules>
 
@@ -68,6 +76,14 @@
                 <groupId>org.springframework.ai</groupId>
                 <artifactId>spring-ai-bom</artifactId>
                 <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- Spring Cloud BOM (P3 API Gateway WebMVC, ADR-0033). -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

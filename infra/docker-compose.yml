@@ -45,6 +45,34 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # ── API Gateway (P3, ADR-0033 — Spring Cloud Gateway WebMVC) ─────────────────
+  # The single front door in front of rag-engine. Built from gateway/Dockerfile (the
+  # `-exec` fat jar must be packaged first: `mvn -pl gateway -am package`). Like
+  # rag-engine, the gateway is typically run on the HOST during dev (`mvn spring-boot:run`)
+  # and scraped via host.docker.internal; this service definition exists for image parity
+  # and full-stack bring-up. The build context is the repo ROOT (Dockerfile COPYs the jar).
+  # Commented out by default so `make up` does not require a pre-built jar; opt in with
+  # `make up` + an explicit `docker compose up gateway` once the jar is built.
+  gateway:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: gateway/Dockerfile
+    image: atlas/gateway:0.1.0-SNAPSHOT
+    container_name: atlas-gateway
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      GATEWAY_PORT: 8080
+      # rag-engine runs on the host in dev; reach it from inside the network.
+      ATLAS_GATEWAY_RAG_ENGINE_URL: ${ATLAS_GATEWAY_RAG_ENGINE_URL:-http://host.docker.internal:8081}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    restart: unless-stopped
+
   # ── Observability plane (P2) ────────────────────────────────────────────────
   # Langfuse v3 self-host (D-P2-5). REUSES atlas-postgres (db `langfuse`) + atlas-redis,
   # and adds only ClickHouse (analytics store) + MinIO (S3 event/blob store), per the
