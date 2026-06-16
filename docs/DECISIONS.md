@@ -156,6 +156,19 @@
   deterministic middle ground than pure static rules; the cost-delta report (ADR-0040) proves it.
 - **Consequences:** router escalation thresholds are eval-calibrated and recorded; `never_below_eval_floor` is
   enforced and tested; learned routing deferred.
+- **Implementation note (2026-06-17, P3 task 4):** the router lives in the Gateway (`ModelRouter` /
+  `RoutingPolicy`-via-`RoutingProperties` / `CostTable`); `rag-engine`'s `ModelTierResolver` maps the
+  forwarded `X-Atlas-Model-Tier` → a per-request **portable `ChatOptions.model(...)`** override (`tier1-small`
+  = the default ChatModel, no override; unknown/disabled-frontier → fail-safe to default). Implemented now:
+  the **pre-call deterministic rules** the Gateway can evaluate before calling rag-engine — default = tier1-small,
+  escalate to tier2-mid on `X-Atlas-Quality: high` or an estimated `query_tokens > ATLAS_ROUTER_ESCALATE_QUERY_TOKENS`
+  (deterministic ~4-chars/token estimate); frontier is reserved and **never auto-selected**; the eval-floor
+  guard restricts selection to the approved/selectable set. **Deferred to a follow-up (owner-confirmed
+  2026-06-17; tracked in P3_SPEC §6.1):** the **model-cascade** (escalate when the tier-1 answer fails the inline
+  `FactCheckingEvaluator`) and the **`retrieved_context_tokens > N`** rule — both are *post-generation/retrieval*
+  signals that require `rag-engine` to return a confidence/context signal in the response (a cross-cutting change
+  best coordinated with the eval-through-Gateway work, task 10). `ATLAS_ROUTER_CASCADE_ENABLED` is bound but not
+  yet acted on.
 
 ### ADR-0034 — Simulated-IdP verified-clearance trust boundary (supersedes ADR-0016)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-5) · **Realizes:** ADR-0003 · **Supersedes:** ADR-0016

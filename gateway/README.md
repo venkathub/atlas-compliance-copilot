@@ -9,24 +9,26 @@ When complete, the gateway provides: simulated-IdP auth + verified-clearance tru
 egress redaction + output sanitization (ADR-0037), rate limiting + budget caps + circuit breaker
 (ADR-0038/0039, LLM10), and a cost-units cost model (ADR-0040) surfaced on a Grafana dashboard.
 
-## Status — P3 task 3 (query passthrough)
+## Status — P3 task 4 (cost-aware model router)
 
 Implemented so far:
 - **Module skeleton** (task 1): Spring Cloud Gateway WebMVC app + actuator health/Prometheus.
 - **Simulated IdP + verified-clearance trust boundary** (task 2, ADR-0034).
-- **Query passthrough** (task 3): `POST /v1/query` proxies to `rag-engine`, attaching the signed
-  internal clearance assertion so the engine receives a *verified* clearance (never the client's
-  header). The grounded, cited answer is relayed back.
+- **Query passthrough** (task 3): `POST /v1/query` proxies to `rag-engine` with the verified clearance.
+- **Cost-aware model router** (task 4, ADR-0035/0040): default tier1-small; escalate to tier2-mid only
+  on `X-Atlas-Quality: high` or a long query; frontier reserved + never auto-selected; eval-floor guard.
+  The selected tier is forwarded as `X-Atlas-Model-Tier`; `rag-engine` maps it to the chat model. The
+  response now carries a `routing` section. A `CostTable` (cost-units/1k per tier) backs later metering.
 
-Not yet: cost-aware router (task 4), semantic cache (task 5), rate-limit/budget/breaker (task 6),
-PII redaction + output sanitization (task 7), cost metering (task 8).
+Not yet: semantic cache (task 5), rate-limit/budget/breaker (task 6), PII redaction + output
+sanitization (task 7), cost metering (task 8). **Deferred (see DECISIONS ADR-0035 note / spec §6.1):**
+the model-cascade + `retrieved_context_tokens` rule (post-generation signals).
 
 ### Response shape (incremental)
 
-Task 3 relays `rag-engine`'s JSON response **verbatim** (a Jackson `JsonNode`: `answer` + `citations`
-+ `retrieval`). The richer client envelope in P3_SPEC §2.3 (`routing` / `cache` / `redaction` / `cost`)
-is layered on as tasks 4–8 add those concerns — Task 3 does not fabricate them. This keeps each task's
-diff small and the proxied answer lossless.
+The relayed `rag-engine` JSON (`answer` + `citations` + `retrieval`) is now augmented with a `routing`
+section (`{modelTier, model, escalated}`) — the first §2.3 envelope section. The remaining sections
+(`cache` / `redaction` / `cost`) are added in tasks 5–8; Task 4 does not fabricate them.
 
 ## Auth — mint + use a clearance token (dev)
 

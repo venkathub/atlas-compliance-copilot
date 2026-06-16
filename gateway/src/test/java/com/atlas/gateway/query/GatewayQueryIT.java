@@ -84,6 +84,9 @@ class GatewayQueryIT {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().get("answer").asText()).isEqualTo("Open exceptions [1].");
+        // Router merged a §2.3 routing section; a short query stays on the default tier.
+        assertThat(response.getBody().get("routing").get("modelTier").asText()).isEqualTo("tier1-small");
+        assertThat(response.getBody().get("routing").get("escalated").asBoolean()).isFalse();
 
         // The Gateway must have forwarded a VERIFIABLE internal clearance assertion for the caller.
         RecordedRequest forwarded = RAG_ENGINE.takeRequest(2, TimeUnit.SECONDS);

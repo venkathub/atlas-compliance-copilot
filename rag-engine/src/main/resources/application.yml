@@ -75,6 +75,13 @@ atlas:
   # value. When a valid assertion is present it wins over the shim header above.
   gateway:
     internal-secret: ${ATLAS_GATEWAY_INTERNAL_SECRET:change-me-locally}
+  # P3 model router tier→model mapping (ADR-0035). The Gateway selects a tier (X-Atlas-Model-Tier);
+  # rag-engine maps it to a per-request chat-model override. tier1-small uses the default ChatModel
+  # (OLLAMA_CHAT_MODEL), so it is intentionally not listed. All env-swappable, never hardcoded.
+  router:
+    tier2-model: ${ATLAS_ROUTER_TIER2_MODEL:qwen2.5:7b-instruct}
+    frontier-model: ${ATLAS_ROUTER_FRONTIER_MODEL:}
+    frontier-enabled: ${ATLAS_ROUTER_FRONTIER_ENABLED:false}
   # Hybrid retrieval tuning (ADR-0013 RRF). All env-swappable.
   retrieval:
     dense-k: ${ATLAS_RETRIEVAL_DENSE_K:20}

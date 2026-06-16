@@ -146,6 +146,14 @@ HTTP API:
 - **`POST /v1/admin/ingest`** — full corpus rebuild; **guarded** (requires `restricted`/admin), returns
   `{documents, chunks, rejectedUntrusted}`.
 
+### Model tiering (P3, ADR-0035)
+`ModelTierResolver` maps the Gateway-selected tier (header `X-Atlas-Model-Tier`) to a per-request chat-model
+override applied as a **portable `ChatOptions.model(...)`** on the prompt: `tier1-small` (or absent/unknown)
+uses the default `ChatModel` (the small model, ADR-0005, no override); `tier2-mid` → `ATLAS_ROUTER_TIER2_MODEL`;
+`tier3-frontier` → `ATLAS_ROUTER_FRONTIER_MODEL` **only** when `ATLAS_ROUTER_FRONTIER_ENABLED` (else fail-safe to
+default). The Gateway owns the routing *decision* (ADR-0035); rag-engine owns model serving. Config under
+`atlas.router.*`.
+
 ## Observability — OTel `gen_ai.*` tracing (P2, ADR-0030)
 Every `/v1/query` emits a trace via the **Micrometer Observation API** (→ OTel bridge → OTLP → Langfuse):
 a root **`atlas.query`** span (attributes `atlas.request_id`, `atlas.clearance`, `atlas.top_k`) parents

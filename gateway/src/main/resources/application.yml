@@ -40,4 +40,20 @@ atlas:
     issuer: ${ATLAS_IDP_ISSUER:atlas-sim-idp}
     token-ttl-seconds: ${ATLAS_IDP_TOKEN_TTL_SECONDS:3600}
     dev-users: ${ATLAS_IDP_DEV_USERS:classpath:dev/clearance-users.json}
+  # Cost-aware model router (ADR-0035). Default = small/quantized (ADR-0005); escalate only by policy;
+  # frontier reserved/budget-gated + off by default. tier1-model is the display name of the default
+  # model (= OLLAMA_CHAT_MODEL); rag-engine owns the actual tier→ChatModel mapping. All env-swappable.
+  router:
+    default-tier: ${ATLAS_ROUTER_DEFAULT_TIER:tier1-small}
+    tier1-model: ${OLLAMA_CHAT_MODEL:qwen2.5:3b-instruct}
+    tier2-model: ${ATLAS_ROUTER_TIER2_MODEL:qwen2.5:7b-instruct}
+    escalate-query-tokens: ${ATLAS_ROUTER_ESCALATE_QUERY_TOKENS:1200}
+    cascade-enabled: ${ATLAS_ROUTER_CASCADE_ENABLED:true}
+    frontier-enabled: ${ATLAS_ROUTER_FRONTIER_ENABLED:false}
+    frontier-model: ${ATLAS_ROUTER_FRONTIER_MODEL:}
+  # Cost-units table (ADR-0040) — synthetic per-1k for self-hosted tiers, real $-derived for frontier.
+  cost:
+    tier1-units-per-1k: ${ATLAS_COST_TIER1_UNITS_PER_1K:0.30}
+    tier2-units-per-1k: ${ATLAS_COST_TIER2_UNITS_PER_1K:0.70}
+    frontier-units-per-1k: ${ATLAS_COST_FRONTIER_UNITS_PER_1K:5.00}
 

@@ -20,6 +20,7 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 
 /**
@@ -90,9 +91,19 @@ public class QueryService {
     }
 
     public QaResult answer(String query, ClearanceLevel caller, int topK, String requestId) {
+        return answer(query, caller, topK, requestId, null);
+    }
+
+    /**
+     * Answer the query, optionally overriding the chat model for this request (P3 model router,
+     * ADR-0035): the Gateway selects a tier and rag-engine's {@code ModelTierResolver} maps it to a
+     * model name passed here. A blank/null {@code modelOverride} uses the default {@link ChatModel}
+     * (tier1-small, ADR-0005). The override is applied as a portable {@code ChatOptions.model(...)}.
+     */
+    public QaResult answer(String query, ClearanceLevel caller, int topK, String requestId, String modelOverride) {
         Observation root = tracer.startQuery(requestId, caller.label(), topK);
         try (Observation.Scope scope = root.openScope()) {
-            return answerTraced(query, caller, topK, root);
+            return answerTraced(query, caller, topK, root, modelOverride);
         } catch (RuntimeException e) {
             root.error(e);
             throw e;
@@ -101,7 +112,8 @@ public class QueryService {
         }
     }
 
-    private QaResult answerTraced(String query, ClearanceLevel caller, int topK, Observation root) {
+    private QaResult answerTraced(String query, ClearanceLevel caller, int topK, Observation root,
+            String modelOverride) {
         RetrievalResult retrieval = tracer.span(root, "retrieve",
                 () -> retriever.retrieve(query, caller, topK),
                 r -> retrievalAttrs(r.stats()));
@@ -120,7 +132,13 @@ public class QueryService {
         }
 
         String userPrompt = userPrompt(query, sources);
-        Prompt prompt = new Prompt(List.of(new SystemMessage(systemPrompt()), new UserMessage(userPrompt)));
+        List<org.springframework.ai.chat.messages.Message> messages =
+                List.of(new SystemMessage(systemPrompt()), new UserMessage(userPrompt));
+        // Per-request model override (P3 router, ADR-0035): portable ChatOptions so QueryService stays
+        // provider-agnostic. Blank/null → use the default ChatModel (tier1-small).
+        Prompt prompt = (modelOverride == null || modelOverride.isBlank())
+                ? new Prompt(messages)
+                : new Prompt(messages, ChatOptions.builder().model(modelOverride).build());
 
         long startNanos = System.nanoTime();
         ChatResponse response = chatModel.call(prompt);

@@ -1,6 +1,7 @@
 package com.atlas.ragengine.api;
 
 import com.atlas.ragengine.qa.QueryService;
+import com.atlas.ragengine.qa.ModelTierResolver;
 import com.atlas.ragengine.security.ClearanceLevel;
 import com.atlas.ragengine.security.ClearanceResolver;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,10 +25,13 @@ public class QueryController {
 
     private final QueryService queryService;
     private final ClearanceResolver clearanceResolver;
+    private final ModelTierResolver modelTierResolver;
 
-    public QueryController(QueryService queryService, ClearanceResolver clearanceResolver) {
+    public QueryController(QueryService queryService, ClearanceResolver clearanceResolver,
+            ModelTierResolver modelTierResolver) {
         this.queryService = queryService;
         this.clearanceResolver = clearanceResolver;
+        this.modelTierResolver = modelTierResolver;
     }
 
     @PostMapping("/query")
@@ -36,10 +40,15 @@ public class QueryController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "query is required");
         }
         ClearanceLevel caller = resolveClearance(http);
+        // P3 model router (ADR-0035): the Gateway selects a tier; map it to a per-request model override
+        // (tier1-small/absent → default ChatModel).
+        String modelOverride = modelTierResolver.resolveModel(http.getHeader(ModelTierResolver.HEADER))
+                .orElse(null);
         String requestId = UUID.randomUUID().toString();
-        log.info("Query [{}] at clearance '{}': {}", requestId, caller.label(), request.query());
+        log.info("Query [{}] at clearance '{}' (model={}): {}",
+                requestId, caller.label(), modelOverride == null ? "default" : modelOverride, request.query());
         QueryService.QaResult result =
-                queryService.answer(request.query(), caller, request.topKOrDefault(), requestId);
+                queryService.answer(request.query(), caller, request.topKOrDefault(), requestId, modelOverride);
         return ResponseEntity.ok(QueryResponse.from(result, request.includeContextsOrDefault()));
     }
 

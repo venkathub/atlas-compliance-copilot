@@ -517,6 +517,17 @@ P3 adds **no new default model**; it adds routing *tiers* (all env-swappable; CL
 ### 6.1 Deviations / partials
 *(to be filled honestly at implementation, in the P2 spec's §6.1 style.)*
 
+- **P3 task 4 — model-cascade + `retrieved_context_tokens` rule deferred (owner-confirmed 2026-06-17).**
+  The cost-aware router (ADR-0035) shipped its **pre-call deterministic rules** (default tier1-small; escalate
+  to tier2-mid on `X-Atlas-Quality: high` or estimated `query_tokens > threshold`; frontier reserved/never
+  auto-selected; eval-floor guard) plus the `rag-engine` `ModelTierResolver` (tier → portable
+  `ChatOptions.model(...)`). The **model-cascade** (escalate when the tier-1 answer fails the inline
+  `FactCheckingEvaluator`) and the **`retrieved_context_tokens > 4000`** rule are **not yet wired**: both are
+  *post-retrieval / post-generation* signals the Gateway cannot see before calling `rag-engine`, so they need
+  `rag-engine` to surface a confidence/context signal in the response — a cross-cutting change scheduled with
+  the eval-through-Gateway work (task 10) or a dedicated follow-up. `ATLAS_ROUTER_CASCADE_ENABLED` is bound but
+  inert until then. No eval-floor risk: escalation only moves *up* to an eval-passing tier.
+
 ---
 
 ## 7. Open questions for the owner (focused — blocking spec sign-off)

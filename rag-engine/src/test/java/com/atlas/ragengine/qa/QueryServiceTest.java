@@ -90,6 +90,32 @@ class QueryServiceTest {
         assertThat(result.contexts()).isEmpty();
     }
 
+    @Test
+    void modelOverrideIsAppliedToThePromptOptions() {
+        StubChatModel chat = new StubChatModel("[1]");
+        QueryService service = new QueryService(
+                fixedRetriever(List.of(src("public", "doc-a"))), guardrail, citations, chat);
+
+        service.answer("q", ClearanceLevel.PUBLIC, 6, "req-1", "qwen2.5:7b-instruct");
+
+        // The P3 router-selected tier reaches the model as a portable ChatOptions.model(...) override.
+        assertThat(chat.lastPrompt().getOptions()).isNotNull();
+        assertThat(chat.lastPrompt().getOptions().getModel()).isEqualTo("qwen2.5:7b-instruct");
+    }
+
+    @Test
+    void noModelOverrideLeavesDefaultModel() {
+        StubChatModel chat = new StubChatModel("[1]");
+        QueryService service = new QueryService(
+                fixedRetriever(List.of(src("public", "doc-a"))), guardrail, citations, chat);
+
+        service.answer("q", ClearanceLevel.PUBLIC, 6, "req-1", null);
+
+        // No override → no model-bearing options forced (the ChatModel uses its configured default).
+        assertThat(chat.lastPrompt().getOptions() == null
+                || chat.lastPrompt().getOptions().getModel() == null).isTrue();
+    }
+
     private static HybridRetriever fixedRetriever(List<RetrievedChunk> chunks) {
         RetrievalStats stats = new RetrievalStats(chunks.size(), 0, chunks.size(), chunks.size(), "compliance");
         RetrievalResult result = new RetrievalResult(chunks, stats);
