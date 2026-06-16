@@ -13,6 +13,7 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0041 | 2026-06-14 | Ephemeral GPU lifecycle (destroy-between-sessions) + official jarvislabs SDK | Accepted | Infra |
 | 0040 | 2026-06-14 | Cost-units model & cost-delta reporting | Accepted | P3 |
 | 0039 | 2026-06-14 | Circuit-breaker scope & fallback | Accepted | P3 |
 | 0038 | 2026-06-14 | Gateway resource controls (rate-limit, budget caps, LLM10) | Accepted | P3 |
@@ -61,11 +62,59 @@
 > (`ROADMAP.md` §8). **ADR-0033–0040 are the P3 grooming decisions** (`docs/phases/P3_SPEC.md` §3 + §8
 > web-validated gap analysis), owner-confirmed 2026-06-14 before P3 implementation begins; **ADR-0034 supersedes
 > ADR-0016** by replacing the P1 clearance-header shim with the simulated-IdP verified-clearance trust boundary.
-> Each remains open to revision with a new superseding ADR if a later phase surfaces evidence against it.
+> **ADR-0041 is an infra refinement** (groomed 2026-06-14): it extends ADR-0029's fail-safe GPU helper and
+> refines ADR-0006's GPU cost model to a true **₹0-when-idle** posture (destroy-between-sessions). Each remains
+> open to revision with a new superseding ADR if a later phase surfaces evidence against it.
 
 ---
 
 ## 2. Decisions
+
+### ADR-0041 — Ephemeral GPU lifecycle (destroy-between-sessions) + official jarvislabs SDK
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** Infra (P3-adjacent) · **Spec:** `RUNBOOK.md` §2 · **Extends:** ADR-0029 (D-P2-9) · **Refines:** ADR-0006 (GPU cost model)
+- **Context:** ADR-0006 chose JarvisLabs with **pause/resume**, but pausing is **not ₹0 when idle** — JarvisLabs
+  bills **storage at $0.00014/GB/hr** on a paused instance (~$0.1008/GB/mo; a 50 GB disk ≈ **$5.04/mo ≈ ₹430/mo**),
+  accruing **24/7 between sessions** (verified live: [pricing](https://jarvislabs.ai/pricing) + [SDK docs](https://docs.jarvislabs.ai/sdk/)).
+  The verified live SDK (`jarvislabs` 0.2.x) `instances.destroy()` deletes the instance **and its storage** →
+  genuinely **₹0 idle**. The real ₹0-idle lever is **destroy vs pause**, *not* template-vs-VM. Separately, the
+  **official `jarvislabs` SDK** now supersedes the hand-rolled `jlclient`-derived calls in `infra/gpu` and
+  natively handles region routing, machine_id drift, provisioning (**startup scripts**), and persistent
+  **filesystems** (mounted `/home/jl_fs`, survive destroy).
+- **Options considered:**
+  - (a) **Pause-only** (status quo, ADR-0006): fast resume (models persist), but ~₹430/mo idle storage if never destroyed.
+  - (b) **Destroy-between-sessions + provision-from-scratch** *(recommended)*: `instances.create()` fresh each
+    session with an Ollama **startup script** that pulls the pinned model manifest; **pause only for short
+    within-session gaps**; **guaranteed destroy** at session end → **₹0 idle**. Cost: ~5–10 min re-pull of
+    ~15 GB (~₹40–85/mo of setup GPU time) + a download failure surface.
+  - (c) **Filesystem model cache + destroy compute**: keep models on a JarvisLabs **filesystem** (`/home/jl_fs`,
+    survives destroy; `OLLAMA_MODELS` points there) and destroy the instance — near-₹0 compute idle, ~₹130/mo
+    for a ~15 GB volume, **no re-download** (fast/reliable cold start).
+- **Decision:** Adopt **(b) as the default** (destroy-between-sessions, provision-from-scratch) with **(c) as an
+  opt-in toggle** (`GPU_MODEL_CACHE=filestore`) for sessions that value fast/reliable cold start over the last
+  ~₹130/mo. **Within a live session, pause** for short idle gaps; **destroy** at session end. Migrate `infra/gpu`
+  to the **official `jarvislabs` SDK** (`Client().instances.create/pause/resume/destroy`, `scripts`,
+  `filesystems`), passing `GPU_API_KEY` as `Client(api_key=...)` to keep the provider abstraction.
+- **Rationale:** Makes "₹0 when idle" **true**, not aspirational — strengthening the first-class cost-discipline
+  thesis (CLAUDE.md) and the "runs from scratch via documented setup" reproducibility ethos (provision-from-
+  nothing). The SDK removes hand-rolled-API risk and provides the exact primitives (startup scripts, filesystems,
+  destroy) the lifecycle needs. Honest trade-off: a 5–10 min cold start per session + a download failure surface,
+  mitigated by **health-gating** (`/api/tags`), parallel pulls, retries, and the (c) cache toggle.
+- **Consequences:**
+  - The **guaranteed-pause** invariant (ADR-0029) is **extended to guaranteed-destroy** — a leaked *running*
+    instance bills full GPU, a leaked *paused* one bills storage; the `finally`/trap + idle watchdog must now
+    **destroy** on every exit path.
+  - `OLLAMA_BASE_URL` changes **every** session (fresh instance) — already auto-discovered + written to `.env` by `gpu-up`.
+  - Provisioning = a JarvisLabs **startup script** (`scripts.add` → `script_id` on `create`) that installs Ollama,
+    sets `OLLAMA_HOST`, and pulls the **pinned model manifest** (ADR-0005 + the P3 tiers, ADR-0035); the helper
+    health-gates on `/api/tags` before handing back the URL.
+  - **VM template** (`template="vm"`) requires a registered SSH key + **100 GB min** storage; the simpler
+    **container template** (`pytorch`, CUDA preinstalled, 40 GB min, boots ~1.8 s) is the default — **both reach
+    ₹0 on destroy** (the user's "as a VM, not from template" goal is satisfied by *destroy*, with template choice
+    secondary).
+  - The `jlclient`-derived raw-API driver is **superseded** by the SDK (kept only as reference); the E2E fallback
+    stays behind the provider seam.
+  - `infra/gpu` code migration + the startup-script provisioner are a **follow-up implementation task** — this ADR
+    is the groomed decision (RUNBOOK §2 + `infra/gpu/README.md` describe the target flow).
 
 ### ADR-0040 — Cost-units model & cost-delta reporting
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-8), §8.3

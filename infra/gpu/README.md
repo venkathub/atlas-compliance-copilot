@@ -8,6 +8,23 @@ See **ADR-0029 (D-P2-9)** and RUNBOOK §2.4 / §6.
 > it *running*. Every entry point pauses in a `finally`; a detached watchdog pauses on a
 > deadline even if the parent process is killed.
 
+> ### Groomed next (ADR-0041) — ephemeral lifecycle + official SDK *(planned, not yet implemented)*
+> A **paused** JarvisLabs instance still bills storage (~$0.00014/GB/hr ≈ ₹430/mo for 50 GB),
+> so the helper is being extended from *resume/pause* to a true **₹0-idle** lifecycle:
+> - **destroy-between-sessions** (default `GPU_LIFECYCLE=destroy`): `create` a fresh instance,
+>   **provision from scratch** via a JarvisLabs **startup script** (install Ollama → `serve` →
+>   pull the pinned model manifest), health-gate `/api/tags`, run, then **guaranteed destroy**
+>   (the guaranteed-*pause* invariant becomes guaranteed-*destroy*). Pause is kept for short
+>   within-session gaps.
+> - optional **`GPU_MODEL_CACHE=filestore`**: models on a persistent **filesystem** (`/home/jl_fs`,
+>   survives destroy) to skip the ~15 GB re-pull.
+> - migrate the driver from the hand-rolled `jlclient`-derived calls to the **official
+>   `jarvislabs` Python SDK** (`Client().instances.create/pause/resume/destroy`, `scripts`,
+>   `filesystems`), passing `GPU_API_KEY` as `Client(api_key=...)` to keep the provider seam.
+>   The SDK natively handles region routing + machine_id drift (no more bespoke fallbacks).
+> See `docs/RUNBOOK.md` §2.4 for the operating policy. Everything **below this box describes the
+> current resume/pause implementation.**
+
 ## Why Python + stdlib only
 The helper guards money, so its pause path must be **unit-testable** (a bash+curl wrapper
 is not) and must run in CI with **zero third-party deps** (no fragile env between the GPU

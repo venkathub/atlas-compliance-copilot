@@ -74,8 +74,10 @@ The LLM **never runs on the laptop**. It lives on a rented Indian-cloud GPU and 
 `OLLAMA_BASE_URL`. Default platform: **JarvisLabs.ai** (INR/UPI, per-minute billing, pause/resume with
 persistent storage). Fallback: **E2E Networks** (Indian, INR + GST).
 
-**Sizing:** our dev model is small — an **L4 / RTX A5000 (16–24 GB VRAM)** is plenty (no H100), with
-**~30–50 GB storage**. Persistent storage survives pause/resume, so pulled models stay put when paused.
+**Sizing:** our dev model is small — an **L4 (IN2 region, INR) / RTX A5000 (16–24 GB VRAM)** is plenty (no
+H100), with **~40–50 GB storage**. Instance storage survives **pause/resume** (models stay put when paused)
+but is **deleted on `destroy`** — which is the point of the ₹0-idle lifecycle (§2.4, ADR-0041). To keep models
+across destroys, use a **filesystem** (`/home/jl_fs`, `GPU_MODEL_CACHE=filestore`).
 
 **Port model (important):** in **template/instance mode** JarvisLabs publishes **port 6006** as the public
 API endpoint (click the instance's **API** button for the URL). In **VM mode** you expose any port with
@@ -159,15 +161,31 @@ curl -s "$OLLAMA_BASE_URL/api/embeddings" \
 ```
 All three returning sane values = endpoint is healthy and ready for the RAG engine.
 
-### 2.4 Cost discipline — pause/resume
-- **Pause the instance** at the end of each dev/demo session → per-minute GPU billing stops; models persist on
-  the instance's persistent storage.
-- **Resume** before a session; the public endpoint may change on resume → update `OLLAMA_BASE_URL`.
-- **Automated (P2, ADR D-P2-9, preferred):** `make -C infra gpu-up` / `gpu-down` (or the calibration job)
-  drives resume/pause via the provider API with a **guaranteed pause** (`finally`/trap) + idle-timeout
-  watchdog, and auto-discovers the fresh `OLLAMA_BASE_URL`. Manual pause/resume below is the fallback.
+### 2.4 Cost discipline — pause WITHIN a session, DESTROY between sessions (ADR-0041)
+> **Why not just pause?** A *paused* JarvisLabs instance is **not ₹0** — it bills **storage at
+> $0.00014/GB/hr** (~$0.1008/GB/mo; a 50 GB disk ≈ **$5.04/mo ≈ ₹430/mo**) 24/7 between sessions. The
+> only true ₹0-idle is **`destroy`** (the SDK's `instances.destroy()` deletes the instance **and its
+> storage**). So the policy is: **pause for short gaps *inside* a live session; destroy at session end.**
+
+- **Within a live session:** `pause` for short idle gaps (fast resume, models still on the instance disk).
+- **At the end of a session:** **destroy** the instance → **₹0 idle**. The next session **provisions from
+  scratch** (fresh instance → Ollama startup script → pull the pinned models → health-gate).
+- **Automated (preferred):** `make -C infra gpu-up` / `gpu-down` drives the lifecycle via the **official
+  `jarvislabs` SDK** with a **guaranteed teardown** (`finally`/trap) + idle-timeout watchdog (the
+  guaranteed-*pause* invariant of ADR-0029 is extended to guaranteed-*destroy*), and auto-discovers + writes
+  the fresh `OLLAMA_BASE_URL` into `.env`. `OLLAMA_BASE_URL` changes **every** session (fresh instance).
+- **Cold-start cost:** a fresh provision re-pulls ~15 GB of models (~5–10 min of GPU time, ~₹40–85/mo total).
+  To skip the re-download, set **`GPU_MODEL_CACHE=filestore`** — models live on a JarvisLabs **filesystem**
+  (`/home/jl_fs`, `OLLAMA_MODELS` points there) that **survives destroy** (~₹130/mo for ~15 GB).
 - Reserve the larger/frontier model only for final demos (P5); default to the small model in dev.
-- Rough outlook: a disciplined pause/resume cadence keeps GPU spend to a few hundred ₹/month.
+- **Outlook:** destroy-between-sessions ≈ a few tens of ₹/month of *active* GPU + ₹0 idle, vs ~₹430/mo if a
+  50 GB instance is left paused all month.
+
+> **Provisioning hook:** the helper uploads an Ollama setup script via the SDK (`scripts.add` → `script_id`
+> on `create`) that installs Ollama (`curl -fsSL https://ollama.com/install.sh | sh`), runs
+> `OLLAMA_HOST=0.0.0.0:<port> ollama serve`, and pulls the pinned manifest — then health-gates on
+> `/api/tags` before returning the URL. Container template (`pytorch`, CUDA preinstalled, boots ~1.8 s) is the
+> default; a bare `template="vm"` (needs an SSH key + 100 GB min) is the alternative. Both reach ₹0 on destroy.
 
 ### 2.5 Security notes
 - Ollama has **no auth** by default; the exposed JarvisLabs URL is obscure but not secret. Acceptable for dev.
