@@ -53,6 +53,18 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- OkHttp MockWebServer: a lightweight, real-HTTP stub for rag-engine in the Gateway ITs.
+             Real socket round-trip lets us assert the on-the-wire internal-clearance header (ADR-0034)
+             and, in P3 task 6, simulate downstream delays/errors/disconnects for the circuit-breaker +
+             timeout ITs. NOT managed by the Boot 3.4 BOM, so the version is pinned here (test-only,
+             gateway-only; 4.12.0 keeps the `okhttp3.mockwebserver` package). -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>mockwebserver</artifactId>
+            <version>4.12.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

@@ -9,17 +9,24 @@ When complete, the gateway provides: simulated-IdP auth + verified-clearance tru
 egress redaction + output sanitization (ADR-0037), rate limiting + budget caps + circuit breaker
 (ADR-0038/0039, LLM10), and a cost-units cost model (ADR-0040) surfaced on a Grafana dashboard.
 
-## Status — P3 task 2 (simulated IdP + trust boundary)
+## Status — P3 task 3 (query passthrough)
 
 Implemented so far:
 - **Module skeleton** (task 1): Spring Cloud Gateway WebMVC app + actuator health/Prometheus.
-- **Simulated IdP + verified-clearance trust boundary** (task 2, ADR-0034): `POST /v1/auth/token`
-  mints a signed JWT clearance claim; `JwtClearanceFilter` validates it on every protected request
-  (the trust boundary); `DownstreamClearanceSigner` re-asserts the verified clearance to `rag-engine`
-  over a signed internal hop the engine independently verifies (it ignores client `X-Atlas-Clearance`).
+- **Simulated IdP + verified-clearance trust boundary** (task 2, ADR-0034).
+- **Query passthrough** (task 3): `POST /v1/query` proxies to `rag-engine`, attaching the signed
+  internal clearance assertion so the engine receives a *verified* clearance (never the client's
+  header). The grounded, cited answer is relayed back.
 
-Not yet: the query passthrough that attaches the internal assertion (task 3), router, cache,
-redaction, metering (tasks 4–8).
+Not yet: cost-aware router (task 4), semantic cache (task 5), rate-limit/budget/breaker (task 6),
+PII redaction + output sanitization (task 7), cost metering (task 8).
+
+### Response shape (incremental)
+
+Task 3 relays `rag-engine`'s JSON response **verbatim** (a Jackson `JsonNode`: `answer` + `citations`
++ `retrieval`). The richer client envelope in P3_SPEC §2.3 (`routing` / `cache` / `redaction` / `cost`)
+is layered on as tasks 4–8 add those concerns — Task 3 does not fabricate them. This keeps each task's
+diff small and the proxied answer lossless.
 
 ## Auth — mint + use a clearance token (dev)
 
@@ -71,9 +78,16 @@ full-stack bring-up.
 
 ## Tests
 
-`mvn -pl gateway -am test` runs the skeleton smoke tests (context loads, `/actuator/health` is `UP`,
-`/actuator/prometheus` exposed). Integration (`*IT`) and `live`-tagged tests follow the rag-engine
+`mvn -pl gateway -am test` runs the model-free unit tests (auth, query controller). `mvn -pl gateway -am verify`
+also runs the integration tests (`*IT`). Integration (`*IT`) and `live`-tagged tests follow the rag-engine
 conventions (Failsafe; `live` excluded by default, enabled via `-P live`).
+
+**Stub downstream (why MockWebServer):** `GatewayQueryIT` exercises the full path (JWT filter → controller →
+`RestClient`) against an **OkHttp `MockWebServer`** standing in for `rag-engine`. A real localhost socket
+round-trip lets the test assert the *on-the-wire* `X-Atlas-Internal-Clearance` assertion (decode + verify the
+JWT, check the `clearance` claim) — something a pure in-JVM mock can't prove. It is also reused in task 6 to
+simulate downstream delays/errors/disconnects for the circuit-breaker + timeout ITs. It is a lightweight,
+test-scoped dependency (pinned `4.12.0`; not Boot-BOM-managed).
 
 ## Config (env-swappable, never hardcoded — CLAUDE.md)
 
