@@ -21,14 +21,25 @@ from atlas_evals.baseline import (
     save_baseline,
 )
 from atlas_evals.cassettes import CassetteStore, Mode
-from atlas_evals.client import AtlasRagClient, CassettingClient
+from atlas_evals.client import AtlasRagClient, CassettingClient, RagQueryClient
 from atlas_evals.datasets.adversarial import load_adversarial
 from atlas_evals.datasets.corpus import DATA_DIR
 from atlas_evals.datasets.golden import load_golden
 from atlas_evals.fingerprint import rag_fingerprint, ragas_fingerprint
+from atlas_evals.gateway_client import GatewayRagClient
 from atlas_evals.metrics.adversarial_scorer import AdversarialReport, score_adversarial
 from atlas_evals.metrics.ragas_runner import MetricReport, RagasRunner
 from atlas_evals.metrics.ragas_scorer import RagasScorer
+
+
+def _sut_client() -> RagQueryClient:
+    """The system-under-test client. ``ATLAS_EVAL_THROUGH_GATEWAY=true`` runs the eval THROUGH the
+    Gateway path (auth + route + cache + redaction, R2); otherwise it talks to rag-engine directly.
+    In REPLAY the cassettes (keyed by question/clearance/fingerprint) are identical either way, so
+    CI stays offline; the live lane re-records through whichever client is selected."""
+    if os.environ.get("ATLAS_EVAL_THROUGH_GATEWAY", "").lower() in ("1", "true", "yes"):
+        return GatewayRagClient(base_url=os.environ.get("GATEWAY_URL", "http://localhost:8080"))
+    return AtlasRagClient(base_url=os.environ.get("RAG_ENGINE_URL", "http://localhost:8081"))
 
 RAG_CASSETTES = DATA_DIR / "cassettes" / "rag"
 JUDGE_CASSETTES = DATA_DIR / "cassettes" / "judge"
@@ -88,7 +99,7 @@ def _run(recalibrate: bool) -> tuple[MetricReport, AdversarialReport, Baseline]:
     )
 
     rag = CassettingClient(
-        AtlasRagClient(base_url=os.environ.get("RAG_ENGINE_URL", "http://localhost:8081")),
+        _sut_client(),
         CassetteStore(RAG_CASSETTES, Mode.REPLAY),
         fingerprint=rag_fp,
     )

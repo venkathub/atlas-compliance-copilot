@@ -1,0 +1,10 @@
+{
+  "_note": "P3 gateway calibration baseline (ADR-0036/0040). PLACEHOLDER until the live calibration lane runs `python -m atlas_evals.cost_report` (GPU on) — see evals/README + RUNBOOK. The cache-similarity threshold + the measured cost-delta (% cheaper at equal eval score) are recorded here from that run, mirroring data/baseline.json. Quality-equality is proven by the RAGAS gate run with ATLAS_EVAL_THROUGH_GATEWAY=true.",
+  "cache_sim_threshold": 0.95,
+  "cost_off_units": null,
+  "cost_on_units": null,
+  "cost_reduction_pct": null,
+  "target_reduction_pct": 30.0,
+  "meets_target": null,
+  "recorded_at": null
+}

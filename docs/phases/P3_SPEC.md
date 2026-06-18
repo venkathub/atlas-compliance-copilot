@@ -517,6 +517,15 @@ P3 adds **no new default model**; it adds routing *tiers* (all env-swappable; CL
 ### 6.1 Deviations / partials
 *(to be filled honestly at implementation, in the P2 spec's §6.1 style.)*
 
+- **P3 task 10 — live cost-delta numbers pending the GPU calibration lane.** The eval-through-Gateway
+  **machinery** is shipped and CI-wired: a `GatewayRagClient` (mint JWT → `/v1/query`), the reused RAGAS gate
+  run with `ATLAS_EVAL_THROUGH_GATEWAY=true` (replays the committed cassettes via the Gateway client path →
+  offline, blocks merge on regression), and `evals/cost_report.py` (cost-delta math, unit-tested). The
+  **measured numbers** — through-Gateway re-recorded cassettes and the real cost-delta in
+  `evals/data/gateway-baseline.json` — require the **live calibration lane (GPU on)**, the same constraint
+  under which P2's `baseline.json` was recorded; `gateway-baseline.json` ships as a documented placeholder
+  until then. No CI gate depends on a GPU.
+
 - **P3 task 9 — Presidio + LLM Guard off-path deep-scan deferred (owner-confirmed 2026-06-17, Option B).**
   ADR-0037's hybrid keeps the **deterministic Java redactor + sanitizer on the hot path** (task 7, shipped and
   hard-gated). The **conditional** off-path Presidio/LLM Guard NER deep-scan (a Python sidecar + an audit job

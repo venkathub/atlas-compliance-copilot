@@ -82,3 +82,24 @@ mvn -pl rag-engine spring-boot:run &      # rag-engine up + ingested
 uv run --directory evals --group ragas python -m atlas_evals.record
 make -C infra gpu-down                     # GUARANTEED pause
 ```
+
+## Eval-through-Gateway + cost-delta (P3, R2/R3)
+The SAME merge gate, with the harness pointed at the **Gateway** path (auth + route + cache +
+redaction) instead of rag-engine directly — proving routing/caching/redaction never drop quality
+below the floor (R2). It replays the committed cassettes (keyed by question/clearance/fingerprint,
+not client path), so it is offline/GPU-free and runs in CI:
+```bash
+ATLAS_EVAL_THROUGH_GATEWAY=true GATEWAY_URL=http://localhost:8080 \
+  uv run --directory evals python -m atlas_evals.gate
+```
+The **cost-delta** ("X% cheaper at equal eval score", R3) is a **live calibration job** (GPU on, not
+the PR gate): it runs the golden set through the Gateway with caching+routing on vs off, reads the
+per-response `cost.costUnits` (ADR-0040), and writes `data/gateway-baseline.json`:
+```bash
+make -C infra gpu-up && set -a && . ./.env && set +a
+mvn -pl gateway spring-boot:run & mvn -pl rag-engine spring-boot:run &   # full stack + Redis up
+GATEWAY_URL=http://localhost:8080 uv run --directory evals python -m atlas_evals.cost_report
+make -C infra gpu-down
+```
+`gateway-baseline.json` ships as a placeholder until that live run populates the measured numbers
+(target band: **≥30% cheaper** at equal eval score, §8.3). The pure delta math is unit-tested offline.

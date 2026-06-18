@@ -9,26 +9,26 @@ When complete, the gateway provides: simulated-IdP auth + verified-clearance tru
 egress redaction + output sanitization (ADR-0037), rate limiting + budget caps + circuit breaker
 (ADR-0038/0039, LLM10), and a cost-units cost model (ADR-0040) surfaced on a Grafana dashboard.
 
-## Status — P3 task 8 (metering + Grafana cost dashboard)
+## Status — P3 task 10 (eval-through-Gateway + cost-delta)
 
 Implemented so far:
-- Tasks 1–7 (skeleton, trust boundary, passthrough, router, cache, LLM10 controls, PII/output safety).
-- **Metering + cost dashboard** (task 8, ADR-0040/G-P3-7): `CostMeter` emits cost-units + request latency +
-  cache hit/miss + rate-limit/budget rejections + redaction counts (Micrometer → Prometheus); token usage
-  reuses the OTel-standard `gen_ai.client.token.usage`. **Real token usage** is now surfaced from rag-engine
-  (`QueryResponse.usage`) and drives cost + budget accounting (replacing the task-6 estimate). A provisioned
-  Grafana dashboard (`atlas-cost.json`) renders the cost story; the response now carries the full §2.3
-  envelope (`routing`/`cache`/`redaction`/`cost`).
+- Tasks 1–8 (gateway pipeline) + task 9 deferred (Presidio off-path).
+- **Eval-through-Gateway + cost-delta** (task 10, R2/R3): the reused P2 RAGAS gate now runs **through the
+  Gateway** (`ATLAS_EVAL_THROUGH_GATEWAY=true` → `GatewayRagClient` mints a JWT + calls `/v1/query`),
+  proving routing/caching/redaction don't drop quality below the floor; wired as a CI step (replays the
+  committed cassettes, offline). `evals/cost_report.py` produces the cost-delta ("X% cheaper at equal eval
+  score") → `gateway-baseline.json`. **Partial:** the measured cost numbers need the live calibration lane
+  (GPU); see `evals/README` + spec §6.1.
 
-Not yet: off-path Presidio + LLM Guard deep-scan (task 9, conditional); eval-through-Gateway + cost-delta +
-CI gate (task 10); docs/portfolio (task 11).
+Remaining: docs + quantified portfolio bullet (task 11).
 
 ### Dashboards
 
 `make -C infra up` provisions Grafana (`http://localhost:${GRAFANA_PORT:-3001}`) → **Atlas — Cost-aware
-Gateway (P3)** (uid `atlas-cost-p3`). The gateway is scraped at `host.docker.internal:${GATEWAY_PORT}` (run
-it on the host with `mvn -pl gateway spring-boot:run`). The cost-spike panel carries a threshold band; the
-circuit-breaker panel is best-effort.
+Gateway (P3)** (uid `atlas-cost-p3`): tokens/cost/latency per route/tier/user, cache hit-rate, rate-limit/
+budget rejections, redaction counts, circuit-breaker state, and a cost-spike threshold panel. The gateway
+is scraped at `host.docker.internal:${GATEWAY_PORT}` (run it on the host with `mvn -pl gateway
+spring-boot:run`). The cost-spike panel carries a threshold band; the circuit-breaker panel is best-effort.
 
 ## Auth — mint + use a clearance token (dev)
 
