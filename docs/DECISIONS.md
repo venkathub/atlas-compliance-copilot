@@ -81,6 +81,21 @@
   for frontier spend; the target is honest and eval-gated rather than an arbitrary claim.
 - **Consequences:** self-hosted numbers are an estimate (documented as such); the measured cost-delta is
   recorded in `gateway-baseline.json` from the live calibration run, not hardcoded.
+- **Implementation note (2026-06-17, P3 task 8):** `CostMeter` (Micrometer → Prometheus at the gateway's
+  `/actuator/prometheus`) emits a derived, namespaced **`atlas.gateway.cost.units`** counter (tags
+  `route`/`tier`/`user`) plus `atlas.gateway.request.duration` (timer, tag `cache_hit`),
+  `atlas.gateway.cache.hit`/`.miss`, `atlas.gateway.ratelimit.rejected`, `atlas.gateway.budget.rejected`, and
+  `atlas.gateway.redaction.count` (tag `entity_type`). **Token usage reuses the OTel-standard
+  `gen_ai.client.token.usage`** already emitted by rag-engine (no parallel token meter, per G-P3-7). Cost is
+  computed from **real token usage** now surfaced in the rag-engine `QueryResponse.usage` (from `ChatResponse`
+  metadata) — this **replaces the task-6 budget estimate** for both budget accounting and the §2.3 `cost`
+  section `{promptTokens, completionTokens, costUnits, latencyMs}`; a deterministic estimate is the fallback
+  when a model doesn't report usage. A cache hit reports ~zero serving cost. Grafana dashboard
+  `infra/grafana/dashboards/atlas-cost.json` (auto-provisioned) renders cost/tokens/latency per route/tier/user
+  + cache hit-rate, rejections, redaction counts, and circuit-breaker state. **Pragmatic calls:** the
+  **cost-spike anomaly alert** is a threshold-marked Grafana panel (not a full alerting rule); the
+  circuit-breaker-state panel is **best-effort** (depends on the Resilience4j Micrometer binder); the `user`
+  tag is acceptable-cardinality for the dev/demo only.
 
 ### ADR-0039 — Circuit-breaker scope & fallback
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-7)

@@ -140,9 +140,11 @@ source survives, it returns a grounded "no authorized information" refusal **wit
 
 HTTP API:
 - **`POST /v1/query`** — body `{ "query": "...", "topK": 6, "includeContexts": false }`; caller clearance
-  from the shim headers; returns `{ answer, citations[], retrieval{denseHits,sparseHits,fused,reranked,clearanceApplied} }`.
+  from the shim headers; returns `{ answer, citations[], retrieval{denseHits,sparseHits,fused,reranked,clearanceApplied}, usage? }`.
   With `includeContexts=true` (eval-harness opt-in, ADR-0023) the response adds `contexts[]` of
   `{chunkId, documentId, clearance, text}` — the full RBAC-filtered chunks the model saw (omitted otherwise).
+  `usage` ({promptTokens, completionTokens}, P3/ADR-0040) is included when the model reports token usage — the
+  gateway uses it for real cost/budget accounting.
 - **`POST /v1/admin/ingest`** — full corpus rebuild; **guarded** (requires `restricted`/admin), returns
   `{documents, chunks, rejectedUntrusted}`.
 

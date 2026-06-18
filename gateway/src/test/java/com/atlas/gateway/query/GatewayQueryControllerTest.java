@@ -31,12 +31,14 @@ import com.atlas.gateway.resilience.BudgetGuard;
 import com.atlas.gateway.resilience.DownstreamUnavailableException;
 import com.atlas.gateway.resilience.ModelCircuitBreaker;
 import com.atlas.gateway.resilience.NoOpBudgetGuard;
+import com.atlas.gateway.metering.CostMeter;
 import com.atlas.gateway.resilience.RateLimiter;
 import com.atlas.gateway.resilience.RequestLimits;
 import com.atlas.gateway.safety.OutputSanitizer;
 import com.atlas.gateway.safety.PiiRedactor;
 import com.atlas.gateway.safety.SafetyProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
@@ -78,9 +80,10 @@ class GatewayQueryControllerTest {
         PiiRedactor redactor = new PiiRedactor(List.of());
         OutputSanitizer sanitizer = new OutputSanitizer();
         SafetyProperties safety = new SafetyProperties(true, true, List.of());
+        CostMeter meter = new CostMeter(new SimpleMeterRegistry());
         return MockMvcBuilders.standaloneSetup(new GatewayQueryController(
                         ragEngine, signer, router, cache, stubEmbedder, cacheProps,
-                        rateLimiter, budget, limits, cb, costTable, redactor, sanitizer, safety, json))
+                        rateLimiter, budget, limits, cb, costTable, redactor, sanitizer, safety, meter, json))
                 .setControllerAdvice(new GatewayExceptionHandler())
                 .build();
     }
@@ -201,6 +204,23 @@ class GatewayQueryControllerTest {
                 .andExpect(jsonPath("$.answer").value(org.hamcrest.Matchers.containsString("[REDACTED:SSN_TIN]")))
                 .andExpect(jsonPath("$.redaction.applied").value(true))
                 .andExpect(jsonPath("$.redaction.counts.SSN_TIN").value(1));
+    }
+
+    @Test
+    void realTokenUsageDrivesTheCostSection() throws Exception {
+        when(ragEngine.query(anyString(), eq("tier1-small"), anyInt(), any()))
+                .thenReturn(json.readTree("{\"answer\":\"A [1].\",\"citations\":[],"
+                        + "\"usage\":{\"promptTokens\":800,\"completionTokens\":200}}"));
+
+        defaultMvc().perform(post("/v1/query")
+                        .requestAttr(CallerClearance.ATTRIBUTE, new CallerClearance("priya", Clearance.COMPLIANCE))
+                        .contentType("application/json").content("{\"query\":\"aml?\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cost.promptTokens").value(800))
+                .andExpect(jsonPath("$.cost.completionTokens").value(200))
+                // tier1 @0.30/1k over 1000 tokens = 0.30 cost-units.
+                .andExpect(jsonPath("$.cost.costUnits").value(0.30))
+                .andExpect(jsonPath("$.cost.latencyMs").isNumber());
     }
 
     @Test

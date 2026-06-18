@@ -5,6 +5,7 @@ import com.atlas.gateway.auth.DownstreamClearanceSigner;
 import com.atlas.gateway.cache.CacheProperties;
 import com.atlas.gateway.cache.QueryEmbedder;
 import com.atlas.gateway.cache.SemanticCache;
+import com.atlas.gateway.metering.CostMeter;
 import com.atlas.gateway.router.CostTable;
 import com.atlas.gateway.router.ModelRouter;
 import com.atlas.gateway.router.ModelTier;
@@ -19,6 +20,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -36,18 +38,18 @@ import org.springframework.web.server.ResponseStatusException;
  * {@code POST /v1/query} — the public query entry point (P3_SPEC §2.5).
  *
  * <p>Pipeline: clearance verified by {@code JwtClearanceFilter} (ADR-0034) → rate limit (429) → budget
- * pre-check (402) → input-size cap (413) → <b>PII ingress redaction</b> (LLM02) → semantic-cache lookup
- * within the caller's clearance partition (ADR-0036; hit ⇒ return) → cost-aware routing (ADR-0035) →
- * downstream call wrapped in the circuit breaker + timeout (ADR-0039; 503 fallback) → <b>PII egress
- * redaction + output sanitization</b> (ADR-0037, LLM02/LLM05) → trusted-write + budget post-accounting.
- * Egress safety runs on <b>both</b> the fresh and cache-hit paths (the cache stores the raw answer; the
- * gateway redacts on every read). Full cost metering is task 8.
+ * pre-check (402) → input-size cap (413) → PII ingress redaction (LLM02) → semantic-cache lookup within the
+ * caller's clearance partition (ADR-0036; hit ⇒ return at ~zero cost) → cost-aware routing (ADR-0035) →
+ * downstream call wrapped in the circuit breaker + timeout (ADR-0039; 503 fallback) → PII egress redaction +
+ * output sanitization (ADR-0037, LLM02/LLM05) → trusted-write + budget post-accounting (real tokens) →
+ * metering (ADR-0040). The response carries the full §2.3 envelope (routing/cache/redaction/cost).
  */
 @RestController
 @RequestMapping("/v1")
 public class GatewayQueryController {
 
     private static final Logger log = LoggerFactory.getLogger(GatewayQueryController.class);
+    private static final String ROUTE = "/v1/query";
 
     private final RagEngineClient ragEngine;
     private final DownstreamClearanceSigner signer;
@@ -63,13 +65,14 @@ public class GatewayQueryController {
     private final PiiRedactor piiRedactor;
     private final OutputSanitizer sanitizer;
     private final SafetyProperties safety;
+    private final CostMeter meter;
     private final ObjectMapper mapper;
 
     public GatewayQueryController(RagEngineClient ragEngine, DownstreamClearanceSigner signer,
             ModelRouter router, SemanticCache cache, QueryEmbedder embedder, CacheProperties cacheProps,
             RateLimiter rateLimiter, BudgetGuard budgetGuard, RequestLimits requestLimits,
             ModelCircuitBreaker circuitBreaker, CostTable costTable, PiiRedactor piiRedactor,
-            OutputSanitizer sanitizer, SafetyProperties safety, ObjectMapper mapper) {
+            OutputSanitizer sanitizer, SafetyProperties safety, CostMeter meter, ObjectMapper mapper) {
         this.ragEngine = ragEngine;
         this.signer = signer;
         this.router = router;
@@ -84,12 +87,14 @@ public class GatewayQueryController {
         this.piiRedactor = piiRedactor;
         this.sanitizer = sanitizer;
         this.safety = safety;
+        this.meter = meter;
         this.mapper = mapper;
     }
 
     @PostMapping("/query")
     public ResponseEntity<JsonNode> query(@RequestBody(required = false) GatewayQueryRequest request,
             HttpServletRequest http) {
+        long startNanos = System.nanoTime();
         if (request == null || !request.hasQuery()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "query is required");
         }
@@ -102,16 +107,18 @@ public class GatewayQueryController {
 
         // LLM10 resource controls (ADR-0038), cheapest checks first.
         if (!rateLimiter.tryAcquire(user)) {
+            meter.recordRateLimitRejected();
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "rate limit exceeded");
         }
         requestLimits.validateInputSize(request.query());
         int inputTokens = RequestLimits.estimateTokens(request.query());
         double estimatedCost = costTable.costUnits(ModelTier.TIER1_SMALL, inputTokens, requestLimits.maxOutputTokens());
         if (budgetGuard.wouldExceed(user, estimatedCost)) {
+            meter.recordBudgetRejected();
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "daily budget exceeded");
         }
 
-        // PII ingress redaction (LLM02): scrub the prompt before it reaches embedding / rag-engine.
+        // PII ingress redaction (LLM02): scrub the prompt before embedding / rag-engine.
         GatewayQueryRequest safeRequest = redactIngress(request);
 
         // Semantic-cache lookup — within the caller's clearance partition only (ADR-0036).
@@ -120,30 +127,44 @@ public class GatewayQueryController {
             queryVec = embedder.embed(safeRequest.query());
             Optional<SemanticCache.CacheHit> hit = cache.lookup(clearance, cacheProps.corpusVersion(), queryVec);
             if (hit.isPresent()) {
+                meter.recordCacheHit();
                 log.info("Semantic-cache HIT for '{}' at '{}' (sim={})", user, clearance, hit.get().similarity());
-                return ResponseEntity.ok(fromCache(hit.get()));
+                JsonNode cached = fromCache(hit.get(), startNanos);
+                meter.recordRequest(ROUTE, "cache", true, elapsed(startNanos));
+                return ResponseEntity.ok(cached);
             }
+            meter.recordCacheMiss();
         }
 
         // Miss → route + proxy to rag-engine (wrapped in the circuit breaker + read timeout).
         ModelRouter.RoutingDecision decision = router.route(safeRequest.query(), http.getHeader(ModelRouter.QUALITY_HEADER));
+        String tier = decision.tier().label();
         String assertion = signer.sign(user, caller.clearance());
         log.info("Cache miss → proxying for '{}' at '{}' via tier '{}' (escalated={})",
-                user, clearance, decision.tier().label(), decision.escalated());
+                user, clearance, tier, decision.escalated());
         JsonNode answer = circuitBreaker.call(() ->
-                ragEngine.query(assertion, decision.tier().label(), requestLimits.maxOutputTokens(), safeRequest));
+                ragEngine.query(assertion, tier, requestLimits.maxOutputTokens(), safeRequest));
 
         // Trusted-write the RAW answer (egress redaction is applied per-read, below).
         if (cacheProps.enabled() && answer != null) {
             cache.put(clearance, cacheProps.corpusVersion(), queryVec,
                     new SemanticCache.CachedAnswer(answer.toString(), decision.model()));
         }
-        int completionTokens = RequestLimits.estimateTokens(answerText(answer));
-        budgetGuard.record(user, costTable.costUnits(decision.tier(), inputTokens, completionTokens));
+
+        // Real token usage (ADR-0040) → cost + budget accounting; fall back to an estimate if absent.
+        int[] tokens = tokens(answer, inputTokens);
+        double costUnits = costTable.costUnits(decision.tier(), tokens[0], tokens[1]);
+        budgetGuard.record(user, costUnits);
+        meter.recordCost(ROUTE, tier, user, costUnits);
 
         Map<String, Integer> redactionCounts = applyEgressSafety(answer);
-        return ResponseEntity.ok(withSections(answer, decision.tier().label(), decision.model(),
-                decision.escalated(), false, 0.0, redactionCounts));
+        redactionCounts.forEach(meter::recordRedaction);
+
+        long latencyMs = elapsed(startNanos).toMillis();
+        meter.recordRequest(ROUTE, tier, false, elapsed(startNanos));
+        JsonNode body = withSections(answer, new Meta(tier, decision.model(), decision.escalated(),
+                false, 0.0, redactionCounts, tokens[0], tokens[1], costUnits, latencyMs));
+        return ResponseEntity.ok(body);
     }
 
     private GatewayQueryRequest redactIngress(GatewayQueryRequest request) {
@@ -158,12 +179,29 @@ public class GatewayQueryController {
         return request;
     }
 
+    /** Real token usage from rag-engine's response, or a deterministic estimate when absent. */
+    private static int[] tokens(JsonNode answer, int inputTokensEstimate) {
+        JsonNode usage = answer == null ? null : answer.get("usage");
+        if (usage != null) {
+            int pt = usage.path("promptTokens").asInt(0);
+            int ct = usage.path("completionTokens").asInt(0);
+            if (pt > 0 || ct > 0) {
+                return new int[] {pt, ct};
+            }
+        }
+        return new int[] {inputTokensEstimate, RequestLimits.estimateTokens(answerText(answer))};
+    }
+
     private static String answerText(JsonNode body) {
         return body != null && body.hasNonNull("answer") ? body.get("answer").asText() : "";
     }
 
+    private static Duration elapsed(long startNanos) {
+        return Duration.ofNanos(System.nanoTime() - startNanos);
+    }
+
     /** Build the response from a cache hit: parse the stored RAW answer, apply egress safety, add sections. */
-    private JsonNode fromCache(SemanticCache.CacheHit hit) {
+    private JsonNode fromCache(SemanticCache.CacheHit hit, long startNanos) {
         JsonNode body;
         try {
             body = mapper.readTree(hit.answerJson());
@@ -171,12 +209,15 @@ public class GatewayQueryController {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "cache decode error");
         }
         Map<String, Integer> counts = applyEgressSafety(body);
-        return withSections(body, "cache", hit.model(), false, true, hit.similarity(), counts);
+        counts.forEach(meter::recordRedaction);
+        // A cache hit incurs no model call → ~zero serving cost.
+        return withSections(body, new Meta("cache", hit.model(), false, true, hit.similarity(),
+                counts, 0, 0, 0.0, elapsed(startNanos).toMillis()));
     }
 
     /**
-     * PII egress redaction (LLM02) + output sanitization (LLM05) on the answer + citation snippets — the
-     * carriers of leaked content. Mutates {@code body} in place; returns per-type counts (no PII).
+     * PII egress redaction (LLM02) + output sanitization (LLM05) on the answer + citation snippets. Mutates
+     * {@code body} in place; returns per-type counts (no PII).
      */
     private Map<String, Integer> applyEgressSafety(JsonNode body) {
         Map<String, Integer> counts = new LinkedHashMap<>();
@@ -214,29 +255,41 @@ public class GatewayQueryController {
         return out;
     }
 
-    /** Merge the §2.3 {@code routing} + {@code cache} + {@code redaction} sections into the response. */
-    private JsonNode withSections(JsonNode body, String modelTier, String model, boolean escalated,
-            boolean cacheHit, double similarity, Map<String, Integer> redactionCounts) {
+    /** Carrier for the §2.3 envelope sections merged onto the relayed/cached response. */
+    private record Meta(String modelTier, String model, boolean escalated, boolean cacheHit, double similarity,
+            Map<String, Integer> redactionCounts, int promptTokens, int completionTokens, double costUnits,
+            long latencyMs) {
+    }
+
+    /** Merge the §2.3 {@code routing} + {@code cache} + {@code redaction} + {@code cost} sections. */
+    private JsonNode withSections(JsonNode body, Meta m) {
         if (body instanceof ObjectNode node) {
             ObjectNode routing = node.objectNode();
-            routing.put("modelTier", modelTier);
-            routing.put("model", model);
-            routing.put("escalated", escalated);
+            routing.put("modelTier", m.modelTier());
+            routing.put("model", m.model());
+            routing.put("escalated", m.escalated());
             node.set("routing", routing);
 
             ObjectNode cacheNode = node.objectNode();
-            cacheNode.put("hit", cacheHit);
-            if (cacheHit) {
-                cacheNode.put("similarity", similarity);
+            cacheNode.put("hit", m.cacheHit());
+            if (m.cacheHit()) {
+                cacheNode.put("similarity", m.similarity());
             }
             node.set("cache", cacheNode);
 
             ObjectNode redaction = node.objectNode();
-            redaction.put("applied", !redactionCounts.isEmpty());
+            redaction.put("applied", !m.redactionCounts().isEmpty());
             ObjectNode countsNode = redaction.objectNode();
-            redactionCounts.forEach(countsNode::put);
+            m.redactionCounts().forEach(countsNode::put);
             redaction.set("counts", countsNode);
             node.set("redaction", redaction);
+
+            ObjectNode cost = node.objectNode();
+            cost.put("promptTokens", m.promptTokens());
+            cost.put("completionTokens", m.completionTokens());
+            cost.put("costUnits", m.costUnits());
+            cost.put("latencyMs", m.latencyMs());
+            node.set("cost", cost);
         }
         return body;
     }

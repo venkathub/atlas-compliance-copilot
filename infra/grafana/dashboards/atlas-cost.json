@@ -1,0 +1,187 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 0,
+  "schemaVersion": 39,
+  "tags": ["atlas", "p3", "cost"],
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "",
+  "title": "Atlas — Cost-aware Gateway (P3)",
+  "uid": "atlas-cost-p3",
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Cost & tokens (gateway metering — ADR-0040)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Cost-units rate by tier",
+      "description": "atlas.gateway.cost.units — derived cost-units served, per model tier.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(atlas_gateway_cost_units_total[5m])) by (tier)",
+          "legendFormat": "{{tier}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Cost-spike anomaly (total cost-units/s) — threshold alert surface",
+      "description": "G-P3-6 cost-spike surface: total cost-units rate with a red threshold band. Raise the threshold to your expected ceiling; a sustained breach is the anomaly signal.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "red", "value": 5 }
+          ] },
+          "custom": { "thresholdsStyle": { "mode": "line+area" } }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(atlas_gateway_cost_units_total[5m]))",
+          "legendFormat": "cost-units/s"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "GenAI token usage by type (rag-engine)",
+      "description": "gen_ai.client.token.usage (OTel-standard) emitted on the model hop — input vs output tokens.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(gen_ai_client_token_usage_sum[5m])) by (gen_ai_token_type)",
+          "legendFormat": "{{gen_ai_token_type}} tokens/s"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Gateway request latency p95 by tier",
+      "description": "atlas.gateway.request.duration — end-to-end gateway latency (cache hits are near-zero).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(atlas_gateway_request_duration_seconds_bucket[5m])) by (le, tier))",
+          "legendFormat": "{{tier}} p95"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "Cache, limits & safety",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "collapsed": false
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Semantic-cache hit-rate",
+      "description": "atlas.gateway.cache.hit / (hit + miss) — the cost lever.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(atlas_gateway_cache_hit_total[15m])) / clamp_min(sum(rate(atlas_gateway_cache_hit_total[15m])) + sum(rate(atlas_gateway_cache_miss_total[15m])), 0.0001)",
+          "legendFormat": "hit-rate"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Rate-limit / budget rejections (LLM10)",
+      "description": "atlas.gateway.ratelimit.rejected + budget.rejected — enforced resource controls.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(atlas_gateway_ratelimit_rejected_total[5m]))",
+          "legendFormat": "rate-limit 429/s"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(atlas_gateway_budget_rejected_total[5m]))",
+          "legendFormat": "budget 402/s"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "PII redaction events by entity type (LLM02)",
+      "description": "atlas.gateway.redaction.count — metadata only (counts/types, never the PII).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(atlas_gateway_redaction_count_total[5m])) by (entity_type)",
+          "legendFormat": "{{entity_type}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Circuit-breaker state (best-effort)",
+      "description": "resilience4j_circuitbreaker_state — shown when the Resilience4j Micrometer binder is present (ADR-0039).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "resilience4j_circuitbreaker_state{name=\"rag-engine\"}",
+          "legendFormat": "{{state}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Cost-units by user (top spenders)",
+      "description": "atlas.gateway.cost.units by user — per-caller spend (dev cardinality).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(5, sum(rate(atlas_gateway_cost_units_total[15m])) by (user))",
+          "legendFormat": "{{user}}"
+        }
+      ]
+    }
+  ]
+}

@@ -75,13 +75,23 @@ public class QueryService {
                 InlineEvaluators.disabled());
     }
 
-    /** Answer result: the grounded answer, its citations, the retrieval trace, and the contexts. */
+    /** Answer result: the grounded answer, its citations, the retrieval trace, the contexts, and token usage. */
     public record QaResult(String answer, List<Citation> citations, RetrievalStats retrieval,
-            List<RetrievedChunk> contexts) {
+            List<RetrievedChunk> contexts, TokenUsage usage) {
+
+        /** Token usage for the model call (P3 metering, ADR-0040) — surfaced for gateway cost accounting. */
+        public record TokenUsage(Integer promptTokens, Integer completionTokens) {
+        }
+
+        /** Back-compat: contexts but no usage. */
+        public QaResult(String answer, List<Citation> citations, RetrievalStats retrieval,
+                List<RetrievedChunk> contexts) {
+            this(answer, citations, retrieval, contexts, null);
+        }
 
         /** Back-compat: no exposed contexts (used where the eval-context flag is irrelevant). */
         public QaResult(String answer, List<Citation> citations, RetrievalStats retrieval) {
-            this(answer, citations, retrieval, List.of());
+            this(answer, citations, retrieval, List.of(), null);
         }
     }
 
@@ -164,6 +174,7 @@ public class QueryService {
         Duration elapsed = Duration.ofNanos(System.nanoTime() - startNanos);
         String model = response.getMetadata() == null ? null : response.getMetadata().getModel();
         tracer.recordModelCall("chat", model, elapsed, response.getMetadata());
+        QaResult.TokenUsage usage = extractUsage(response);
 
         String answer = response.getResult().getOutput().getText();
         // Redaction-gated content capture (OFF by default — only ids/metadata reach the trace).
@@ -175,7 +186,17 @@ public class QueryService {
         inlineEvaluators.annotate(root, query, sources, answer);
         // contexts = exactly what the model saw (post-guardrail, RBAC-filtered) — the eval harness
         // needs the full chunk text; the negative-access gate also runs against these (D-P2-3).
-        return new QaResult(answer, citations, retrieval.stats(), sources);
+        return new QaResult(answer, citations, retrieval.stats(), sources, usage);
+    }
+
+    /** Map Spring AI {@link org.springframework.ai.chat.metadata.Usage} → our surfaced {@link QaResult.TokenUsage}. */
+    private static QaResult.TokenUsage extractUsage(ChatResponse response) {
+        var metadata = response.getMetadata();
+        var usage = metadata == null ? null : metadata.getUsage();
+        if (usage == null) {
+            return null;
+        }
+        return new QaResult.TokenUsage(usage.getPromptTokens(), usage.getCompletionTokens());
     }
 
     private static List<KeyValue> retrievalAttrs(RetrievalStats stats) {

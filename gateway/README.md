@@ -9,24 +9,26 @@ When complete, the gateway provides: simulated-IdP auth + verified-clearance tru
 egress redaction + output sanitization (ADR-0037), rate limiting + budget caps + circuit breaker
 (ADR-0038/0039, LLM10), and a cost-units cost model (ADR-0040) surfaced on a Grafana dashboard.
 
-## Status — P3 task 7 (PII egress redaction + output sanitization — LLM02/LLM05)
+## Status — P3 task 8 (metering + Grafana cost dashboard)
 
 Implemented so far:
-- **Module skeleton** (task 1) · **Sim IdP + trust boundary** (task 2) · **Query passthrough** (task 3) ·
-  **Cost-aware router** (task 4) · **Semantic cache** (task 5) · **Resource controls** (task 6, LLM10).
-- **PII egress redaction + output sanitization** (task 7, ADR-0037, LLM02/LLM05): deterministic
-  `PiiRedactor` (structured finance-PII by regex + a configurable restricted-entity denylist) and
-  `OutputSanitizer` (strip executable markup, escape residual HTML) run inline at ingress (prompt) +
-  egress (answer + citation snippets, on both fresh and cache-hit paths). Metadata-only redaction traces;
-  the response gains a `redaction` section. Hard gates: **0 PII strings + 0 unsafe payloads at egress**.
+- Tasks 1–7 (skeleton, trust boundary, passthrough, router, cache, LLM10 controls, PII/output safety).
+- **Metering + cost dashboard** (task 8, ADR-0040/G-P3-7): `CostMeter` emits cost-units + request latency +
+  cache hit/miss + rate-limit/budget rejections + redaction counts (Micrometer → Prometheus); token usage
+  reuses the OTel-standard `gen_ai.client.token.usage`. **Real token usage** is now surfaced from rag-engine
+  (`QueryResponse.usage`) and drives cost + budget accounting (replacing the task-6 estimate). A provisioned
+  Grafana dashboard (`atlas-cost.json`) renders the cost story; the response now carries the full §2.3
+  envelope (`routing`/`cache`/`redaction`/`cost`).
 
-Not yet: cost metering + Grafana dashboard incl. cost-spike alert (task 8); off-path Presidio + LLM Guard
-deep-scan (task 9). **Deferred:** real token-usage accounting (task 8); see earlier tasks for other deferrals.
+Not yet: off-path Presidio + LLM Guard deep-scan (task 9, conditional); eval-through-Gateway + cost-delta +
+CI gate (task 10); docs/portfolio (task 11).
 
-### Response shape (incremental)
+### Dashboards
 
-The relayed/cached `rag-engine` JSON now carries `routing` (task 4), `cache` (task 5), and `redaction`
-(task 7) sections. The final §2.3 section — `cost` — is added in task 8.
+`make -C infra up` provisions Grafana (`http://localhost:${GRAFANA_PORT:-3001}`) → **Atlas — Cost-aware
+Gateway (P3)** (uid `atlas-cost-p3`). The gateway is scraped at `host.docker.internal:${GATEWAY_PORT}` (run
+it on the host with `mvn -pl gateway spring-boot:run`). The cost-spike panel carries a threshold band; the
+circuit-breaker panel is best-effort.
 
 ## Auth — mint + use a clearance token (dev)
 
