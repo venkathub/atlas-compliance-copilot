@@ -517,6 +517,15 @@ P3 adds **no new default model**; it adds routing *tiers* (all env-swappable; CL
 ### 6.1 Deviations / partials
 *(to be filled honestly at implementation, in the P2 spec's §6.1 style.)*
 
+- **P3 task 9 — Presidio + LLM Guard off-path deep-scan deferred (owner-confirmed 2026-06-17, Option B).**
+  ADR-0037's hybrid keeps the **deterministic Java redactor + sanitizer on the hot path** (task 7, shipped and
+  hard-gated). The **conditional** off-path Presidio/LLM Guard NER deep-scan (a Python sidecar + an audit job
+  that distils new findings into the hot-path denylist) is **not implemented** in this pass: it is optional in
+  the spec (§5 task 9 "conditional"), adds a second Python service, and is off the per-request critical path,
+  so it does not affect any P3 hard gate or the eval/cost story. It stays **env-gated and off by default**
+  (`ATLAS_PII_DEEPSCAN_ENABLED=false`, `ATLAS_PRESIDIO_URL`/`ATLAS_LLMGUARD_URL` already reserved in
+  `.env.example`); the hot-path redactor's `ATLAS_PII_NAME_DENYLIST` is the manual channel for distilled
+  findings until then. Tracked as P3 future work; no DoD item depends on it.
 - **P3 task 4 — model-cascade + `retrieved_context_tokens` rule deferred (owner-confirmed 2026-06-17).**
   The cost-aware router (ADR-0035) shipped its **pre-call deterministic rules** (default tier1-small; escalate
   to tier2-mid on `X-Atlas-Quality: high` or estimated `query_tokens > threshold`; frontier reserved/never

@@ -172,6 +172,10 @@
   (default empty; seeded in tests with the restricted entities from P1's `expectations.json`); NER breadth for
   *unknown* free-text names is the **off-path Presidio + LLM Guard deep-scan (task 9, deferred)** — the honest
   hybrid of this ADR.
+- **Task 9 status (2026-06-17): deferred, Option B (owner-confirmed).** The off-path Presidio/LLM Guard NER
+  deep-scan is **not implemented** in this P3 pass — it is optional (§5 task 9 "conditional"), off the hot path,
+  and gates nothing. Env-gated/off by default (`ATLAS_PII_DEEPSCAN_ENABLED=false`); the hot-path
+  `ATLAS_PII_NAME_DENYLIST` is the manual channel for distilled findings. See P3_SPEC §6.1.
 
 ### ADR-0036 — Clearance-partitioned, poison-resistant semantic cache (Redis Stack)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-2), §8 (G-P3-4)
