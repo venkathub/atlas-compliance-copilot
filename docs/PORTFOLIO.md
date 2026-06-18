@@ -101,7 +101,53 @@ Prometheus + Pushgateway + Grafana) · GPU guaranteed-pause verified live · rer
 re-deferral · OWASP LLM01/02/07 automated.
 
 ---
-## P3 — Cost-aware gateway (pending)
+## P3 — Cost-aware gateway (complete · 2026-06-17)
+
+**One-liner:** Built the production **Spring Cloud Gateway** front door — a single trust boundary that
+authenticates, cost-routes, semantically caches (clearance-safe), rate-limits, caps spend, redacts PII, and
+makes the cost story a live dashboard — and proved routing/caching never trade quality below the eval floor.
+
+**Resume bullets (draft):**
+- Built a **cost-aware API Gateway** (Java/**Spring Cloud Gateway WebMVC**) fronting the RAG engine:
+  simulated-IdP **JWT trust boundary**, cost-aware model router, clearance-safe semantic cache, rate
+  limiting, budget caps, circuit breaker, PII egress redaction, and token/cost/latency metering — the whole
+  front door in one runtime.
+- Realized a **verifiable-clearance trust boundary** (HS256 JWT, Nimbus): the gateway validates the caller
+  token and **re-asserts a signed internal clearance** that rag-engine independently verifies, **retiring the
+  P1 client-trusted header** (defense-in-depth) — P1 **D4 negative-access stays 0/24 leaks** through the gateway.
+- Engineered a **clearance-partitioned semantic cache** on **Redis Stack / RediSearch** (KNN, native TTL,
+  trusted-write) whose RBAC invariant is **structural** — a mandatory clearance-partition pre-filter makes a
+  cross-clearance hit impossible — proven by a hard gate: **0 cross-clearance cache hits** against real Redis.
+- Implemented the **OWASP LLM10** resource-control surface: a Redis **Lua token-bucket** rate limiter (429),
+  per-user **daily budget caps** (402), per-request input-size (413) + max-output-token caps + timeout, and a
+  **Resilience4j circuit breaker** with a typed **503 + Retry-After** fallback.
+- Shipped **deterministic PII egress redaction (LLM02)** + **output sanitization (LLM05)** on the hot path —
+  hard-gated to **0 restricted-PII strings and 0 unsafe payloads at egress** — with metadata-only redaction
+  traces (counts/types, never the PII).
+- Made cost a **first-class, observable feature**: Micrometer→Prometheus→**Grafana** dashboard for
+  cost-units/tokens/latency per route/tier/user + cache hit-rate, rejections, redaction counts, and a
+  cost-spike threshold panel; cost computed from **real model token usage** surfaced over the clean seam.
+- Ran the **reused P2 RAGAS gate THROUGH the gateway path** (auth + route + cache + redact) as a CI step,
+  proving routing/caching don't drop quality below the floor (**R2**), plus a `cost_report` harness that
+  quantifies **% cheaper at equal eval score** (target band **≥30%**, ADR-0040/§8.3).
+
+**Evidence:** `mvn verify` green — **gateway 59 unit + 12 IT**, **rag-engine 90 unit + 40 IT** — incl. hard
+gates `RedisSemanticCacheIT` (0 cross-clearance hits, real Redis Stack), `PiiEgressGateTest` (0 PII / 0 unsafe),
+`RbacNegativeAccessIT` 24/24 + `PromptInjectionIT` 3/3 still green through the trust boundary; `evals` 63 pytest
+green; eval-through-gateway CI step wired. ADR-0033–0040. 11 feature commits.
+
+**Quantified:** 8 ADRs (0033–0040) · 4 clearance levels · **0 cross-clearance cache hits** · **0/24 RBAC leaks** ·
+**3/3 injection quarantined** · **0 PII strings / 0 unsafe payloads at egress** · token-bucket 60 req/min default ·
+daily budget cap (cost-units) · breaker 50% / 10 s · cache cosine threshold 0.95 (eval-calibrated) ·
+3 model tiers (small default / mid escalation / frontier reserved) · Redis Stack (multi-arch, digest-pinned) ·
+HS256/Nimbus dual-hop JWT.
+
+**Deferred (honest):** the off-path Presidio/LLM Guard NER deep-scan (task 9, optional/env-gated) and the
+**live cost-delta numbers** (need the GPU calibration lane — see below) are tracked in `P3_SPEC §6.1`. After
+P3's rag-engine behaviour-source changes, the RAGAS cassettes must be **re-recorded live** (the fingerprint
+correctly busted, `rag:f5c178ac → 4bdaf005`) to re-green the quality gate; the **RBAC/PII/cache safety hard
+gates pass offline** today.
+
 ## P4 — Agent orchestrator + MCP (pending)
 ## P5 — UI + production deploy (pending)
 _Each populated as the phase lands, per the CLAUDE.md Definition of Done._

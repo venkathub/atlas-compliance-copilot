@@ -350,5 +350,60 @@ open http://localhost:3000                              # Langfuse → a /v1/que
 ```
 The gate replays committed cassettes — offline, deterministic, GPU-free.
 
-## 7. Production deploy — *added in P5*
-Oracle Cloud Ampere A1 (arm64) deploy steps; Hetzner fallback. The P0 multi-arch image already targets arm64.
+## 7. API Gateway — P3
+
+The Gateway (`/gateway`, Spring Cloud Gateway WebMVC) is the single front door in front of `rag-engine`
+(ADR-0033). Like `rag-engine` it runs **on the host** in dev and is scraped by Prometheus via
+`host.docker.internal:${GATEWAY_PORT}`.
+
+### 7.1 Bring up the gateway-fronted stack
+```bash
+make -C infra up                                   # Postgres+pgvector, Redis Stack, Langfuse, Prometheus, Grafana
+set -a && . ./.env && set +a
+mvn -pl rag-engine spring-boot:run &               # downstream RAG engine (corpus ingested)
+mvn -pl gateway spring-boot:run &                  # the front door on :${GATEWAY_PORT:-8080}
+```
+
+### 7.2 30-second demo (mint a token → ask → watch cost · GPU on)
+```bash
+GW=http://localhost:${GATEWAY_PORT:-8080}
+# 1) Mint a signed clearance JWT for Priya (compliance) from the simulated IdP (ADR-0034)
+TOKEN=$(curl -fsS -X POST "$GW/v1/auth/token" -H 'Content-Type: application/json' \
+          -d '{"user":"priya"}' | jq -r .token)
+# 2) Ask the Northwind question — cited, redacted, sanitized answer + routing/cache/cost fields
+curl -fsS -X POST "$GW/v1/query" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{"query":"Summarize the open AML exceptions for Northwind this quarter.","topK":6}' | jq
+# 3) Repeat the same query → semantic-cache HIT at ~zero cost (cache.hit=true)
+# 4) Ask the same as a public guest → no cross-clearance cache hit, RBAC-correct answer
+GUEST=$(curl -fsS -X POST "$GW/v1/auth/token" -H 'Content-Type: application/json' \
+          -d '{"user":"guest-public"}' | jq -r .token)
+curl -fsS -X POST "$GW/v1/query" -H "Authorization: Bearer $GUEST" -H 'Content-Type: application/json' \
+     -d '{"query":"Summarize the open AML exceptions for Northwind this quarter.","topK":6}' | jq
+```
+A missing/expired/forged token → `401`; over-rate → `429`; over daily budget → `402`; oversized input → `413`;
+a downstream failure → `503 + Retry-After`.
+
+### 7.3 Cost dashboard
+Grafana → **Atlas — Cost-aware Gateway (P3)** (`http://localhost:${GRAFANA_PORT:-3001}`, uid `atlas-cost-p3`):
+cost-units/tokens/latency per route/tier/user, cache hit-rate, rate-limit/budget rejections, redaction counts,
+circuit-breaker state, and a cost-spike threshold panel.
+
+### 7.4 Eval-through-Gateway + cost-delta calibration (after any rag-engine change)
+P3 changed rag-engine behaviour source (model tiering, output cap, token-usage), so the RAGAS cassettes must
+be **re-recorded live** once (the fingerprint busts on purpose). Then run the gate through the gateway and the
+cost-delta:
+```bash
+make -C infra gpu-up && set -a && . ./.env && set +a
+mvn -pl rag-engine spring-boot:run & mvn -pl gateway spring-boot:run &
+uv run --directory evals --group ragas python -m atlas_evals.record            # re-record RAG+judge cassettes
+uv run --directory evals python -m atlas_evals.gate --recalibrate               # refresh baseline.json
+ATLAS_EVAL_THROUGH_GATEWAY=true GATEWAY_URL=http://localhost:8080 \
+  uv run --directory evals python -m atlas_evals.gate                           # quality holds through the gateway
+GATEWAY_URL=http://localhost:8080 uv run --directory evals python -m atlas_evals.cost_report   # writes gateway-baseline.json
+make -C infra gpu-down
+```
+Offline (no GPU), the eval-through-gateway gate **replays committed cassettes** and the safety hard gates
+(`RedisSemanticCacheIT`, `PiiEgressGateTest`, `RbacNegativeAccessIT`, `PromptInjectionIT`) all pass via
+`mvn verify`.
+
+## 8. Production deploy — *added in P5*
