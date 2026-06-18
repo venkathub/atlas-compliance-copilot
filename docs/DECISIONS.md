@@ -144,6 +144,19 @@
 - **Consequences:** redaction events traced **metadata-only** (counts/types, never the PII — consistent with
   ADR-0030); a second off-path service when Presidio/LLM Guard is enabled; PII-egress + output-handling are
   P3 hard gates.
+- **Implementation note (2026-06-17, P3 task 7):** deterministic `PiiRedactor` masks structured finance-PII
+  by regex (**SSN/TIN** `\d{3}-\d{2}-\d{4}`, **passport** `[A-Z]\d{7}`, **account #** `\d{8,}`, **DOB** dates)
+  + a configurable literal **name-denylist** (`ATLAS_PII_NAME_DENYLIST`) for restricted entities/names, masking
+  each as `[REDACTED:TYPE]` with metadata-only counts. `OutputSanitizer` (LLM05) strips
+  `<script>/<style>/<iframe>`-class markup + `javascript:` URIs + `on*` handlers, then HTML-escapes residual
+  angle brackets. Both run inline at **egress** on the `answer` + citation `snippet`s of **both** the fresh and
+  cache-hit paths (the cache stores the RAW answer; redaction is applied per-read), and `PiiRedactor` also runs
+  at **ingress** on the prompt. Response gains the §2.3 `redaction` section `{applied, counts}`. **Hard gates
+  proven:** `PiiEgressGateTest` (the P1 `answerMustNotContain` strings never survive) + the output-handling
+  test (0 unsafe payloads). **Denylist note:** deterministic name redaction needs a configured denylist
+  (default empty; seeded in tests with the restricted entities from P1's `expectations.json`); NER breadth for
+  *unknown* free-text names is the **off-path Presidio + LLM Guard deep-scan (task 9, deferred)** — the honest
+  hybrid of this ADR.
 
 ### ADR-0036 — Clearance-partitioned, poison-resistant semantic cache (Redis Stack)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-2), §8 (G-P3-4)

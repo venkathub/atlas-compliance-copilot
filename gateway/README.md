@@ -9,25 +9,24 @@ When complete, the gateway provides: simulated-IdP auth + verified-clearance tru
 egress redaction + output sanitization (ADR-0037), rate limiting + budget caps + circuit breaker
 (ADR-0038/0039, LLM10), and a cost-units cost model (ADR-0040) surfaced on a Grafana dashboard.
 
-## Status — P3 task 6 (resource controls: rate limit, budget, breaker — LLM10)
+## Status — P3 task 7 (PII egress redaction + output sanitization — LLM02/LLM05)
 
 Implemented so far:
-- **Module skeleton** (task 1) · **Sim IdP + trust boundary** (task 2, ADR-0034) · **Query passthrough**
-  (task 3) · **Cost-aware router** (task 4, ADR-0035/0040) · **Clearance-safe semantic cache** (task 5, ADR-0036).
-- **Resource controls** (task 6, ADR-0038/0039, OWASP LLM10): per-user **token-bucket rate limit** (429,
-  Redis Lua), per-user **daily budget cap** (402, Redis counters; pre-check + post-accounting), per-request
-  **input-size** (413) + **max-output-token** caps + **timeout**, and a **Resilience4j circuit breaker**
-  around the rag-engine call with a typed **503 + Retry-After** fallback.
+- **Module skeleton** (task 1) · **Sim IdP + trust boundary** (task 2) · **Query passthrough** (task 3) ·
+  **Cost-aware router** (task 4) · **Semantic cache** (task 5) · **Resource controls** (task 6, LLM10).
+- **PII egress redaction + output sanitization** (task 7, ADR-0037, LLM02/LLM05): deterministic
+  `PiiRedactor` (structured finance-PII by regex + a configurable restricted-entity denylist) and
+  `OutputSanitizer` (strip executable markup, escape residual HTML) run inline at ingress (prompt) +
+  egress (answer + citation snippets, on both fresh and cache-hit paths). Metadata-only redaction traces;
+  the response gains a `redaction` section. Hard gates: **0 PII strings + 0 unsafe payloads at egress**.
 
-Not yet: PII redaction + output sanitization (task 7), cost metering + Grafana dashboard incl. the
-cost-spike anomaly alert (task 8). **Deferred:** real token-usage accounting (task 8); model-cascade +
-context-token rule (task 4); cache re-grounding / auto corpus version (task 5).
+Not yet: cost metering + Grafana dashboard incl. cost-spike alert (task 8); off-path Presidio + LLM Guard
+deep-scan (task 9). **Deferred:** real token-usage accounting (task 8); see earlier tasks for other deferrals.
 
-### Pipeline order
+### Response shape (incremental)
 
-`auth → rate limit (429) → budget pre-check (402) → input-size (413) → cache lookup (hit ⇒ return) →
-route → rag-engine call wrapped in breaker + read timeout (fail ⇒ 503 + Retry-After) → trusted-write +
-budget post-accounting`. Rate-limit/budget are Redis-backed and independently toggleable (off ⇒ Redis-free).
+The relayed/cached `rag-engine` JSON now carries `routing` (task 4), `cache` (task 5), and `redaction`
+(task 7) sections. The final §2.3 section — `cost` — is added in task 8.
 
 ## Auth — mint + use a clearance token (dev)
 

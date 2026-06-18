@@ -86,5 +86,12 @@ atlas:
     request-timeout-ms: ${ATLAS_REQUEST_TIMEOUT_MS:30000}
     cb-failure-rate-threshold-pct: ${ATLAS_CB_FAILURE_RATE_THRESHOLD_PCT:50}
     cb-wait-duration-ms: ${ATLAS_CB_WAIT_DURATION_MS:10000}
+  # PII egress redaction + output handling (ADR-0037, OWASP LLM02/LLM05). Deterministic, inline on the
+  # hot path; redaction events are traced metadata-only (counts/types, NEVER the PII). name-denylist is a
+  # compliance-style list of restricted entities/names (comma-separated; default empty).
+  safety:
+    pii-enabled: ${ATLAS_PII_REDACTION_ENABLED:true}
+    sanitize-enabled: ${ATLAS_OUTPUT_SANITIZE_ENABLED:true}
+    name-denylist: ${ATLAS_PII_NAME_DENYLIST:}
 
 

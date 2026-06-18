@@ -33,7 +33,11 @@ import com.atlas.gateway.resilience.ModelCircuitBreaker;
 import com.atlas.gateway.resilience.NoOpBudgetGuard;
 import com.atlas.gateway.resilience.RateLimiter;
 import com.atlas.gateway.resilience.RequestLimits;
+import com.atlas.gateway.safety.OutputSanitizer;
+import com.atlas.gateway.safety.PiiRedactor;
+import com.atlas.gateway.safety.SafetyProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -71,9 +75,12 @@ class GatewayQueryControllerTest {
         CacheProperties cacheProps = new CacheProperties(cacheEnabled, 0.95, 86400, "v1", false);
         RequestLimits limits = new RequestLimits(6000, 1024);
         ModelCircuitBreaker cb = new ModelCircuitBreaker(PASSTHROUGH, 10);
+        PiiRedactor redactor = new PiiRedactor(List.of());
+        OutputSanitizer sanitizer = new OutputSanitizer();
+        SafetyProperties safety = new SafetyProperties(true, true, List.of());
         return MockMvcBuilders.standaloneSetup(new GatewayQueryController(
                         ragEngine, signer, router, cache, stubEmbedder, cacheProps,
-                        rateLimiter, budget, limits, cb, costTable, json))
+                        rateLimiter, budget, limits, cb, costTable, redactor, sanitizer, safety, json))
                 .setControllerAdvice(new GatewayExceptionHandler())
                 .build();
     }
@@ -178,6 +185,22 @@ class GatewayQueryControllerTest {
                 .andExpect(status().isOk());
         assertThat(budget.recorded).isGreaterThanOrEqualTo(0.0);
         assertThat(budget.records).isEqualTo(1);
+    }
+
+    @Test
+    void piiInAnswerIsRedactedAtEgress() throws Exception {
+        // rag-engine returns an answer carrying an SSN/TIN; it must never leave the gateway (LLM02).
+        when(ragEngine.query(anyString(), eq("tier1-small"), anyInt(), any()))
+                .thenReturn(json.readTree("{\"answer\":\"The subject SSN is 900-12-3456.\",\"citations\":[]}"));
+
+        defaultMvc().perform(post("/v1/query")
+                        .requestAttr(CallerClearance.ATTRIBUTE, new CallerClearance("priya", Clearance.COMPLIANCE))
+                        .contentType("application/json").content("{\"query\":\"aml?\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.answer").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("900-12-3456"))))
+                .andExpect(jsonPath("$.answer").value(org.hamcrest.Matchers.containsString("[REDACTED:SSN_TIN]")))
+                .andExpect(jsonPath("$.redaction.applied").value(true))
+                .andExpect(jsonPath("$.redaction.counts.SSN_TIN").value(1));
     }
 
     @Test
