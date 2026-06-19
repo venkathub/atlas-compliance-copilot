@@ -27,6 +27,19 @@ from atlas_evals.gateway_client import GatewayRagClient
 
 GATEWAY_BASELINE = DATA_DIR / "gateway-baseline.json"
 
+_METHODOLOGY = (
+    "cold->warm on the golden set: off = every query a model call (cold); "
+    "on = the same queries re-served from the clearance-partitioned semantic cache (warm). "
+    "It measures the cache CEILING (100% of serving cost removed on an exact-repeat hit); "
+    "a blended production saving scales with the real query repeat rate. "
+    "Routing (small-model default) sets the uncached cost floor."
+)
+
+_NOTE = (
+    "Self-hosted cost-units are documented estimates (ADR-0040). Quality-equality is proven "
+    "by the RAGAS gate with ATLAS_EVAL_THROUGH_GATEWAY=true (both gates PASS)."
+)
+
 
 def pct_reduction(off_total: float, on_total: float) -> float:
     """Percent serving-cost reduction of the on-run vs the off-run; 0.0 when off-total ≤ 0."""
@@ -47,19 +60,14 @@ def build_baseline(off_total: float, on_total: float, sim_threshold: float,
     reduction = pct_reduction(off_total, on_total)
     return {
         "cache_sim_threshold": sim_threshold,
-        "methodology": "cold→warm on the golden set: off = every query a model call (cold); on = the "
-                       "same queries re-served from the clearance-partitioned semantic cache (warm). This "
-                       "measures the cache CEILING (100% of serving cost removed on an exact-repeat hit); a "
-                       "blended production saving scales with the real query repeat/similarity rate. Routing "
-                       "(small-model default) sets the uncached cost floor.",
+        "methodology": _METHODOLOGY,
         "cost_off_units": round(off_total, 6),
         "cost_on_units": round(on_total, 6),
         "cost_reduction_pct": round(reduction, 2),
         "target_reduction_pct": target_pct,
         "meets_target": reduction >= target_pct,
         "recorded_at": dt.datetime.now(dt.UTC).isoformat(),
-        "note": "Self-hosted cost-units are documented estimates (ADR-0040). Quality-equality is proven "
-                "by the RAGAS gate run with ATLAS_EVAL_THROUGH_GATEWAY=true (both gates PASS).",
+        "note": _NOTE,
     }
 
 
