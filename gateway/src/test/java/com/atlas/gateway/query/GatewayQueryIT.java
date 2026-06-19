@@ -129,6 +129,28 @@ class GatewayQueryIT {
         assertThat(response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isNotBlank();
     }
 
+    @Test
+    void slowButWithinTimeoutDownstreamStillSucceeds() throws Exception {
+        // Regression: Spring Cloud's Resilience4JCircuitBreaker imposes a DEFAULT 1s TimeLimiter. A real
+        // model call (~3s) would wrongly 503 unless we align the limiter with ATLAS_REQUEST_TIMEOUT_MS.
+        // A 1.2s downstream (>1s, ≪ the 30s timeout) must still succeed.
+        RAG_ENGINE.enqueue(new MockResponse()
+                .setHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .setBody("{\"answer\":\"ok [1].\",\"citations\":[]}")
+                .setBodyDelay(1200, TimeUnit.MILLISECONDS));
+        String token = mintToken("priya");
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(token);
+        ResponseEntity<JsonNode> response = rest.exchange(
+                "/v1/query", org.springframework.http.HttpMethod.POST,
+                new HttpEntity<>("{\"query\":\"slow?\",\"topK\":6}", headers), JsonNode.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().get("answer").asText()).isEqualTo("ok [1].");
+    }
+
     private String mintToken(String user) throws Exception {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

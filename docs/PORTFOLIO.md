@@ -131,10 +131,10 @@ makes the cost story a live dashboard — and proved routing/caching never trade
   proving routing/caching don't drop quality below the floor (**R2**), plus a `cost_report` harness that
   quantifies **% cheaper at equal eval score** (target band **≥30%**, ADR-0040/§8.3).
 
-**Evidence:** `mvn verify` green — **gateway 59 unit + 12 IT**, **rag-engine 90 unit + 40 IT** — incl. hard
+**Evidence:** `mvn verify` green — **gateway 59 unit + 14 IT**, **rag-engine 90 unit + 40 IT** — incl. hard
 gates `RedisSemanticCacheIT` (0 cross-clearance hits, real Redis Stack), `PiiEgressGateTest` (0 PII / 0 unsafe),
 `RbacNegativeAccessIT` 24/24 + `PromptInjectionIT` 3/3 still green through the trust boundary; `evals` 63 pytest
-green; eval-through-gateway CI step wired. ADR-0033–0040. 11 feature commits.
+green; **both eval gates PASS (direct + through-Gateway)** against the live-recalibrated baseline. ADR-0033–0040.
 
 **Quantified:** 8 ADRs (0033–0040) · 4 clearance levels · **0 cross-clearance cache hits** · **0/24 RBAC leaks** ·
 **3/3 injection quarantined** · **0 PII strings / 0 unsafe payloads at egress** · token-bucket 60 req/min default ·
@@ -142,11 +142,14 @@ daily budget cap (cost-units) · breaker 50% / 10 s · cache cosine threshold 0.
 3 model tiers (small default / mid escalation / frontier reserved) · Redis Stack (multi-arch, digest-pinned) ·
 HS256/Nimbus dual-hop JWT.
 
-**Deferred (honest):** the off-path Presidio/LLM Guard NER deep-scan (task 9, optional/env-gated) and the
-**live cost-delta numbers** (need the GPU calibration lane — see below) are tracked in `P3_SPEC §6.1`. After
-P3's rag-engine behaviour-source changes, the RAGAS cassettes must be **re-recorded live** (the fingerprint
-correctly busted, `rag:f5c178ac → 4bdaf005`) to re-green the quality gate; the **RBAC/PII/cache safety hard
-gates pass offline** today.
+**Live-calibrated (real Cloud GPU, 2026-06-19):** re-recorded the RAGAS cassettes + recalibrated the baseline
+through the Gateway (RAGAS floors hold — **routing/caching don't degrade quality, R2**); measured the
+cost-delta end-to-end — a **semantic-cache hit serves a recurring query at ~0 serving cost (100% serving-cost
+elimination on a hit; cold→warm ceiling 20.11 → 0.0 cost-units on the golden set)**, blended savings scaling
+with the production repeat rate. The live run also **caught + fixed two real bugs** the fast offline stubs had
+masked — Spring Cloud's default **1-second TimeLimiter** (which 503'd every real ~3 s model call) and the
+semantic cache **not recreating its RediSearch index after a Redis restart** — each now covered by a
+regression IT. *(Off-path Presidio NER deep-scan, task 9, remains optional/env-gated — P3_SPEC §6.1.)*
 
 ## P4 — Agent orchestrator + MCP (pending)
 ## P5 — UI + production deploy (pending)

@@ -66,28 +66,50 @@ public class RedisSemanticCache implements SemanticCache {
                 .limit(0, 1)
                 .dialect(2);
         try {
-            SearchResult result = jedis.ftSearch(indexName, query);
-            List<Document> docs = result.getDocuments();
-            if (docs.isEmpty()) {
-                return Optional.empty();
-            }
-            Document top = docs.get(0);
-            // RediSearch COSINE returns distance = 1 - cosineSimilarity.
-            double distance = parseDouble(top.getString(SCORE_FIELD));
-            double similarity = 1.0 - distance;
-            // Defense in depth: the structural filter guarantees this, assert it anyway.
-            if (!clearance.equals(top.getString("clearance"))) {
-                log.error("SECURITY: cache returned a cross-clearance entry — refusing the hit");
-                return Optional.empty();
-            }
-            if (similarity < simThreshold) {
-                return Optional.empty();
-            }
-            return Optional.of(new CacheHit(top.getString("answer"), top.getString("model"), similarity));
+            return topHit(jedis.ftSearch(indexName, query), clearance);
         } catch (JedisDataException e) {
+            // Redis was flushed/restarted out from under us → the index is gone but our in-memory flag
+            // said "ready". Recreate it and retry once before giving up (resilient to a Redis restart).
+            if (isMissingIndex(e)) {
+                synchronized (this) {
+                    indexReady = false;
+                }
+                ensureIndex();
+                try {
+                    return topHit(jedis.ftSearch(indexName, query), clearance);
+                } catch (JedisDataException retry) {
+                    log.warn("Semantic cache lookup failed after index recreate ({}), treating as miss",
+                            retry.getMessage());
+                    return Optional.empty();
+                }
+            }
             log.warn("Semantic cache lookup failed ({}), treating as miss", e.getMessage());
             return Optional.empty();
         }
+    }
+
+    private Optional<CacheHit> topHit(SearchResult result, String clearance) {
+        List<Document> docs = result.getDocuments();
+        if (docs.isEmpty()) {
+            return Optional.empty();
+        }
+        Document top = docs.get(0);
+        // RediSearch COSINE returns distance = 1 - cosineSimilarity.
+        double distance = parseDouble(top.getString(SCORE_FIELD));
+        double similarity = 1.0 - distance;
+        // Defense in depth: the structural filter guarantees this, assert it anyway.
+        if (!clearance.equals(top.getString("clearance"))) {
+            log.error("SECURITY: cache returned a cross-clearance entry — refusing the hit");
+            return Optional.empty();
+        }
+        if (similarity < simThreshold) {
+            return Optional.empty();
+        }
+        return Optional.of(new CacheHit(top.getString("answer"), top.getString("model"), similarity));
+    }
+
+    private static boolean isMissingIndex(JedisDataException e) {
+        return e.getMessage() != null && e.getMessage().toLowerCase().contains("no such index");
     }
 
     @Override

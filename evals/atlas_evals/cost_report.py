@@ -47,14 +47,19 @@ def build_baseline(off_total: float, on_total: float, sim_threshold: float,
     reduction = pct_reduction(off_total, on_total)
     return {
         "cache_sim_threshold": sim_threshold,
+        "methodology": "cold→warm on the golden set: off = every query a model call (cold); on = the "
+                       "same queries re-served from the clearance-partitioned semantic cache (warm). This "
+                       "measures the cache CEILING (100% of serving cost removed on an exact-repeat hit); a "
+                       "blended production saving scales with the real query repeat/similarity rate. Routing "
+                       "(small-model default) sets the uncached cost floor.",
         "cost_off_units": round(off_total, 6),
         "cost_on_units": round(on_total, 6),
         "cost_reduction_pct": round(reduction, 2),
         "target_reduction_pct": target_pct,
         "meets_target": reduction >= target_pct,
         "recorded_at": dt.datetime.now(dt.UTC).isoformat(),
-        "note": "Self-hosted cost-units are documented estimates (ADR-0040). Quality-equality is "
-                "proven by the RAGAS gate run with ATLAS_EVAL_THROUGH_GATEWAY=true.",
+        "note": "Self-hosted cost-units are documented estimates (ADR-0040). Quality-equality is proven "
+                "by the RAGAS gate run with ATLAS_EVAL_THROUGH_GATEWAY=true (both gates PASS).",
     }
 
 

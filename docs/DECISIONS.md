@@ -115,6 +115,10 @@
   records as a failure. The "fresh cache hit" fallback of option (a) is moot on this path (the cache was
   already checked pre-call and missed), so the fallback is the typed `503`. Proven by `GatewayQueryIT`
   (downstream 500 → `503` + `Retry-After`) + a controller unit test.
+- **Live-calibration fix (2026-06-19):** Spring Cloud's `Resilience4JCircuitBreaker` wraps every call in a
+  **TimeLimiter defaulting to 1 s** — which 503'd every real ~3 s model call (the fast MockWebServer stubs
+  hid it). The breaker customizer now sets `TimeLimiterConfig.timeoutDuration = ATLAS_REQUEST_TIMEOUT_MS`;
+  regression IT `GatewayQueryIT.slowButWithinTimeoutDownstreamStillSucceeds` (1.2 s downstream) locks it in.
 
 ### ADR-0038 — Gateway resource controls (rate-limit, budget caps, LLM10)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-6), §8 (G-P3-6)
@@ -208,6 +212,11 @@
   a `NoOpSemanticCache` is wired and the gateway boots without Redis. **Partial:** `corpus_version` is a
   configurable `ATLAS_CACHE_CORPUS_VERSION` bumped manually on re-ingest; auto-deriving it from rag-engine is
   a follow-up. `reground-on-hit` is bound but inert (reserved).
+- **Live-calibration fix (2026-06-19):** if Redis is flushed/restarted under a live gateway, the RediSearch
+  index is dropped while the in-memory `indexReady` flag stays set, so lookups failed with "no such index"
+  (caught during the live cost-delta run). `RedisSemanticCache` now **self-heals**: on a "no such index"
+  search error it resets the flag, recreates the index, and retries once. Regression IT
+  `RedisSemanticCacheIT.recreatesIndexAfterRedisFlush` locks it in.
 
 ### ADR-0035 — Cost-aware model router (declarative rules + model-cascade)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-3), §8 (G-P3-3)

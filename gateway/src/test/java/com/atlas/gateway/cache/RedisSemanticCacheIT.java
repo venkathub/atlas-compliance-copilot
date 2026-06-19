@@ -108,4 +108,18 @@ class RedisSemanticCacheIT {
         Thread.sleep(1500);
         assertThat(shortTtl.lookup("compliance", "v1", v)).isEmpty();
     }
+
+    @Test
+    void recreatesIndexAfterRedisFlush() {
+        // Regression: a Redis flush/restart drops the RediSearch index out from under a live cache whose
+        // in-memory "indexReady" flag is still set. A subsequent lookup must transparently recreate it.
+        float[] v = vec(1, 0, 0, 0, 0, 0, 0, 0);
+        cache.put("compliance", "v1", v, answer("before flush"));
+        assertThat(cache.lookup("compliance", "v1", v)).isPresent();
+
+        jedis.flushAll(); // drops keys AND the FT index, simulating a Redis restart
+
+        cache.put("compliance", "v1", v, answer("after flush"));
+        assertThat(cache.lookup("compliance", "v1", v)).isPresent(); // index auto-recreated, hit served
+    }
 }

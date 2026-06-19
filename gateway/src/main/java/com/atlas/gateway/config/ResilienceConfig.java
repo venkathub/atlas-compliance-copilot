@@ -10,6 +10,7 @@ import com.atlas.gateway.resilience.RedisRateLimiter;
 import com.atlas.gateway.resilience.RequestLimits;
 import com.atlas.gateway.resilience.ResilienceProperties;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
+import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 import java.time.Duration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -66,6 +67,12 @@ public class ResilienceConfig {
                         .failureRateThreshold(props.cbFailureRateThresholdPct())
                         .waitDurationInOpenState(Duration.ofMillis(props.cbWaitDurationMs()))
                         .slidingWindowSize(10)
+                        .build())
+                // Spring Cloud's Resilience4JCircuitBreaker wraps every call in a TimeLimiter whose
+                // DEFAULT is 1s — far below a real model call. Align it with the per-request timeout
+                // (ATLAS_REQUEST_TIMEOUT_MS) so a slow GPU trips the breaker, not every normal call (LLM10).
+                .timeLimiterConfig(TimeLimiterConfig.custom()
+                        .timeoutDuration(Duration.ofMillis(props.requestTimeoutMs()))
                         .build())
                 .build());
     }
