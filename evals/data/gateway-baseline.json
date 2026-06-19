@@ -1,0 +1,11 @@
+{
+  "cache_sim_threshold": 0.95,
+  "methodology": "cold\u2192warm on the golden set: off = every query a model call (cold); on = the same queries re-served from the clearance-partitioned semantic cache (warm). This measures the cache CEILING (100% of serving cost removed on an exact-repeat hit); a blended production saving scales with the real query repeat/similarity rate. Routing (small-model default) sets the uncached cost floor.",
+  "cost_off_units": 20.1096,
+  "cost_on_units": 0.0,
+  "cost_reduction_pct": 100.0,
+  "target_reduction_pct": 30.0,
+  "meets_target": true,
+  "recorded_at": "2026-06-19T01:11:54+00:00",
+  "note": "Self-hosted cost-units are documented estimates (ADR-0040). Quality-equality is proven by the RAGAS gate run with ATLAS_EVAL_THROUGH_GATEWAY=true (both gates PASS). cost_reduction_pct here is the cache CEILING (all-repeat warm pass); see methodology."
+}

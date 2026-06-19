@@ -40,7 +40,7 @@ up:
 seed-config:
 	@docker volume create atlas-prometheus-config >/dev/null
 	@docker volume create atlas-grafana-config >/dev/null
-	@sed 's/$${RAG_ENGINE_PORT}/$(RAG_ENGINE_PORT)/g' prometheus/prometheus.yml \
+	@sed 's/$${RAG_ENGINE_PORT}/$(RAG_ENGINE_PORT)/g; s/$${GATEWAY_PORT}/$(GATEWAY_PORT)/g' prometheus/prometheus.yml \
 		| docker run --rm -i -v atlas-prometheus-config:/dest busybox sh -c 'cat > /dest/prometheus.yml'
 	@tar -C grafana -cf - . | docker run --rm -i -v atlas-grafana-config:/dest busybox tar -C /dest -xf -
 

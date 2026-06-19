@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "id": "gold-l2-structuring-def"
+  },
+  "response": {
+    "faithfulness": 1.0,
+    "answer_relevancy": 0.8330088304621953,
+    "context_precision": 0.99999999995,
+    "context_recall": 1.0,
+    "context_entity_recall": 0.0,
+    "noise_sensitivity": null
+  }
+}

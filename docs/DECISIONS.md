@@ -13,6 +13,14 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0040 | 2026-06-14 | Cost-units model & cost-delta reporting | Accepted | P3 |
+| 0039 | 2026-06-14 | Circuit-breaker scope & fallback | Accepted | P3 |
+| 0038 | 2026-06-14 | Gateway resource controls (rate-limit, budget caps, LLM10) | Accepted | P3 |
+| 0037 | 2026-06-14 | PII egress redaction + output handling (LLM02/LLM05) | Accepted | P3 |
+| 0036 | 2026-06-14 | Clearance-partitioned, poison-resistant semantic cache (Redis Stack) | Accepted | P3 |
+| 0035 | 2026-06-14 | Cost-aware model router (declarative rules + model-cascade) | Accepted | P3 |
+| 0034 | 2026-06-14 | Simulated-IdP verified-clearance trust boundary | Accepted | P3 |
+| 0033 | 2026-06-14 | API Gateway framework (Spring Cloud Gateway WebMVC) | Accepted | P3 |
 | 0032 | 2026-06-14 | Katzilla external primary-source data (post-P5 backlog) | Proposed | P6 |
 | 0031 | 2026-06-14 | Adversarial breadth: fixtures gate + Promptfoo OWASP sweep | Accepted | P2 |
 | 0030 | 2026-06-14 | Trace content-capture & redaction policy (LLM02/LLM07) | Accepted | P2 |
@@ -29,7 +37,7 @@
 | 0019 | 2026-06-13 | Testcontainers ITs: docker-java API pin + exec-classifier jar | Accepted | P1 |
 | 0018 | 2026-06-13 | Answer generation scope & citation granularity | Accepted | P1 |
 | 0017 | 2026-06-13 | Final Layer-1 corpus subset (FinanceBench) | Accepted | P1 |
-| 0016 | 2026-06-13 | Clearance transport in P1 (pre-IdP shim) | Accepted | P1 |
+| 0016 | 2026-06-13 | Clearance transport in P1 (pre-IdP shim) | Superseded by ADR-0034 | P1 |
 | 0015 | 2026-06-13 | Prompt-injection guardrail approach (LLM01) | Accepted | P1 |
 | 0014 | 2026-06-13 | Reranking approach (seam now, cross-encoder in P2) | Accepted | P1 |
 | 0013 | 2026-06-13 | Hybrid search fusion method (RRF) | Accepted | P1 |
@@ -50,12 +58,253 @@
 > decisions made while implementing P0.** **ADR-0011–0020 are the P1 grooming + implementation decisions**
 > (`docs/phases/P1_SPEC.md` §3). **ADR-0021–0031 are the P2 grooming decisions** (`docs/phases/P2_SPEC.md` §3),
 > owner-confirmed 2026-06-14 before P2 implementation begins; **ADR-0032 is a Proposed post-P5 backlog item**
-> (`ROADMAP.md` §8). Each remains open to revision with a new superseding ADR if a later phase surfaces
-> evidence against it.
+> (`ROADMAP.md` §8). **ADR-0033–0040 are the P3 grooming decisions** (`docs/phases/P3_SPEC.md` §3 + §8
+> web-validated gap analysis), owner-confirmed 2026-06-14 before P3 implementation begins; **ADR-0034 supersedes
+> ADR-0016** by replacing the P1 clearance-header shim with the simulated-IdP verified-clearance trust boundary.
+> Each remains open to revision with a new superseding ADR if a later phase surfaces evidence against it.
 
 ---
 
 ## 2. Decisions
+
+### ADR-0040 — Cost-units model & cost-delta reporting
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-8), §8.3
+- **Context:** Self-hosted Ollama tiers have no per-token $ price, yet the portfolio thesis is "cost as a
+  feature" and needs a credible cost story plus a headline cost-delta ("X% cheaper at equal eval score").
+- **Options considered:** (a) a configured **cost-units table** — synthetic per-1k for self-hosted tiers
+  (derived from GPU ₹/hr ÷ throughput), real $ for the frontier tier; (b) tokens/latency only, no cost;
+  (c) real $ on the frontier tier only, tokens elsewhere.
+- **Decision:** **(a)** — a documented cost-units table backs the Micrometer cost meters and a cost-delta
+  report; target band **≥30% cheaper at equal eval score**, anchored to RouteLLM's 45–85% learned-router band
+  (§8.3) as future upside.
+- **Rationale:** makes the Grafana dashboard tell a true *relative* story for self-hosted tiers and a real one
+  for frontier spend; the target is honest and eval-gated rather than an arbitrary claim.
+- **Consequences:** self-hosted numbers are an estimate (documented as such); the measured cost-delta is
+  recorded in `gateway-baseline.json` from the live calibration run, not hardcoded.
+- **Implementation note (2026-06-17, P3 task 8):** `CostMeter` (Micrometer → Prometheus at the gateway's
+  `/actuator/prometheus`) emits a derived, namespaced **`atlas.gateway.cost.units`** counter (tags
+  `route`/`tier`/`user`) plus `atlas.gateway.request.duration` (timer, tag `cache_hit`),
+  `atlas.gateway.cache.hit`/`.miss`, `atlas.gateway.ratelimit.rejected`, `atlas.gateway.budget.rejected`, and
+  `atlas.gateway.redaction.count` (tag `entity_type`). **Token usage reuses the OTel-standard
+  `gen_ai.client.token.usage`** already emitted by rag-engine (no parallel token meter, per G-P3-7). Cost is
+  computed from **real token usage** now surfaced in the rag-engine `QueryResponse.usage` (from `ChatResponse`
+  metadata) — this **replaces the task-6 budget estimate** for both budget accounting and the §2.3 `cost`
+  section `{promptTokens, completionTokens, costUnits, latencyMs}`; a deterministic estimate is the fallback
+  when a model doesn't report usage. A cache hit reports ~zero serving cost. Grafana dashboard
+  `infra/grafana/dashboards/atlas-cost.json` (auto-provisioned) renders cost/tokens/latency per route/tier/user
+  + cache hit-rate, rejections, redaction counts, and circuit-breaker state. **Pragmatic calls:** the
+  **cost-spike anomaly alert** is a threshold-marked Grafana panel (not a full alerting rule); the
+  circuit-breaker-state panel is **best-effort** (depends on the Resilience4j Micrometer binder); the `user`
+  tag is acceptable-cardinality for the dev/demo only.
+
+### ADR-0039 — Circuit-breaker scope & fallback
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-7)
+- **Context:** A stalled/paused GPU (ADR-0006) or a model error must not cascade into the Gateway and take the
+  whole front door down (R5).
+- **Options considered:** (a) **Resilience4j breaker around the rag-engine/model call; fallback = a fresh cache
+  hit if any, else a typed `503` + retry-after**; (b) breaker + automatic tier-downgrade on trip (cheaper
+  degraded answers, but risks dropping below the eval floor); (c) timeouts only, no breaker.
+- **Decision:** **(a)**, with **(b)** considered only when the downgrade target is itself eval-passing.
+- **Rationale:** bounds the blast radius with honest UX, and never silently drops below the P2 eval floor (R2).
+- **Consequences:** breaker thresholds tuned + covered by ITs; the fallback path is explicitly tested.
+- **Implementation note (2026-06-17, P3 task 6):** Resilience4j via **`spring-cloud-starter-circuitbreaker-resilience4j`**
+  (BOM-managed). `ModelCircuitBreaker` wraps the rag-engine call (`CircuitBreakerFactory.create("rag-engine")`,
+  thresholds from `ATLAS_CB_*`); the fallback throws a typed `DownstreamUnavailableException` → mapped by
+  `GatewayExceptionHandler` to **`503` + `Retry-After`**. The per-request **timeout is the `RestClient` read
+  timeout** (`ATLAS_REQUEST_TIMEOUT_MS`): a stalled/slow GPU trips it, surfacing as an exception the breaker
+  records as a failure. The "fresh cache hit" fallback of option (a) is moot on this path (the cache was
+  already checked pre-call and missed), so the fallback is the typed `503`. Proven by `GatewayQueryIT`
+  (downstream 500 → `503` + `Retry-After`) + a controller unit test.
+- **Live-calibration fix (2026-06-19):** Spring Cloud's `Resilience4JCircuitBreaker` wraps every call in a
+  **TimeLimiter defaulting to 1 s** — which 503'd every real ~3 s model call (the fast MockWebServer stubs
+  hid it). The breaker customizer now sets `TimeLimiterConfig.timeoutDuration = ATLAS_REQUEST_TIMEOUT_MS`;
+  regression IT `GatewayQueryIT.slowButWithinTimeoutDownstreamStillSucceeds` (1.2 s downstream) locks it in.
+
+### ADR-0038 — Gateway resource controls (rate-limit, budget caps, LLM10)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-6), §8 (G-P3-6)
+- **Context:** OWASP **LLM10 Unbounded Consumption** is a named P3 control; naive model use can drain the
+  budget or DoS the system. June-2026 research (G-P3-6) shows the LLM10 taxonomy is broader than rate-limit +
+  budget alone.
+- **Options considered:** (a) **token-bucket (Spring Cloud Gateway `RequestRateLimiter` / Bucket4j on Redis)
+  for rate + Redis daily counters for budget**, plus **per-request input-size validation + max-output-token
+  caps + timeouts + a cost-spike anomaly alert**; (b) fixed-window counters (bursty at edges); (c) in-memory
+  limits (wrong with >1 instance).
+- **Decision:** **(a)** — distributed, restart-safe, with the full LLM10 surface (input/output caps, throttling,
+  anomaly detection) folded in.
+- **Rationale:** idiomatic and production-shaped; covers the whole LLM10 surface, not just rate + budget.
+- **Consequences:** Redis atomic-op care for correctness; budget = pre-request estimate + post-request
+  accounting; the anomaly alert surfaces on the Grafana dashboard.
+- **Implementation note (2026-06-17, P3 task 6):** rate limit = a hand-rolled **atomic Lua token-bucket**
+  on the shared `JedisPooled` (`RedisRateLimiter`, key `atlas:ratelimit:<user>`, capacity = `requests-per-min`,
+  refill-on-read) → over-quota `429`. Budget = `RedisBudgetGuard` daily counter `atlas:budget:<user>:<yyyymmdd>`
+  (UTC, ~2-day TTL), pre-check `wouldExceed` → `402`, post-`record` increment. Input-size cap (`RequestLimits`,
+  deterministic ~4-chars/token estimate) → `413`; max-output-token cap forwarded as `X-Atlas-Max-Output-Tokens`
+  and applied in rag-engine via `ChatOptions.maxTokens`. Rate-limit + budget are independently toggleable
+  (`ATLAS_RATELIMIT_ENABLED`/`ATLAS_BUDGET_ENABLED`) so the gateway runs Redis-free when off. **Token-source
+  note:** budget cost is computed from a **gateway-side token estimate** (query length + worst-case output for
+  the pre-check; answer length for accounting) — **task 8 swaps in real token usage** surfaced from rag-engine
+  `ChatResponse` metadata, where the cost dashboard needs it. The **cost-spike anomaly alert** is a Grafana
+  panel → **deferred to task 8** (metering/dashboard). Enforcement proven by `RedisRateLimiterIT` /
+  `RedisBudgetGuardIT` (real Redis) + controller tests (429/402/413).
+
+### ADR-0037 — PII egress redaction + output handling (LLM02/LLM05)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-4), §8 (G-P3-5)
+- **Context:** Financial/compliance data must not leak through prompts/responses (**LLM02**), and model output
+  must be sanitized at egress (**LLM05**). Finance-PII (account #s, SSN/TIN, passport, DOB, restricted-doc
+  names) is a known, bounded set.
+- **Options considered:** (a) **hybrid** — a deterministic Java redactor + output sanitizer on the hot path,
+  with **Microsoft Presidio + LLM Guard** as a periodic off-path deep-scan; (b) Presidio sidecar **inline** on
+  every request (best recall, but a Python hop + latency + non-determinism on the hot path); (c) Java-only
+  deterministic (fastest, narrower recall).
+- **Decision:** **(a)** — deterministic Java redaction + sanitization inline; Presidio + LLM Guard off-path
+  periodic deep-scan, with findings distilled back into the hot-path rules.
+- **Rationale:** keeps the hot path fast and the CI gate deterministic/cassette-friendly while gaining NER
+  breadth off-path; mirrors the P2 fixture-gate + Promptfoo-sweep split (ADR-0031).
+- **Consequences:** redaction events traced **metadata-only** (counts/types, never the PII — consistent with
+  ADR-0030); a second off-path service when Presidio/LLM Guard is enabled; PII-egress + output-handling are
+  P3 hard gates.
+- **Implementation note (2026-06-17, P3 task 7):** deterministic `PiiRedactor` masks structured finance-PII
+  by regex (**SSN/TIN** `\d{3}-\d{2}-\d{4}`, **passport** `[A-Z]\d{7}`, **account #** `\d{8,}`, **DOB** dates)
+  + a configurable literal **name-denylist** (`ATLAS_PII_NAME_DENYLIST`) for restricted entities/names, masking
+  each as `[REDACTED:TYPE]` with metadata-only counts. `OutputSanitizer` (LLM05) strips
+  `<script>/<style>/<iframe>`-class markup + `javascript:` URIs + `on*` handlers, then HTML-escapes residual
+  angle brackets. Both run inline at **egress** on the `answer` + citation `snippet`s of **both** the fresh and
+  cache-hit paths (the cache stores the RAW answer; redaction is applied per-read), and `PiiRedactor` also runs
+  at **ingress** on the prompt. Response gains the §2.3 `redaction` section `{applied, counts}`. **Hard gates
+  proven:** `PiiEgressGateTest` (the P1 `answerMustNotContain` strings never survive) + the output-handling
+  test (0 unsafe payloads). **Denylist note:** deterministic name redaction needs a configured denylist
+  (default empty; seeded in tests with the restricted entities from P1's `expectations.json`); NER breadth for
+  *unknown* free-text names is the **off-path Presidio + LLM Guard deep-scan (task 9, deferred)** — the honest
+  hybrid of this ADR.
+- **Task 9 status (2026-06-17): deferred, Option B (owner-confirmed).** The off-path Presidio/LLM Guard NER
+  deep-scan is **not implemented** in this P3 pass — it is optional (§5 task 9 "conditional"), off the hot path,
+  and gates nothing. Env-gated/off by default (`ATLAS_PII_DEEPSCAN_ENABLED=false`); the hot-path
+  `ATLAS_PII_NAME_DENYLIST` is the manual channel for distilled findings. See P3_SPEC §6.1.
+
+### ADR-0036 — Clearance-partitioned, poison-resistant semantic cache (Redis Stack)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-2), §8 (G-P3-4)
+- **Context:** Semantic caching cuts cost/latency (30–70% in 2026 literature), but a naive cache **leaks across
+  clearances** (R1) and is vulnerable to **semantic-cache poisoning / collision** attacks (NDSS 2026;
+  multi-tenant RAG "response-cache cross-talk").
+- **Options considered:** (a) **Redis Stack vector search**; (b) reuse pgvector (one vector engine, but mixes
+  ephemeral TTL cache with the system-of-record DB + hand-rolled expiry); (c) Caffeine exact-match (not
+  *semantic* — fails the phase intent).
+- **Decision:** **(a)** Redis Stack vector search with **clearance-partitioned keys**, **trusted-write only**
+  (cache only answers that passed RBAC + the P1 guardrail + grounding), an **eval-calibrated conservative
+  similarity threshold**, **optional re-grounding on hit**, and **corpus-version invalidation**.
+- **Rationale:** native TTL fits a cache; partitioning makes cross-clearance hits structurally impossible;
+  trusted-write + a calibrated threshold resist poisoning/collision — the cache can never hold an answer the
+  live path would have refused.
+- **Consequences:** Redis Stack image (ARM-supported) replaces vanilla Redis; **cross-clearance** and
+  **poisoning/collision** are P3 hard gates; the similarity threshold is recorded in `gateway-baseline.json`.
+- **Implementation note (2026-06-17, P3 task 5):** hand-rolled on **Jedis + RediSearch** (`RedisSemanticCache`)
+  for full control over the structural invariant, native TTL, and trusted-write. Keys are
+  `atlas:cache:<clearance>:<corpusVersion>:<uuid>`; every KNN query carries a **mandatory**
+  `@clearance:{<caller>} @corpus_version:{<ver>}` pre-filter built from the *verified* clearance, plus a
+  read-time `entry.clearance == caller` assertion — so a cross-clearance hit is impossible by construction
+  (proven by `RedisSemanticCacheIT` against real Redis Stack: **0 cross-clearance hits**). HNSW/COSINE index
+  (`similarity = 1 − distance`), conservative threshold `ATLAS_CACHE_SIM_THRESHOLD=0.95` (calibrated in task
+  10 → `gateway-baseline.json`), **native per-key EXPIRE** TTL, query embedding via Spring AI Ollama
+  `nomic-embed-text` on the hot path (abstracted behind `QueryEmbedder` so gate ITs are model-free). The
+  cache lookup is **before routing** (a hit skips the model call); writes happen only after a 2xx rag-engine
+  answer (**trusted-write**: the Gateway only caches RBAC+guardrail+grounding-passed answers). Redis image
+  swapped to `redis/redis-stack-server:7.4.0-v3` (multi-arch, digest-pinned); when `atlas.cache.enabled=false`
+  a `NoOpSemanticCache` is wired and the gateway boots without Redis. **Partial:** `corpus_version` is a
+  configurable `ATLAS_CACHE_CORPUS_VERSION` bumped manually on re-ingest; auto-deriving it from rag-engine is
+  a follow-up. `reground-on-hit` is bound but inert (reserved).
+- **Live-calibration fix (2026-06-19):** if Redis is flushed/restarted under a live gateway, the RediSearch
+  index is dropped while the in-memory `indexReady` flag stays set, so lookups failed with "no such index"
+  (caught during the live cost-delta run). `RedisSemanticCache` now **self-heals**: on a "no such index"
+  search error it resets the flag, recreates the index, and retries once. Regression IT
+  `RedisSemanticCacheIT.recreatesIndexAfterRedisFlush` locks it in.
+
+### ADR-0035 — Cost-aware model router (declarative rules + model-cascade)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-3), §8 (G-P3-3)
+- **Context:** Route each request to the cheapest adequate model — small/quantized by default (ADR-0005),
+  escalate only by policy, and **never below the P2 eval floor** (R2).
+- **Options considered:** (a) **declarative rules + model-cascade** (escalate when the tier-1 answer fails the
+  cheap inline `FactCheckingEvaluator`/low-confidence check); (b) heuristic complexity classifier; (c)
+  LLM-as-router (adds a model call + cost + non-determinism to every request).
+- **Decision:** **(a)** — deterministic rules + cascade; selectable tiers are limited to **eval-passing**
+  models; the frontier tier is budget-gated and off by default. Learned routers (RouteLLM / `semantic-router`)
+  are explicit future work.
+- **Rationale:** transparent, CI-deterministic, and dashboard-friendly; the cascade is a stronger-yet-still
+  deterministic middle ground than pure static rules; the cost-delta report (ADR-0040) proves it.
+- **Consequences:** router escalation thresholds are eval-calibrated and recorded; `never_below_eval_floor` is
+  enforced and tested; learned routing deferred.
+- **Implementation note (2026-06-17, P3 task 4):** the router lives in the Gateway (`ModelRouter` /
+  `RoutingPolicy`-via-`RoutingProperties` / `CostTable`); `rag-engine`'s `ModelTierResolver` maps the
+  forwarded `X-Atlas-Model-Tier` → a per-request **portable `ChatOptions.model(...)`** override (`tier1-small`
+  = the default ChatModel, no override; unknown/disabled-frontier → fail-safe to default). Implemented now:
+  the **pre-call deterministic rules** the Gateway can evaluate before calling rag-engine — default = tier1-small,
+  escalate to tier2-mid on `X-Atlas-Quality: high` or an estimated `query_tokens > ATLAS_ROUTER_ESCALATE_QUERY_TOKENS`
+  (deterministic ~4-chars/token estimate); frontier is reserved and **never auto-selected**; the eval-floor
+  guard restricts selection to the approved/selectable set. **Deferred to a follow-up (owner-confirmed
+  2026-06-17; tracked in P3_SPEC §6.1):** the **model-cascade** (escalate when the tier-1 answer fails the inline
+  `FactCheckingEvaluator`) and the **`retrieved_context_tokens > N`** rule — both are *post-generation/retrieval*
+  signals that require `rag-engine` to return a confidence/context signal in the response (a cross-cutting change
+  best coordinated with the eval-through-Gateway work, task 10). `ATLAS_ROUTER_CASCADE_ENABLED` is bound but not
+  yet acted on.
+
+### ADR-0034 — Simulated-IdP verified-clearance trust boundary (supersedes ADR-0016)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-5) · **Realizes:** ADR-0003 · **Supersedes:** ADR-0016
+- **Context:** P3 stands up the simulated IdP (ADR-0003). The Gateway becomes the **single trust boundary** and
+  must convey a **cryptographically verifiable** clearance to `rag-engine`, retiring the P1 client-trusted
+  `X-Atlas-Clearance` shim (ADR-0016).
+- **Options considered:** (a) **Gateway-signed internal header / short-lived internal token** that `rag-engine`
+  independently validates; (b) **JWT passthrough** (forward the client JWT; `rag-engine` validates it directly —
+  spreads IdP-verification into a second service); (c) **network-trust only** (a single misconfig re-opens the
+  LLM08 leak).
+- **Decision:** **(a)** — the simulated IdP (`POST /v1/auth/token`) mints a signed JWT clearance claim; the
+  Gateway validates signature/`exp`/`iss`, resolves clearance, and **re-asserts a verified clearance to
+  `rag-engine` as a signed internal value the engine independently validates**; client-set `X-Atlas-Clearance`
+  is **ignored** on the Gateway path.
+- **Rationale:** keeps the Gateway the single trust boundary while letting `rag-engine` independently verify
+  (defense-in-depth; matches the P4 "tools re-check clearance" ethos) and realizes the verifiable claim ADR-0003
+  requires.
+- **Consequences:** **supersedes ADR-0016** (the shim is retired on the Gateway path; permitted only for
+  `local`/test direct-to-`rag-engine` calls); a signing key + an internal shared secret are env-managed (no
+  secrets in code, LLM03); auth failure → `401`. The P1 abstract `Clearance` seam means the swap touches only
+  the resolver.
+- **Implementation note (2026-06-17, P3 task 2):** both hops are **HS256 JWTs via Nimbus JOSE+JWT** (used
+  directly — no Spring Security OAuth2 starter — so the trust boundary is an explicit, unit-tested `OncePerRequestFilter`).
+  (1) **Client token:** signed with `ATLAS_IDP_SIGNING_KEY`, claims `{sub, clearance, iss, iat, exp, jti}`,
+  TTL `ATLAS_IDP_TOKEN_TTL_SECONDS`; validated by the Gateway's `JwtClearanceFilter` on every route except
+  `/v1/auth/**` + `/actuator/**`. (2) **Internal hop:** the Gateway's `DownstreamClearanceSigner` mints a
+  **short-lived (~60 s)** JWT signed with the *separate* `ATLAS_GATEWAY_INTERNAL_SECRET`, issuer `atlas-gateway`,
+  carried in header **`X-Atlas-Internal-Clearance`**; `rag-engine`'s `DownstreamClearanceVerifier` +
+  `DownstreamClearanceFilter` re-verify signature/`exp`/`iss` and, when valid, the `QueryController` uses that
+  clearance and **ignores** the `X-Atlas-Clearance` shim (proven by `QueryControllerTest`; P1 D4
+  `RbacNegativeAccessIT` 24/24 still green). **Key derivation:** HS256 needs ≥256-bit keys, so both modules
+  derive the MAC key as **`SHA-256(secret)`** (identical `SecurityKeys.deriveHs256` logic on each side) — any
+  operator secret length works, incl. the `.env.example` placeholder and a real `openssl rand -base64 32` key.
+  Nimbus is **not** managed by the Boot 3.4 BOM, so it is pinned in the parent (`nimbus-jose-jwt 9.48`). The
+  signer is wired now; it is attached to the proxied request in P3 task 3.
+
+### ADR-0033 — API Gateway framework (Spring Cloud Gateway Server WebMVC)
+- **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-1), §8.1 (G-P3-1)
+- **Context:** P3 needs a single front door (routing, filters, rate-limit, circuit breaker). Spring Cloud
+  Gateway on **Spring Boot 4 / Framework 7** ships **both** a reactive server *and* a non-reactive
+  `gateway-server-webmvc` server.
+- **Options considered:** (a) **`gateway-server-webmvc`** (blocking, Servlet — matches the `rag-engine`/Spring AI
+  idiom); (b) reactive WebFlux server (idiomatic reactive, but Mono/Flux in front of a blocking stack); (c)
+  Nginx/Envoy + a thin Spring policy service (pushes the cost-router logic — the whole point — out of Spring).
+- **Decision:** **(a) `spring-cloud-starter-gateway-server-webmvc`.** Reactive (b) was first confirmed, then
+  **reversed after June-2026 research (§8.1)**: the Gateway proxies rather than streams model tokens, so
+  reactive's benefit is marginal while its complexity cost is real for a blocking stack + a solo Java engineer.
+- **Rationale:** lower-risk and idiom-matched, while still demonstrating the "Spring Cloud Gateway" skill
+  (routes, filters, `RequestRateLimiter`, Resilience4j).
+- **Consequences:** reactive is reconsidered only if/when the Gateway must itself stream model tokens (a P5/UX
+  concern, not P3).
+- **Implementation note (2026-06-17, P3 task 1):** the repo is on **Spring Boot 3.4.7 / Spring AI 1.0.0**, not
+  Boot 4, so the WebMVC gateway ships in the **Spring Cloud 2024.0.x** train where the starter artifact is
+  **`spring-cloud-starter-gateway-mvc`** (the `-gateway-server-webmvc` id is the Boot 4 / Spring Cloud 2025+
+  rename the spec §8.1 refers to). Pinned **`spring-cloud.version=2024.0.1`** in the parent BOM (the 3.4.x
+  compatibility verifier matches any `3.4.patch`, incl. 3.4.7 — build verified green). The decision (WebMVC,
+  blocking, Servlet) is unchanged; only the coordinate name/version is train-specific. The compose `gateway`
+  service is gated behind the **`app` Compose profile** (off by default) so `make up` still works from a fresh
+  clone without a pre-built jar; in dev the gateway runs on the host (`mvn spring-boot:run`) and is scraped via
+  `host.docker.internal:${GATEWAY_PORT}`, mirroring the established `rag-engine` pattern.
 
 ### ADR-0032 — Katzilla external primary-source data (post-P5 backlog)
 - **Date:** 2026-06-14 · **Status:** Proposed · **Phase:** P6 (post-P5) · **Spec:** `ROADMAP.md` §8
@@ -443,7 +692,7 @@
   Ollama). If a commercial-clean corpus is ever needed, switch to EDGAR via a new ADR.
 
 ### ADR-0016 — Clearance transport in P1 (pre-IdP shim)
-- **Date:** 2026-06-13 · **Status:** Accepted · **Phase:** P1 (superseded by ADR-0003's IdP in P3) · **Spec:** P1_SPEC §3 (D-P1-6)
+- **Date:** 2026-06-13 · **Status:** **Superseded by ADR-0034** (P3) · **Phase:** P1 · **Spec:** P1_SPEC §3 (D-P1-6)
 - **Context:** RBAC retrieval needs a caller clearance now, but the simulated identity/clearance provider is
   scheduled for P3 (ADR-0003). P1 must not be blocked waiting on it.
 - **Options considered:** (a) **Trusted request header `X-Atlas-Clearance` + a dev user→clearance map (D3),

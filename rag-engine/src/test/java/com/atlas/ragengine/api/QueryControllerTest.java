@@ -4,12 +4,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.atlas.ragengine.qa.Citation;
+import com.atlas.ragengine.qa.ModelTierProperties;
+import com.atlas.ragengine.qa.ModelTierResolver;
 import com.atlas.ragengine.qa.QueryService;
 import com.atlas.ragengine.qa.QueryService.QaResult;
 import com.atlas.ragengine.retrieval.HybridDocumentRetriever.RetrievalStats;
@@ -35,7 +38,8 @@ class QueryControllerTest {
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.standaloneSetup(new QueryController(queryService, resolver)).build();
+        mvc = MockMvcBuilders.standaloneSetup(new QueryController(queryService, resolver,
+                new ModelTierResolver(new ModelTierProperties(null, null, false)))).build();
     }
 
     @Test
@@ -45,7 +49,7 @@ class QueryControllerTest {
                 "Northwind Exceptions", "atlas://x", "compliance", 0.83, "…snippet…");
         QaResult result = new QaResult("Open exceptions [1].", List.of(citation),
                 new RetrievalStats(20, 5, 12, 6, "compliance"));
-        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt(), anyString()))
+        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt(), anyString(), nullable(String.class), nullable(Integer.class)))
                 .thenReturn(result);
 
         mvc.perform(post("/v1/query")
@@ -69,7 +73,7 @@ class QueryControllerTest {
                 Map.of("docId", "l2-x", "title", "T", "sourceUri", "atlas://x"), 0.83);
         QaResult result = new QaResult("Open exceptions [1].", List.of(),
                 new RetrievalStats(20, 5, 12, 6, "compliance"), List.of(ctx));
-        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt(), anyString()))
+        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt(), anyString(), nullable(String.class), nullable(Integer.class)))
                 .thenReturn(result);
 
         mvc.perform(post("/v1/query")
@@ -87,5 +91,28 @@ class QueryControllerTest {
         when(resolver.resolve(any(RequestHeaders.class))).thenReturn(ClearanceLevel.PUBLIC);
         mvc.perform(post("/v1/query").contentType("application/json").content("{\"query\":\"  \"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void verifiedInternalClearanceWinsOverHeaderShim() throws Exception {
+        // The Gateway-fronted path: DownstreamClearanceFilter has stashed a verified clearance. The
+        // controller must use it and IGNORE the client X-Atlas-Clearance shim (ADR-0034).
+        Citation citation = new Citation(1, UUID.randomUUID(), UUID.randomUUID(), "l2-x",
+                "Northwind Exceptions", "atlas://x", "compliance", 0.83, "…snippet…");
+        QaResult result = new QaResult("Open exceptions [1].", List.of(citation),
+                new RetrievalStats(20, 5, 12, 6, "compliance"));
+        when(queryService.answer(eq("aml?"), eq(ClearanceLevel.COMPLIANCE), anyInt(), anyString(), nullable(String.class), nullable(Integer.class)))
+                .thenReturn(result);
+
+        mvc.perform(post("/v1/query")
+                        .requestAttr(DownstreamClearanceFilter.ATTRIBUTE, ClearanceLevel.COMPLIANCE)
+                        .header("X-Atlas-Clearance", "restricted") // attacker-supplied shim header — must be ignored
+                        .contentType("application/json")
+                        .content("{\"query\":\"aml?\",\"topK\":6}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retrieval.clearanceApplied").value("compliance"));
+
+        // The shim resolver must NOT have been consulted when a verified assertion is present.
+        Mockito.verifyNoInteractions(resolver);
     }
 }

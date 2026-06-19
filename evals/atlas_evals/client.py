@@ -11,11 +11,26 @@ import json
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 from atlas_evals.cassettes import CassetteStore, cassette_key
 
 # transport: (method, url, headers, body_bytes|None) -> parsed JSON dict
 Transport = Callable[[str, str, dict, bytes | None], dict]
+
+
+class RagQueryClient(Protocol):
+    """The query surface the harness depends on (rag-engine + Gateway clients implement it)."""
+
+    def query(
+        self,
+        question: str,
+        clearance: str,
+        *,
+        user: str | None = ...,
+        top_k: int | None = ...,
+        include_contexts: bool = ...,
+    ) -> dict: ...
 
 
 def _urllib_transport(timeout_s: float) -> Transport:
@@ -69,7 +84,7 @@ class CassettingClient:
     answers). This is the RAG-side half of the offline gate (judge side is cassetted separately).
     """
 
-    client: AtlasRagClient
+    client: RagQueryClient
     store: CassetteStore
     fingerprint: str = ""
 

@@ -20,6 +20,7 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 
 /**
@@ -74,13 +75,23 @@ public class QueryService {
                 InlineEvaluators.disabled());
     }
 
-    /** Answer result: the grounded answer, its citations, the retrieval trace, and the contexts. */
+    /** Answer result: the grounded answer, its citations, the retrieval trace, the contexts, and token usage. */
     public record QaResult(String answer, List<Citation> citations, RetrievalStats retrieval,
-            List<RetrievedChunk> contexts) {
+            List<RetrievedChunk> contexts, TokenUsage usage) {
+
+        /** Token usage for the model call (P3 metering, ADR-0040) — surfaced for gateway cost accounting. */
+        public record TokenUsage(Integer promptTokens, Integer completionTokens) {
+        }
+
+        /** Back-compat: contexts but no usage. */
+        public QaResult(String answer, List<Citation> citations, RetrievalStats retrieval,
+                List<RetrievedChunk> contexts) {
+            this(answer, citations, retrieval, contexts, null);
+        }
 
         /** Back-compat: no exposed contexts (used where the eval-context flag is irrelevant). */
         public QaResult(String answer, List<Citation> citations, RetrievalStats retrieval) {
-            this(answer, citations, retrieval, List.of());
+            this(answer, citations, retrieval, List.of(), null);
         }
     }
 
@@ -90,9 +101,26 @@ public class QueryService {
     }
 
     public QaResult answer(String query, ClearanceLevel caller, int topK, String requestId) {
+        return answer(query, caller, topK, requestId, null);
+    }
+
+    public QaResult answer(String query, ClearanceLevel caller, int topK, String requestId, String modelOverride) {
+        return answer(query, caller, topK, requestId, modelOverride, null);
+    }
+
+    /**
+     * Answer the query, optionally overriding the chat model and/or capping output for this request
+     * (P3 model router + LLM10, ADR-0035/0038): the Gateway selects a tier (→ {@code modelOverride} via
+     * {@code ModelTierResolver}) and forwards a max-output-token cap (→ {@code maxOutputTokens}). A
+     * blank/null {@code modelOverride} uses the default {@link ChatModel} (tier1-small, ADR-0005); a
+     * null/non-positive {@code maxOutputTokens} leaves the model default. Applied as portable
+     * {@code ChatOptions} ({@code model} + {@code maxTokens}).
+     */
+    public QaResult answer(String query, ClearanceLevel caller, int topK, String requestId,
+            String modelOverride, Integer maxOutputTokens) {
         Observation root = tracer.startQuery(requestId, caller.label(), topK);
         try (Observation.Scope scope = root.openScope()) {
-            return answerTraced(query, caller, topK, root);
+            return answerTraced(query, caller, topK, root, modelOverride, maxOutputTokens);
         } catch (RuntimeException e) {
             root.error(e);
             throw e;
@@ -101,7 +129,8 @@ public class QueryService {
         }
     }
 
-    private QaResult answerTraced(String query, ClearanceLevel caller, int topK, Observation root) {
+    private QaResult answerTraced(String query, ClearanceLevel caller, int topK, Observation root,
+            String modelOverride, Integer maxOutputTokens) {
         RetrievalResult retrieval = tracer.span(root, "retrieve",
                 () -> retriever.retrieve(query, caller, topK),
                 r -> retrievalAttrs(r.stats()));
@@ -120,13 +149,32 @@ public class QueryService {
         }
 
         String userPrompt = userPrompt(query, sources);
-        Prompt prompt = new Prompt(List.of(new SystemMessage(systemPrompt()), new UserMessage(userPrompt)));
+        List<org.springframework.ai.chat.messages.Message> messages =
+                List.of(new SystemMessage(systemPrompt()), new UserMessage(userPrompt));
+        // Per-request overrides (P3, ADR-0035/0038): portable ChatOptions so QueryService stays
+        // provider-agnostic. Model from the router tier; maxTokens is the LLM10 output cap.
+        Prompt prompt;
+        boolean hasModel = modelOverride != null && !modelOverride.isBlank();
+        boolean hasMaxTokens = maxOutputTokens != null && maxOutputTokens > 0;
+        if (hasModel || hasMaxTokens) {
+            ChatOptions.Builder opts = ChatOptions.builder();
+            if (hasModel) {
+                opts.model(modelOverride);
+            }
+            if (hasMaxTokens) {
+                opts.maxTokens(maxOutputTokens);
+            }
+            prompt = new Prompt(messages, opts.build());
+        } else {
+            prompt = new Prompt(messages);
+        }
 
         long startNanos = System.nanoTime();
         ChatResponse response = chatModel.call(prompt);
         Duration elapsed = Duration.ofNanos(System.nanoTime() - startNanos);
         String model = response.getMetadata() == null ? null : response.getMetadata().getModel();
         tracer.recordModelCall("chat", model, elapsed, response.getMetadata());
+        QaResult.TokenUsage usage = extractUsage(response);
 
         String answer = response.getResult().getOutput().getText();
         // Redaction-gated content capture (OFF by default — only ids/metadata reach the trace).
@@ -138,7 +186,17 @@ public class QueryService {
         inlineEvaluators.annotate(root, query, sources, answer);
         // contexts = exactly what the model saw (post-guardrail, RBAC-filtered) — the eval harness
         // needs the full chunk text; the negative-access gate also runs against these (D-P2-3).
-        return new QaResult(answer, citations, retrieval.stats(), sources);
+        return new QaResult(answer, citations, retrieval.stats(), sources, usage);
+    }
+
+    /** Map Spring AI {@link org.springframework.ai.chat.metadata.Usage} → our surfaced {@link QaResult.TokenUsage}. */
+    private static QaResult.TokenUsage extractUsage(ChatResponse response) {
+        var metadata = response.getMetadata();
+        var usage = metadata == null ? null : metadata.getUsage();
+        if (usage == null) {
+            return null;
+        }
+        return new QaResult.TokenUsage(usage.getPromptTokens(), usage.getCompletionTokens());
     }
 
     private static List<KeyValue> retrievalAttrs(RetrievalStats stats) {

@@ -136,21 +136,29 @@ the *phase-specific* additions on top of that baseline.
 ### P3 — Cost-aware gateway, model router & dashboards
 - **Goal.** A single front door that authenticates, routes each request to the cheapest adequate model,
   caches, rate-limits, and makes the **cost story visible**. Cost discipline as a first-class feature.
-- **Subsystems touched.** API Gateway (Spring Boot + Micrometer), Redis cache, Prometheus/Grafana, simulated IdP.
+- **Subsystems touched.** API Gateway (**Spring Cloud Gateway WebMVC** + Micrometer, ADR-0033), **Redis Stack**
+  (clearance-partitioned semantic cache + rate-limit/budget counters), Prometheus/Grafana, simulated IdP.
 - **Key skills demonstrated.** Auth, model routing on cost/latency/quality thresholds, **semantic caching**,
   rate limiting, **PII detection/egress redaction**, **budget spend-caps**, circuit breakers,
   token/cost/latency metering and dashboards.
 - **Entry criteria.** P2 exit met (so routing decisions can be evaluated, not guessed).
-- **Exit criteria (DoD).**
-  - [ ] Gateway fronts the RAG Engine: simulated-IdP auth, routing, caching, rate limiting all functional.
-  - [ ] Caching is **semantic** (embedding-similarity), not just exact-match response cache.
-  - [ ] **PII detection + egress redaction** on prompts/responses (compliance-critical), with redaction events traced.
+- **Exit criteria (DoD).** *(Groomed & approved 2026-06-14 — see `docs/phases/P3_SPEC.md` §3 decisions +
+  §8 web-validated gap analysis; **ADR-0033–0040** logged, **ADR-0034 supersedes ADR-0016**.)*
+  - [ ] Gateway fronts the RAG Engine: simulated-IdP auth, routing, caching, rate limiting all functional;
+        the **verified-clearance trust boundary** supersedes the P1 client-header shim (ADR-0034, realizes ADR-0003).
+  - [ ] Caching is **semantic** (embedding-similarity), not just exact-match — and is **clearance-partitioned +
+        poison-resistant** (trusted-write only, eval-calibrated threshold; ADR-0036). 0 cross-clearance / 0 poisoned hits.
+  - [ ] **PII detection + egress redaction** on prompts/responses (compliance-critical), with redaction events traced
+        (deterministic Java hot-path + optional Presidio/LLM Guard periodic deep-scan; ADR-0037).
   - [ ] **Output handling (OWASP LLM05):** model output is sanitized/encoded at egress (no executable/unsafe content passes through) before reaching downstream consumers.
-  - [ ] Per-user/route **budget spend-caps** + **circuit breaker** on model failure/timeout.
-  - [ ] Router selects small/quantized models by default, escalates only by policy; routing rules in `docs/DECISIONS.md`.
-  - [ ] Micrometer → Prometheus → Grafana dashboard exposes **tokens, cost, latency per route/model/user**.
+  - [ ] Per-user/route **budget spend-caps** + **circuit breaker** on model failure/timeout, plus the broader
+        **LLM10** controls — input-size validation, max-output-token caps, timeouts, cost-spike anomaly alert (ADR-0038/0039).
+  - [ ] Router selects small/quantized models by default, escalates **only by policy (rules + model-cascade)** and
+        **never below the P2 eval floor**; routing rules in `docs/DECISIONS.md` (ADR-0035).
+  - [ ] Micrometer → Prometheus → Grafana dashboard exposes **tokens, cost, latency per route/model/user**
+        (reusing the OTel `gen_ai.client.token.usage` metric + a derived cost-units meter; ADR-0040).
   - [ ] Cache + rate-limit behavior covered by integration tests; eval thresholds (from P2) still pass through the Gateway path.
-  - [ ] Demonstrated cost delta (e.g., "X% cheaper at equal eval score") captured for the portfolio.
+  - [ ] Demonstrated cost delta (**target ≥30% cheaper at equal eval score**, RouteLLM 45–85% as the learned-router ceiling) captured for the portfolio.
 
 ### P4 — Agent orchestrator (LangGraph) + MCP tool servers
 - **Goal.** Turn answers into **governed actions**: plan, call enterprise tools over MCP, and require
@@ -291,6 +299,12 @@ is now addressed. These are folded into the phase criteria above; this table is 
 function-calling, Advisors, native evaluators, and MCP client/server — validating the Java-core thesis in
 CLAUDE.md. RAGAS + DeepEval + Langfuse remain the standard eval/observability triad. LangGraph (1.x/2.0)
 remains the production agent-orchestration choice with durable checkpointing and interrupt/resume HITL.
+
+> **Per-phase grooming extends this audit trail.** **P2 grooming** added G6/G7 refinements (above) + ADR-0021–0031.
+> **P3 grooming (2026-06-14)** surfaced **8 further web-validated refinements (G-P3-1…8)** — incl. Spring Cloud
+> Gateway **WebMVC** (vs reactive), **semantic-cache poisoning/collision resistance** (NDSS 2026), a
+> **RouteLLM-anchored cost-delta** target, the **canonical Presidio + LLM Guard** egress stack, the broader
+> **LLM10** control set, and OTel-standard token metrics — logged in `docs/phases/P3_SPEC.md` §8 and **ADR-0033–0040**.
 
 ---
 

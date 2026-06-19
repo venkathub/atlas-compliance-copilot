@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "id": "gold-l2-open-exceptions"
+  },
+  "response": {
+    "faithfulness": 0.75,
+    "answer_relevancy": 0.7661136484966228,
+    "context_precision": 0.94999999997625,
+    "context_recall": 0.4,
+    "context_entity_recall": 0.0,
+    "noise_sensitivity": null
+  }
+}

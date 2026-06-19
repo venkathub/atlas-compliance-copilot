@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "id": "gold-financebench_id_01226"
+  },
+  "response": {
+    "faithfulness": 0.5,
+    "answer_relevancy": 0.8581159172827575,
+    "context_precision": null,
+    "context_recall": 0.3333333333333333,
+    "context_entity_recall": 0.0,
+    "noise_sensitivity": null
+  }
+}

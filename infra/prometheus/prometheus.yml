@@ -21,6 +21,16 @@ scrape_configs:
           service: rag-engine
           phase: p2
 
+  # API Gateway (P3) — cost/token/latency/cache/budget/breaker meters. Like rag-engine it runs
+  # on the HOST in dev (mvn spring-boot:run), so it is scraped via host.docker.internal.
+  - job_name: gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:${GATEWAY_PORT}"]
+        labels:
+          service: gateway
+          phase: p3
+
   # Prometheus scraping itself (sanity target).
   - job_name: prometheus
     static_configs:

@@ -1,0 +1,10 @@
+{
+  "_note": "P3 SIMULATED IdP directory (ADR-0034 / ADR-0003). Maps a dev user id to the clearance the Gateway mints into a signed JWT at POST /v1/auth/token. This stands in for a real federated IdP — dev/demo ONLY, never production. Mirrors rag-engine's P1 dev users so the demo path (priya, guest-public, ...) is stable across the trust-boundary change.",
+  "default_clearance": "public",
+  "users": {
+    "guest-public": { "clearance": "public",     "display": "Public Guest" },
+    "analyst-bob":  { "clearance": "analyst",     "display": "Bob — Markets Analyst" },
+    "priya":        { "clearance": "compliance",  "display": "Priya — Compliance Analyst" },
+    "bsa-admin":    { "clearance": "restricted",  "display": "BSA Officer / Admin" }
+  }
+}

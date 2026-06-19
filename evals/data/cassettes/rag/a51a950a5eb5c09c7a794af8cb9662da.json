@@ -1,0 +1,93 @@
+{
+  "meta": {
+    "question": "What drove operating margin change as of FY2022 for 3M? If operating margin is not a useful metric for a company like this, then please state that and explain why.",
+    "clearance": "analyst"
+  },
+  "response": {
+    "answer": "[1] Operating margin at 3M Company was impacted by several factors as of FY2022, the most significant being an increase in costs related to litigation, divestiture-related restructuring charges, and ongoing general cost management initiatives. This led to a reduction in operating income margin from 19.1% in FY2021 to 19.1% in FY2022.\n\n[3] The American Express Company reported a net income of $7.5 billion in FY2022, showing an increase compared to the previous year’s figure of $8.1 billion. However, its operating margins are not directly comparable since it measures performance through Net Interest Margin rather than operating or gross margin.\n\n[6] AML Monitoring (Anti-Money Laundering) did drive escalations in certain types of alerts as of 2026 Q2, increasing by 26% from the previous quarter. No single-customer case detail appears in this note to ensure privacy and compliance with data protection laws.",
+    "citations": [
+      {
+        "marker": 1,
+        "chunkId": "4780cdce-6ee8-3508-8ebe-49e0a34a60e9",
+        "documentId": "43fd31be-a241-38cd-abcc-70df56f5e653",
+        "docId": "financebench_id_01865",
+        "title": "3M_2022_10K — MD&A — Sales Change by Segment",
+        "sourceUri": "https://investors.3m.com/financials/sec-filings/content/0000066740-23-000014/0000066740-23-000014.pdf",
+        "clearance": "analyst",
+        "score": 0.01639344262295082,
+        "snippet": "3M Company — MD&A, Worldwide Sales Change by Business Segment (Year ended December 31, 2022) Business Segment Organic Acquisitions Divestitures Translation Total Safety and Industrial 1.0% -- -- (4.2)% (3.2)% Transportation and Electronics …"
+      },
+      {
+        "marker": 3,
+        "chunkId": "04f1dd0a-5af9-396b-800a-5805edfb7728",
+        "documentId": "d5b53760-76d0-3a32-89c5-03a9ea096305",
+        "docId": "financebench_id_01981",
+        "title": "AMERICANEXPRESS_2022_10K — MD&A — Business Environment",
+        "sourceUri": "https://s26.q4cdn.com/747928648/files/doc_financials/2022/q4/AMEX-10K-4Q22.pdf",
+        "clearance": "analyst",
+        "score": 0.015873015873015872,
+        "snippet": "American Express Company — MD&A, Business Environment (FY2022) For 2022, we reported net income of $7.5 billion, or $9.85 per share, compared with net income of $8.1 billion, or $10.02 per share, a year ago. The reduction in net income refl…"
+      },
+      {
+        "marker": 6,
+        "chunkId": "cf89ca92-a681-33ad-9e99-4119c179bc66",
+        "documentId": "8b323f69-9698-3b4b-9930-f5cb7a7e8312",
+        "docId": "l2-aml-quarterly-metrics",
+        "title": "AML Monitoring — Quarterly Desk Metrics (2026 Q2)",
+        "sourceUri": "atlas://analytics/aml-quarterly-metrics-2026Q2.md",
+        "clearance": "analyst",
+        "score": 0.015151515151515152,
+        "snippet": "# AML Monitoring — Quarterly Desk Metrics (2026 Q2) Aggregate, de-identified monitoring statistics for the commercial portfolio. No single-customer case detail appears in this note (analyst clearance). | Metric | 2026 Q1 | 2026 Q2 | |---|--…"
+      }
+    ],
+    "retrieval": {
+      "denseHits": 16,
+      "sparseHits": 0,
+      "fused": 16,
+      "reranked": 6,
+      "clearanceApplied": "analyst"
+    },
+    "contexts": [
+      {
+        "chunkId": "4780cdce-6ee8-3508-8ebe-49e0a34a60e9",
+        "documentId": "43fd31be-a241-38cd-abcc-70df56f5e653",
+        "clearance": "analyst",
+        "text": "3M Company — MD&A, Worldwide Sales Change by Business Segment (Year ended December 31, 2022)\n\nBusiness Segment            Organic  Acquisitions  Divestitures  Translation  Total\nSafety and Industrial         1.0%        --            --         (4.2)%     (3.2)%\nTransportation and Electronics 1.2        --          (0.5)        (4.6)      (3.9)\nHealth Care                   3.2         --          (1.4)        (3.8)      (2.0)\nConsumer                     (0.9)        --          (0.4)        (2.6)      (3.9)\nTotal Company                 1.2         --          (0.5)        (3.9)      (3.2)\n\nSales and operating income by business segment (Dollars in millions):\n                              2022 Net Sales  % of Total  2022 Operating Income\nSafety and Industrial            $11,604        33.9%          $1,199\nTransportation and Electronics     8,902        26.0            1,012\nHealth Care                        8,421        24.6            1,815\nConsumer                           5,298        15.5              994\nTotal Company                    $34,229       100.0%          $6,539\n\nExcluding the impact of M&A, the Consumer segment shrank by 0.9% organically,\ndragging on the company's overall organic growth for 2022."
+      },
+      {
+        "chunkId": "c6684f2d-71a1-307c-8112-cfccf26ddeb4",
+        "documentId": "2d8b3119-3427-34f0-9568-6c4c411ec422",
+        "clearance": "analyst",
+        "text": "3M Company — MD&A, Results of Operations (FY2022 vs FY2021)\n\nOperating Expenses (Percent of net sales)        2022     2021    Change\nCost of sales                                    56.2%    53.2%     3.0%\nSelling, general and administrative (SG&A)       26.5     20.4      6.1\nResearch, development and related (R&D)            5.4      5.6     (0.2)\nGain on business divestitures                    (8.0)       --     (8.0)\nGoodwill impairment expense                       0.8        --      0.8\nOperating income margin                          19.1%    20.8%    (1.7)%\n\nSelling, General and Administrative Expenses: SG&A, measured as a percent of\nsales, increased in 2022 when compared to the same period last year. SG&A was\nimpacted by increased special item costs for significant litigation primarily\nrelated to steps toward resolving Combat Arms Earplugs litigation (discussed in\nNote 16) resulting in a 2022 second quarter pre-tax charge of approximately\n$1.2 billion, certain impairment costs related to exiting PFAS manufacturing\n(see Note 15), costs related to exiting Russia (see Note 15), divestiture-related\nrestructuring charges (see Note 5), and continued investment in key growth\ninitiatives. These increases were partially offset by restructuring benefits and\nongoing general 3M cost management.\n\nCost of Sales increases were primarily due to 2022 special item costs for\nsignificant litigation from additional commitments to address PFAS-related\nmatters at 3M's Zwijndrecht, Belgium site (discussed in Note 16), higher raw\nmaterials and logistics costs.\n\nGain on Business Divestitures: In the third quarter of 2022, 3M recorded a\npre-tax gain of $2.7 billion related to the split-off and combination of its\nFood Safety business with Neogen Corporation."
+      },
+      {
+        "chunkId": "04f1dd0a-5af9-396b-800a-5805edfb7728",
+        "documentId": "d5b53760-76d0-3a32-89c5-03a9ea096305",
+        "clearance": "analyst",
+        "text": "American Express Company — MD&A, Business Environment (FY2022)\n\nFor 2022, we reported net income of $7.5 billion, or $9.85 per share, compared\nwith net income of $8.1 billion, or $10.02 per share, a year ago. The reduction\nin net income reflected credit reserve builds and net losses in our Amex Ventures\nstrategic investment portfolio in the current year compared with sizeable credit\nreserve releases and significant net gains in our Amex Ventures strategic\ninvestment portfolio in the prior year.\n\nWorldwide network volumes for the year increased 21 percent compared to the prior\nyear (24 percent on an FX-adjusted basis). Total revenues net of interest expense\nincreased 25 percent year-over-year. Discount revenue, our largest revenue line,\nincreased 25 percent year-over-year. Net card fees increased 17 percent\nyear-over-year, as new card acquisitions reached record levels in 2022 and Card\nMember retention remained high, demonstrating the impact of investments we have\nmade in our premium value propositions.\n\nCard Member loans increased 22 percent year-over-year, with the majority of\ngrowth coming from existing Card Members. Provisions for credit losses increased\nversus the prior year, reflecting a reserve build of $617 million compared with a\nreserve release of $2.5 billion in the prior year."
+      },
+      {
+        "chunkId": "31f662e1-5efb-3f9d-9a70-5762853a376b",
+        "documentId": "9aeb4449-6063-3495-a74f-715ed5364e59",
+        "clearance": "public",
+        "text": "American Express Company\nTable 1: Summary of Financial Performance\nYears Ended December 31 (Millions, except percentages and per share amounts)\n                                                     2022       2021       2020\nTotal revenues net of interest expense            $52,862    $42,380    $36,087\nProvisions for credit losses                        2,182     (1,419)     4,730\nExpenses                                           41,095     33,110     27,061\nPretax income                                       9,585     10,689      4,296\nIncome tax provision                                2,071      2,629      1,161\nNet income                                          7,514      8,060      3,135\nEarnings per common share — diluted                 $9.85     $10.02      $3.77\nCash dividends declared per common share            $2.08      $1.72      $1.72\nReturn on average equity                            32.3%      33.7%      14.2%\nEffective tax rate                                 21.6%      24.6%      27.0%\nCommon Equity Tier 1                               10.3%      10.5%      13.5%\nCard Member loans                                 107,964     88,562     73,373\nCustomer deposits                                 110,239     84,382     86,875\n\nThe effective tax rate dropped from 24.6% in FY2021 to 21.6% in FY2022. As a\nfinancial-services company, American Express measures performance through Net\nInterest Margin rather than operating or gross margin. Common stock trades on the\nNew York Stock Exchange under the trading symbol AXP."
+      },
+      {
+        "chunkId": "7defbf83-6bc9-3af6-a5c3-be8bcfba6800",
+        "documentId": "8cb9042a-cacf-31f4-b878-7abf7ee76518",
+        "clearance": "public",
+        "text": "Activision Blizzard, Inc. and Subsidiaries\nConsolidated Balance Sheets\n(Amounts in millions, except share data)\n                                              At December 31, 2019   At December 31, 2018\nAssets\nCurrent assets:\nCash and cash equivalents                            $5,794                $4,225\nAccounts receivable, net of allowances                  848                 1,035\nInventories, net                                         32                    43\nSoftware development                                    322                   264\nOther current assets                                    296                   539\nTotal current assets                                  7,292                 6,106\nSoftware development (non-current)                       54                    65\nProperty and equipment, net                             253                   282\nDeferred income taxes, net                            1,293                   458\nIntangible assets, net                                  531                   735\nGoodwill                                              9,764                 9,762\nTotal assets                                        $19,845               $17,890\n\nNote: FY2019 revenue / average PP&E (FY2018-FY2019) gives a fixed asset turnover\nratio of 24.26 (Total net revenues divided by average Property and equipment, net)."
+      },
+      {
+        "chunkId": "cf89ca92-a681-33ad-9e99-4119c179bc66",
+        "documentId": "8b323f69-9698-3b4b-9930-f5cb7a7e8312",
+        "clearance": "analyst",
+        "text": "# AML Monitoring — Quarterly Desk Metrics (2026 Q2)\n\nAggregate, de-identified monitoring statistics for the commercial portfolio. No\nsingle-customer case detail appears in this note (analyst clearance).\n\n| Metric | 2026 Q1 | 2026 Q2 |\n|---|---|---|\n| Alerts generated | 1,284 | 1,412 |\n| Alerts escalated to compliance | 96 | 121 |\n| Accounts under enhanced monitoring | 38 | 41 |\n| Median alert disposition time (days) | 6.2 | 5.4 |\n\n## Commentary\nEscalations rose 26% quarter-over-quarter, driven primarily by cash-structuring\ntypologies in the cash-intensive trade segment. High-risk accounts continue to\naccount for a disproportionate share of escalations. Specific account\nidentifiers and case narratives are restricted to compliance reviewers."
+      }
+    ],
+    "usage": {
+      "promptTokens": 2970,
+      "completionTokens": 215
+    }
+  }
+}

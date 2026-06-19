@@ -30,9 +30,12 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+    # Redis Stack (RediSearch) — P3 semantic cache uses vector search (ADR-0036 / D-P3-2). Multi-arch
+    # (amd64 + arm64), so the same digest runs on the Oracle Ampere A1 prod target. Replaces vanilla
+    # redis:7-alpine; Langfuse + the P3 rate-limiter/budget counters share this instance.
+    image: redis/redis-stack-server:7.4.0-v3@sha256:7d8e657d60d525534d6abe96e7645ab30ef1b4f1ffedc6eeb2d4d4283b3a49b9
     container_name: atlas-redis
-    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    command: ["redis-stack-server", "--save", "60", "1", "--loglevel", "warning"]
     ports:
       - "${REDIS_PORT}:6379"
     volumes:
@@ -43,6 +46,34 @@ services:
       timeout: 3s
       retries: 12
       start_period: 5s
+    restart: unless-stopped
+
+  # ── API Gateway (P3, ADR-0033 — Spring Cloud Gateway WebMVC) ─────────────────
+  # The single front door in front of rag-engine. Built from gateway/Dockerfile (the
+  # `-exec` fat jar must be packaged first: `mvn -pl gateway -am package`). Like
+  # rag-engine, the gateway is typically run on the HOST during dev (`mvn spring-boot:run`)
+  # and scraped via host.docker.internal; this service definition exists for image parity
+  # and full-stack bring-up. The build context is the repo ROOT (Dockerfile COPYs the jar).
+  # Commented out by default so `make up` does not require a pre-built jar; opt in with
+  # `make up` + an explicit `docker compose up gateway` once the jar is built.
+  gateway:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: gateway/Dockerfile
+    image: atlas/gateway:0.1.0-SNAPSHOT
+    container_name: atlas-gateway
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      GATEWAY_PORT: 8080
+      # rag-engine runs on the host in dev; reach it from inside the network.
+      ATLAS_GATEWAY_RAG_ENGINE_URL: ${ATLAS_GATEWAY_RAG_ENGINE_URL:-http://host.docker.internal:8081}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
     restart: unless-stopped
 
   # ── Observability plane (P2) ────────────────────────────────────────────────

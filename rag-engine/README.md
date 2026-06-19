@@ -86,6 +86,12 @@ The RBAC core (ADR-0012) lives in `com.atlas.ragengine.security`:
   from `X-Atlas-Clearance` (explicit, wins) or `X-Atlas-User` → the D3 map (`dev/clearance-users.json`),
   else the configured default (`public`, fail-closed). **Profile-gated to `local`/`test`** (`SecurityConfig`);
   outside those profiles the shim is absent and the system fails closed. The P3 simulated IdP supersedes it.
+- **`DownstreamClearanceVerifier` + `DownstreamClearanceFilter`** (P3, ADR-0034) — the Gateway-fronted trust
+  boundary. The Gateway re-asserts the caller's verified clearance as a short-lived HS256 JWT (header
+  `X-Atlas-Internal-Clearance`, signed with the shared `ATLAS_GATEWAY_INTERNAL_SECRET`, key = `SHA-256(secret)`).
+  `rag-engine` **independently** verifies signature/`exp`/`iss=atlas-gateway`; when valid, the `QueryController`
+  uses that clearance and **ignores** the client `X-Atlas-Clearance` shim. Absent a valid assertion the filter
+  is a no-op (P1 behaviour intact — D4 `RbacNegativeAccessIT` stays green). Config under `atlas.gateway.*`.
 
 Config under `atlas.security.*` (`ATLAS_SECURITY_HEADER_USER`, `..._HEADER_CLEARANCE`,
 `..._DEFAULT_CLEARANCE`, `..._CLEARANCE_USERS`) — env-swappable.
@@ -134,11 +140,21 @@ source survives, it returns a grounded "no authorized information" refusal **wit
 
 HTTP API:
 - **`POST /v1/query`** — body `{ "query": "...", "topK": 6, "includeContexts": false }`; caller clearance
-  from the shim headers; returns `{ answer, citations[], retrieval{denseHits,sparseHits,fused,reranked,clearanceApplied} }`.
+  from the shim headers; returns `{ answer, citations[], retrieval{denseHits,sparseHits,fused,reranked,clearanceApplied}, usage? }`.
   With `includeContexts=true` (eval-harness opt-in, ADR-0023) the response adds `contexts[]` of
   `{chunkId, documentId, clearance, text}` — the full RBAC-filtered chunks the model saw (omitted otherwise).
+  `usage` ({promptTokens, completionTokens}, P3/ADR-0040) is included when the model reports token usage — the
+  gateway uses it for real cost/budget accounting.
 - **`POST /v1/admin/ingest`** — full corpus rebuild; **guarded** (requires `restricted`/admin), returns
   `{documents, chunks, rejectedUntrusted}`.
+
+### Model tiering (P3, ADR-0035)
+`ModelTierResolver` maps the Gateway-selected tier (header `X-Atlas-Model-Tier`) to a per-request chat-model
+override applied as a **portable `ChatOptions.model(...)`** on the prompt: `tier1-small` (or absent/unknown)
+uses the default `ChatModel` (the small model, ADR-0005, no override); `tier2-mid` → `ATLAS_ROUTER_TIER2_MODEL`;
+`tier3-frontier` → `ATLAS_ROUTER_FRONTIER_MODEL` **only** when `ATLAS_ROUTER_FRONTIER_ENABLED` (else fail-safe to
+default). The Gateway owns the routing *decision* (ADR-0035); rag-engine owns model serving. Config under
+`atlas.router.*`.
 
 ## Observability — OTel `gen_ai.*` tracing (P2, ADR-0030)
 Every `/v1/query` emits a trace via the **Micrometer Observation API** (→ OTel bridge → OTLP → Langfuse):

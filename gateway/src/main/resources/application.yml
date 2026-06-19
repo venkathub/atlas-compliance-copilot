@@ -1,0 +1,97 @@
+server:
+  port: ${GATEWAY_PORT:8080}
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    gateway:
+      # Spring Cloud Gateway Server WebMVC (ADR-0033). No proxy routes are declared yet — P3 task 1
+      # is the skeleton; the query path (task 3) and rate-limit filters (task 6) are added later.
+      mvc:
+        enabled: true
+  ai:
+    ollama:
+      # EmbeddingModel for the semantic-cache query embedding (ADR-0036). Remote GPU endpoint,
+      # env-swappable; never auto-pull (the endpoint already hosts the model). The gateway uses no
+      # ChatModel (routing only forwards a tier; rag-engine owns chat serving).
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      init:
+        pull-model-strategy: never
+      embedding:
+        options:
+          model: ${ATLAS_CACHE_EMBED_MODEL:${OLLAMA_EMBED_MODEL:nomic-embed-text}}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # `prometheus` exposes /actuator/prometheus for the P3 cost/token/latency dashboard scrape.
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: never
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+# Gateway-specific config (all env-swappable, never hardcoded — CLAUDE.md).
+atlas:
+  gateway:
+    # Downstream RAG Engine the Gateway proxies to (it is no longer called directly by clients).
+    # Wired into the actual query path in P3 task 3.
+    rag-engine-url: ${ATLAS_GATEWAY_RAG_ENGINE_URL:http://localhost:8081}
+    # Shared secret for the Gateway→rag-engine internal verified-clearance assertion (ADR-0034 /
+    # D-P3-5). rag-engine holds the SAME value and independently verifies (defense-in-depth).
+    internal-secret: ${ATLAS_GATEWAY_INTERNAL_SECRET:change-me-locally}
+  # Simulated IdP (ADR-0034, realizes ADR-0003) — mints/validates the signed clearance JWT. DEV ONLY.
+  idp:
+    signing-key: ${ATLAS_IDP_SIGNING_KEY:change-me-locally}
+    issuer: ${ATLAS_IDP_ISSUER:atlas-sim-idp}
+    token-ttl-seconds: ${ATLAS_IDP_TOKEN_TTL_SECONDS:3600}
+    dev-users: ${ATLAS_IDP_DEV_USERS:classpath:dev/clearance-users.json}
+  # Cost-aware model router (ADR-0035). Default = small/quantized (ADR-0005); escalate only by policy;
+  # frontier reserved/budget-gated + off by default. tier1-model is the display name of the default
+  # model (= OLLAMA_CHAT_MODEL); rag-engine owns the actual tier→ChatModel mapping. All env-swappable.
+  router:
+    default-tier: ${ATLAS_ROUTER_DEFAULT_TIER:tier1-small}
+    tier1-model: ${OLLAMA_CHAT_MODEL:qwen2.5:3b-instruct}
+    tier2-model: ${ATLAS_ROUTER_TIER2_MODEL:qwen2.5:7b-instruct}
+    escalate-query-tokens: ${ATLAS_ROUTER_ESCALATE_QUERY_TOKENS:1200}
+    cascade-enabled: ${ATLAS_ROUTER_CASCADE_ENABLED:true}
+    frontier-enabled: ${ATLAS_ROUTER_FRONTIER_ENABLED:false}
+    frontier-model: ${ATLAS_ROUTER_FRONTIER_MODEL:}
+  # Cost-units table (ADR-0040) — synthetic per-1k for self-hosted tiers, real $-derived for frontier.
+  cost:
+    tier1-units-per-1k: ${ATLAS_COST_TIER1_UNITS_PER_1K:0.30}
+    tier2-units-per-1k: ${ATLAS_COST_TIER2_UNITS_PER_1K:0.70}
+    frontier-units-per-1k: ${ATLAS_COST_FRONTIER_UNITS_PER_1K:5.00}
+  # Clearance-partitioned, poison-resistant semantic cache (ADR-0036, Redis Stack / RediSearch).
+  cache:
+    enabled: ${ATLAS_CACHE_ENABLED:true}
+    sim-threshold: ${ATLAS_CACHE_SIM_THRESHOLD:0.95}
+    ttl-seconds: ${ATLAS_CACHE_TTL_SECONDS:86400}
+    corpus-version: ${ATLAS_CACHE_CORPUS_VERSION:v1}
+    reground-on-hit: ${ATLAS_CACHE_REGROUND_ON_HIT:false}
+  # Resource controls — rate limit + budget + circuit breaker (ADR-0038/0039, OWASP LLM10). Rate-limit
+  # and budget are Redis-backed and independently toggleable (off → gateway runs Redis-free).
+  resilience:
+    rate-limit-enabled: ${ATLAS_RATELIMIT_ENABLED:true}
+    requests-per-min: ${ATLAS_RATELIMIT_REQUESTS_PER_MIN:60}
+    budget-enabled: ${ATLAS_BUDGET_ENABLED:true}
+    budget-daily-cap-units: ${ATLAS_BUDGET_DAILY_CAP_UNITS:100}
+    max-input-tokens: ${ATLAS_MAX_INPUT_TOKENS:6000}
+    max-output-tokens: ${ATLAS_MAX_OUTPUT_TOKENS:1024}
+    request-timeout-ms: ${ATLAS_REQUEST_TIMEOUT_MS:30000}
+    cb-failure-rate-threshold-pct: ${ATLAS_CB_FAILURE_RATE_THRESHOLD_PCT:50}
+    cb-wait-duration-ms: ${ATLAS_CB_WAIT_DURATION_MS:10000}
+  # PII egress redaction + output handling (ADR-0037, OWASP LLM02/LLM05). Deterministic, inline on the
+  # hot path; redaction events are traced metadata-only (counts/types, NEVER the PII). name-denylist is a
+  # compliance-style list of restricted entities/names (comma-separated; default empty).
+  safety:
+    pii-enabled: ${ATLAS_PII_REDACTION_ENABLED:true}
+    sanitize-enabled: ${ATLAS_OUTPUT_SANITIZE_ENABLED:true}
+    name-denylist: ${ATLAS_PII_NAME_DENYLIST:}
+
+

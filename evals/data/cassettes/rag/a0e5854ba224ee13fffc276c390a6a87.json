@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "question": "What dollar amount triggers a Currency Transaction Report (CTR)?",
+    "clearance": "public"
+  },
+  "response": {
+    "answer": "According to [1], the Currency Transaction Report (CTR) is filed for cash transactions exceeding $10,000 in aggregate by or on behalf of one person in a single business day.",
+    "citations": [
+      {
+        "marker": 1,
+        "chunkId": "417be379-73ed-305e-bc9b-307d590e0a6a",
+        "documentId": "81ecc34d-3b30-371e-8d2a-e38d006bcec3",
+        "docId": "l2-aml-policy-overview",
+        "title": "Atlas Bank — Anti-Money-Laundering (AML) Program Policy",
+        "sourceUri": "atlas://policy/aml-program-overview.md",
+        "clearance": "public",
+        "score": 0.01639344262295082,
+        "snippet": "# Atlas Bank — Anti-Money-Laundering (AML) Program Policy ## Purpose This policy establishes Atlas Bank's program to detect, prevent, and report money laundering and terrorist financing in accordance with the Bank Secrecy Act (BSA) and appl…"
+      }
+    ],
+    "retrieval": {
+      "denseHits": 10,
+      "sparseHits": 0,
+      "fused": 10,
+      "reranked": 6,
+      "clearanceApplied": "public"
+    },
+    "contexts": [
+      {
+        "chunkId": "417be379-73ed-305e-bc9b-307d590e0a6a",
+        "documentId": "81ecc34d-3b30-371e-8d2a-e38d006bcec3",
+        "clearance": "public",
+        "text": "# Atlas Bank — Anti-Money-Laundering (AML) Program Policy\n\n## Purpose\nThis policy establishes Atlas Bank's program to detect, prevent, and report money\nlaundering and terrorist financing in accordance with the Bank Secrecy Act (BSA)\nand applicable regulations. It applies to all employees, contractors, and lines\nof business.\n\n## Key reporting thresholds\n- **Currency Transaction Report (CTR):** filed for cash transactions exceeding\n  **$10,000** in aggregate by or on behalf of one person in a single business day.\n- **Suspicious Activity Report (SAR):** filed when the bank knows, suspects, or has\n  reason to suspect that a transaction (or pattern) aggregating **$5,000 or more**\n  involves funds from illegal activity, is designed to evade BSA requirements\n  (including **structuring** to avoid the CTR threshold), or has no apparent lawful\n  purpose. SARs must be filed within **30 calendar days** of initial detection.\n\n## Roles\n- **Analysts** monitor alerts and document dispositions.\n- **Compliance officers** review exceptions, approve SAR filings, and own the case\n  record.\n- The **BSA Officer** has final authority over the program.\n\n## Confidentiality\nThe existence or contents of a SAR, and any supporting investigative material,\nare strictly confidential and may not be disclosed outside authorized personnel."
+      },
+      {
+        "chunkId": "7c3cc729-7b1a-3aab-accd-dc8e34068571",
+        "documentId": "d39146f8-3b6e-3205-ab5a-838f7cefd1ef",
+        "clearance": "public",
+        "text": "# BSA/AML Regulatory Reference (Public Summary)\n\nThis non-confidential reference summarizes the principal U.S. anti-money-laundering\nobligations relevant to Atlas Bank staff. It contains no customer information.\n\n## Core obligations\n- **Customer Identification Program (CIP):** verify the identity of each customer\n  at account opening.\n- **Customer Due Diligence (CDD):** understand the nature and purpose of customer\n  relationships and develop a risk profile.\n- **Enhanced Due Diligence (EDD):** apply heightened scrutiny to higher-risk\n  customers, including those with complex ownership or exposure to high-risk\n  jurisdictions.\n- **Ongoing monitoring:** detect and report suspicious activity.\n\n## Structuring\n\"Structuring\" means breaking a large transaction into smaller amounts to evade the\n$10,000 CTR reporting threshold. Structuring is itself a federal offense regardless\nof whether the underlying funds are legitimate.\n\n## Recordkeeping\nRecords supporting CTRs and SARs must be retained for **five years**."
+      },
+      {
+        "chunkId": "7defbf83-6bc9-3af6-a5c3-be8bcfba6800",
+        "documentId": "8cb9042a-cacf-31f4-b878-7abf7ee76518",
+        "clearance": "public",
+        "text": "Activision Blizzard, Inc. and Subsidiaries\nConsolidated Balance Sheets\n(Amounts in millions, except share data)\n                                              At December 31, 2019   At December 31, 2018\nAssets\nCurrent assets:\nCash and cash equivalents                            $5,794                $4,225\nAccounts receivable, net of allowances                  848                 1,035\nInventories, net                                         32                    43\nSoftware development                                    322                   264\nOther current assets                                    296                   539\nTotal current assets                                  7,292                 6,106\nSoftware development (non-current)                       54                    65\nProperty and equipment, net                             253                   282\nDeferred income taxes, net                            1,293                   458\nIntangible assets, net                                  531                   735\nGoodwill                                              9,764                 9,762\nTotal assets                                        $19,845               $17,890\n\nNote: FY2019 revenue / average PP&E (FY2018-FY2019) gives a fixed asset turnover\nratio of 24.26 (Total net revenues divided by average Property and equipment, net)."
+      },
+      {
+        "chunkId": "1aab7166-eb56-318c-a5f5-0a4adeb9edc5",
+        "documentId": "d08b5328-033c-3db6-8321-aa2d479f877e",
+        "clearance": "public",
+        "text": "American Water Works Company, Inc. and Subsidiary Companies\nConsolidated Statements of Cash Flows (In millions)\nFor the Years Ended December 31              2020      2019      2018\nCASH FLOWS FROM OPERATING ACTIVITIES\nNet income                                   $709      $621      $565\nDepreciation and amortization                 604       582       545\nProvision for losses on accounts receivable    34        28        33\nImpact of Freedom Industries settlement         --        (4)      (40)\nNet cash provided by operating activities    1,426     1,383     1,386\nCASH FLOWS FROM INVESTING ACTIVITIES\nCapital expenditures                        (1,822)   (1,654)   (1,586)\nAcquisitions, net of cash acquired            (135)     (235)     (398)\nNet cash used in investing activities       (2,061)   (1,945)   (2,036)\nCASH FLOWS FROM FINANCING ACTIVITIES\nProceeds from long-term debt                 1,334     1,530     1,358\nRepayments of long-term debt                  (342)     (495)     (526)\nDividends paid                                (389)     (353)     (319)\nNet cash provided by financing activities    1,120       494       726\nCash, cash equivalents and restricted funds at end of period $576  $91  $159\n\nNote: American Water Works paid $389 million in cash dividends in FY2020\n(approximately $0.40 billion)."
+      },
+      {
+        "chunkId": "30624a33-3db4-3551-bbbb-626900686bd5",
+        "documentId": "16eaa499-f0a3-3e63-b602-7bbb4eb80baf",
+        "clearance": "public",
+        "text": "3M Company and Subsidiaries\nConsolidated Statement of Cash Flows\nYears ended December 31 (Millions)\n                                                          2018      2017      2016\nCash Flows from Operating Activities\nNet income including noncontrolling interest             $5,363    $4,869    $5,058\nDepreciation and amortization                             1,488     1,544     1,474\nStock-based compensation expense                            302       324       298\nNet cash provided by operating activities                 6,439     6,240     6,662\nCash Flows from Investing Activities\nPurchases of property, plant and equipment (PP&E)        (1,577)   (1,373)   (1,420)\nProceeds from sale of PP&E and other assets                 262        49        58\nNet cash provided by (used in) investing activities         222    (3,086)   (1,403)\nCash Flows from Financing Activities\nPurchases of treasury stock                              (4,870)   (2,068)   (3,753)\nDividends paid to shareholders                           (3,193)   (2,803)   (2,678)\nNet cash provided by (used in) financing activities      (6,701)   (2,655)   (4,626)\nNet increase (decrease) in cash and cash equivalents       (200)      655       600\nCash and cash equivalents at end of period               $2,853    $3,053    $2,398"
+      },
+      {
+        "chunkId": "31f662e1-5efb-3f9d-9a70-5762853a376b",
+        "documentId": "9aeb4449-6063-3495-a74f-715ed5364e59",
+        "clearance": "public",
+        "text": "American Express Company\nTable 1: Summary of Financial Performance\nYears Ended December 31 (Millions, except percentages and per share amounts)\n                                                     2022       2021       2020\nTotal revenues net of interest expense            $52,862    $42,380    $36,087\nProvisions for credit losses                        2,182     (1,419)     4,730\nExpenses                                           41,095     33,110     27,061\nPretax income                                       9,585     10,689      4,296\nIncome tax provision                                2,071      2,629      1,161\nNet income                                          7,514      8,060      3,135\nEarnings per common share — diluted                 $9.85     $10.02      $3.77\nCash dividends declared per common share            $2.08      $1.72      $1.72\nReturn on average equity                            32.3%      33.7%      14.2%\nEffective tax rate                                 21.6%      24.6%      27.0%\nCommon Equity Tier 1                               10.3%      10.5%      13.5%\nCard Member loans                                 107,964     88,562     73,373\nCustomer deposits                                 110,239     84,382     86,875\n\nThe effective tax rate dropped from 24.6% in FY2021 to 21.6% in FY2022. As a\nfinancial-services company, American Express measures performance through Net\nInterest Margin rather than operating or gross margin. Common stock trades on the\nNew York Stock Exchange under the trading symbol AXP."
+      }
+    ],
+    "usage": {
+      "promptTokens": 2929,
+      "completionTokens": 41
+    }
+  }
+}
