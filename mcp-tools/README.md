@@ -5,16 +5,28 @@ enterprise action over **MCP Streamable HTTP** (spec `2025-11-25`), with product
 around the write: OAuth 2.1 resource-server auth (RFC 8707), a per-call clearance re-check, a
 transactional draft-SAR write, and an append-only, tamper-evident audit log.
 
-> **Status — P4 task 2.** The Spring AI MCP server (WebMVC, Streamable HTTP) is up with actuator
-> health/metrics and **no tools registered yet**, and the **append-only, hash-chained audit log** now
-> exists (`agent.tool_audit`, ADR-0048). The governed `open_draft_sar` tool + `sar_draft` table, the
-> OAuth 2.1 resource server, and the per-call clearance re-check are layered on in the remaining P4 tasks
-> (see `docs/phases/P4_SPEC.md`).
+> **Status — P4 task 3.** The Spring AI MCP server (WebMVC, Streamable HTTP) exposes the one governed
+> write tool **`open_draft_sar`**, backed by the **append-only, hash-chained audit log** (`agent.tool_audit`,
+> ADR-0048) and a transactional **`agent.sar_draft`** write (ADR-0049). Still to come in the remaining P4
+> tasks: the OAuth 2.1 resource server + per-call clearance re-check (task 4) and the single-use,
+> graph-bound approval precondition (task 5) — see `docs/phases/P4_SPEC.md`.
 
 ## Purpose
 Turn an answer into a **governed action**: when the agent (`/agents`) decides an AML exception breaches
 the reporting threshold and a human approves, it calls this server's `open_draft_sar` tool to create a
 DRAFT Suspicious Activity Report for review — never auto-filed, fully audited.
+
+## `open_draft_sar` (ADR-0049) — the one governed write
+- **Contract:** `open_draft_sar(account, period, rationale, citations, runId)` → structured output
+  `{draftRef, status, createdAt}`. `period` must match `^[0-9]{4}-Q[1-4]$`; `rationale` ≤ 2000 chars;
+  `citations` a non-empty integer array. Exposed via the annotation model (`@McpTool`/`@McpToolParam`),
+  auto-discovered by the MCP server; a record return type yields **structured** tool output.
+- **Atomic, audited write:** the tool records an `ATTEMPT` audit row, then `SarDraftService` writes the
+  `sar_draft` row (status `DRAFT`) **and** the `SUCCESS` audit row in **one transaction** — a failure rolls
+  back both (no orphan draft, no missing audit). Validation failures yield an `ERROR` audit row and no write.
+- **Governance seam:** caller + clearance come from `ToolCallerContext` (task-3 default: configured identity);
+  task 4 replaces it with the token-derived identity + the per-call clearance re-check, and task 5 adds the
+  single-use approval precondition. The authoritative human-in-the-loop gate is the agent graph (task 8).
 
 ## Audit log (ADR-0048) — append-only + tamper-evident
 - **Two DB identities (least privilege):** the runtime pool connects as the restricted role

@@ -33,6 +33,9 @@ class McpToolsApplicationIT extends AbstractAgentSchemaIT {
     @Autowired
     private TestRestTemplate rest;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate appJdbc;
+
     @Test
     void contextLoads() {
         // The application context (Spring AI MCP server WebMVC + actuator) starts cleanly.
@@ -52,9 +55,9 @@ class McpToolsApplicationIT extends AbstractAgentSchemaIT {
     }
 
     @Test
-    void mcpStreamableHttpHandshakeAdvertisesIdentityAndZeroTools() throws Exception {
+    void mcpStreamableHttpHandshakeAdvertisesIdentityAndTheDraftSarTool() throws Exception {
         // 1) initialize → 200 + a session id; serverInfo carries our env-configured name/version,
-        //    and the server advertises the `tools` capability (ready to host tools in later tasks).
+        //    and the server advertises the `tools` capability.
         String initBody = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
                 + "\"params\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},"
                 + "\"clientInfo\":{\"name\":\"atlas-it\",\"version\":\"1\"}}}";
@@ -69,15 +72,53 @@ class McpToolsApplicationIT extends AbstractAgentSchemaIT {
         assertThat(initResult.path("serverInfo").path("name").asText()).isEqualTo("atlas-mcp-tools");
         assertThat(initResult.path("capabilities").has("tools")).as("server advertises tools capability").isTrue();
 
-        // 2) tools/list (with the session) → an empty tool array (skeleton registers no tools).
+        // 2) tools/list (with the session) → exactly the governed open_draft_sar tool, with a schema
+        //    declaring the business args. (Added in P4 task 3.)
         String listBody = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}";
         ResponseEntity<String> list = rest.exchange(
                 MCP_ENDPOINT, HttpMethod.POST, new HttpEntity<>(listBody, mcpHeaders(sessionId)), String.class);
 
         assertThat(list.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode tools = parseJsonRpc(list.getBody()).path("result").path("tools");
-        assertThat(tools.isArray()).as("result.tools is a JSON array").isTrue();
-        assertThat(tools).as("no tools are registered in the P4 task-1 skeleton").isEmpty();
+        assertThat(tools.isArray()).isTrue();
+        assertThat(tools).hasSize(1);
+        JsonNode tool = tools.get(0);
+        assertThat(tool.path("name").asText()).isEqualTo("open_draft_sar");
+        JsonNode schemaProps = tool.path("inputSchema").path("properties");
+        assertThat(schemaProps.has("account")).isTrue();
+        assertThat(schemaProps.has("period")).isTrue();
+        assertThat(schemaProps.has("citations")).isTrue();
+    }
+
+    @Test
+    void openDraftSarToolCallOverStreamableHttpCreatesDraft() throws Exception {
+        String sessionId = initializeSession();
+
+        String callBody = "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"open_draft_sar\",\"arguments\":{"
+                + "\"account\":\"Northwind\",\"period\":\"2026-Q2\","
+                + "\"rationale\":\"Exception #2 exceeds threshold\","
+                + "\"citations\":[1,2],\"runId\":\"run_http_1\"}}}";
+        ResponseEntity<String> call = rest.exchange(
+                MCP_ENDPOINT, HttpMethod.POST, new HttpEntity<>(callBody, mcpHeaders(sessionId)), String.class);
+
+        assertThat(call.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode result = parseJsonRpc(call.getBody()).path("result");
+        assertThat(result.path("isError").asBoolean(false)).as("tool call succeeded").isFalse();
+
+        // The draft was actually persisted (queryable by the originating run).
+        Integer drafts = appJdbc.queryForObject(
+                "SELECT count(*) FROM agent.sar_draft WHERE run_id = 'run_http_1'", Integer.class);
+        assertThat(drafts).isEqualTo(1);
+    }
+
+    private String initializeSession() throws Exception {
+        String initBody = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+                + "\"params\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},"
+                + "\"clientInfo\":{\"name\":\"atlas-it\",\"version\":\"1\"}}}";
+        ResponseEntity<String> init = rest.exchange(
+                MCP_ENDPOINT, HttpMethod.POST, new HttpEntity<>(initBody, mcpHeaders(null)), String.class);
+        return init.getHeaders().getFirst(SESSION_HEADER);
     }
 
     private static HttpHeaders mcpHeaders(String sessionId) {

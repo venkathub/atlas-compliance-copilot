@@ -153,6 +153,21 @@
 - **Consequences:** the threshold is env/config-driven and documented; P5 may render a SAR artifact from the
   `sar_draft` row; adding a second tool requires a new ADR. No external/real SAR filing (FinCEN) — synthetic
   Layer-2 data only.
+- **Implementation note (2026-06-21, P4 Task 3 — tool + write landed; breach rule deferred to Task 7):** the
+  governed write tool `open_draft_sar` is exposed over Streamable HTTP via the Spring AI annotation model
+  (`org.springaicommunity.mcp.annotation.@McpTool`/`@McpToolParam`), auto-discovered by
+  `McpServerAnnotationScannerAutoConfiguration`; a record return type (`OpenDraftSarResult`) yields **structured
+  output** `{draftRef,status,createdAt}`. `V3__atlas_sar_draft.sql` adds `agent.sar_draft` (+ a `sar_draft_ref_seq`
+  for the `SAR-<year>-<6 digits>` ref) with INSERT/SELECT granted to `atlas_mcp_app`; it is intentionally *not*
+  append-only (a draft is mutable). `SarDraftService.createDraft` writes `sar_draft` (DRAFT) **and** the `SUCCESS`
+  audit row in one `@Transactional` (the audit append joins via REQUIRED) — proven atomic by a rollback IT
+  (`@MockitoBean` audit throws → 0 orphan drafts). Caller/clearance come from a `ToolCallerContext` seam (task-3
+  default identity; the OAuth re-check is task 4, the single-use approval precondition task 5 — owner-confirmed
+  "defer to 4/5"). **Required `-parameters` compiler flag** (added to the parent pom; Spring Boot's default we
+  don't inherit) so `@McpToolParam` names survive in the JSON schema instead of `arg0…argN`. The breach
+  *threshold* (Q5) lives in the agent's deterministic `assess` node (Task 7), not the tool. Tests: **5 unit**
+  (validator) + **9 IT** (tool ATTEMPT→SUCCESS atomic write, invalid period / oversized rationale rejected,
+  rollback atomicity, MCP `tools/list` schema + `tools/call` round-trip persisting a draft).
 
 ### ADR-0048 — Tamper-evident append-only hash-chained audit log
 - **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-8); ROADMAP §6 G9

@@ -127,6 +127,14 @@
                     <version>${maven-compiler-plugin.version}</version>
                     <configuration>
                         <release>${maven.compiler.release}</release>
+                        <!--
+                          Retain method parameter names in bytecode (-parameters). Spring Boot's
+                          starter-parent enables this by default; we parent off atlas-parent, so set it
+                          explicitly. Required by the Spring AI MCP @McpTool/@McpToolParam model
+                          (P4 /mcp-tools), which derives the tool's JSON-schema property names from the
+                          method parameter names — without it they degrade to arg0, arg1, ….
+                        -->
+                        <parameters>true</parameters>
                     </configuration>
                 </plugin>
                 <plugin>
