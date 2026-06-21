@@ -168,6 +168,10 @@
   *threshold* (Q5) lives in the agent's deterministic `assess` node (Task 7), not the tool. Tests: **5 unit**
   (validator) + **9 IT** (tool ATTEMPT→SUCCESS atomic write, invalid period / oversized rationale rejected,
   rollback atomicity, MCP `tools/list` schema + `tools/call` round-trip persisting a draft).
+- **Gap-closure note (2026-06-21):** `open_draft_sar` now also returns **`auditRef`** (the `SUCCESS`
+  `tool_audit` row, e.g. `audit_42`) in its structured output, so the agent surfaces it on the resume response
+  (§2.3) and a reviewer can pivot draft → audit row. The agent maps it into `action.auditRef` / the run's
+  top-level `auditRef`.
 
 ### ADR-0048 — Tamper-evident append-only hash-chained audit log
 - **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-8); ROADMAP §6 G9
@@ -325,6 +329,14 @@
   then resumes it from a **brand-new graph + checkpointer instance** → COMPLETED, exactly one write. Tests:
   **36** total (HITL approve/reject/single-use/structural, MCP client handshake + error, resume-after-restart IT,
   run-API resume/get) — model-free; only the restart IT needs Docker.
+- **Gap-closure note (2026-06-21):** added **mid-task field confirmation** as a second durable graph interrupt
+  (`clarify`): when `assess` finds a money context but no machine-readable amount, the run pauses
+  `AWAITING_CLARIFICATION`; on `resume{breach:true}` it routes to the (separate) write-approval gate, so a
+  confirmed-by-clarification breach still requires explicit approval before any write. This realizes the spec's
+  "elicitation/clarify" (§4.4) via the authoritative graph mechanism rather than MCP-protocol elicitation
+  (unnecessary for the deterministic single-tool design + the raw-httpx client). Also added **bounded tool
+  retries** in `act_sar` limited to `httpx.ConnectError` (connection never established → no server-side write →
+  safe), never after a response (avoids duplicate SARs). Tests: clarify confirm/decline + retry/no-duplicate.
 
 ### ADR-0043 — MCP tool server stack (Spring AI MCP server, Streamable-HTTP WebMVC)
 - **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-3), §8 (G-P4-1)

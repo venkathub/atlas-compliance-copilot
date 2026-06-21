@@ -180,6 +180,11 @@ no LLM on the safety path, so the whole flow is deterministic and GPU-free.
 - Made the safety-critical path **fully deterministic** (no LLM): the breach decision + routing are a pure
   function of retrieved citations, so a **prompt-injected source document cannot steer the agent into skipping
   the gate or filing a SAR** (OWASP **ASI01**) — and the agent eval runs offline with no GPU.
+- Added **mid-task field confirmation** (a second durable graph interrupt): on an ambiguous, non-machine-
+  readable breach the agent **asks a human to clarify** rather than guess — and a clarified breach still passes
+  the write-approval gate. Proved the agent **inherits P1/P3 guarantees by construction** (offline gate: it
+  calls only the governed `/v1/query` with the caller's Bearer and no clearance header) plus a live end-to-end
+  gate (0 cross-clearance citations / 0 PII / injection-quarantined *through the agent path*).
 - Shipped a **merge-blocking, trajectory-first agent eval** (12 versioned scenarios — forcing story,
   wrong-clearance, injection-in-source, rejection, tool-deny, …) scoring task-success, tool-selection,
   argument-correctness, step-efficiency, and plan-adherence **plus** the binary **HITL-respected** and
@@ -192,9 +197,10 @@ no LLM on the safety path, so the whole flow is deterministic and GPU-free.
 
 **Evidence:** full suite green — **mcp-tools 12 unit + 21 IT** (OAuth 2.1 resource server: missing/expired/
 forged/wrong-aud → 401; per-call DENY → no write; append-only denied for app role *and* owner; tamper detected;
-transactional rollback; MCP `tools/list`+`tools/call` round-trip), **agents 53 tests** (graph structure, HITL
-approve/reject/single-use, resume-after-restart, MCP client, E2E forcing story, observability), **agent eval
-12/12 (all rates 1.0)**, and the frozen **rag-engine 90 unit + 40 IT** + **gateway 66 unit + 14 IT** + both
+transactional rollback; MCP `tools/list`+`tools/call` round-trip), **agents 60 tests** (+3 live-gated agent-path
+invariant checks) covering graph structure, HITL approve/reject/single-use, ambiguous→clarify, act-retry
+(no duplicate write), resume-after-restart, MCP client, E2E forcing story, observability; **agent eval
+12/12 (all rates 1.0)**; and the frozen **rag-engine 90 unit + 40 IT** + **gateway 66 unit + 14 IT** + both
 RAG eval gates still green after the Spring AI bump. ADR-0041–0050 (+0024/0030 notes).
 
 **Quantified:** 10 ADRs (0041–0050) · 1 governed write tool · **3 independent authorization checks**

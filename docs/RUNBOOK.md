@@ -464,8 +464,20 @@ The draft itself: `SELECT draft_ref, account, period, status FROM agent.sar_draf
 ### 8.4 Tests & the agent eval gate (offline, GPU-free)
 ```bash
 mvn -pl mcp-tools verify                                   # 12 unit + 21 IT (OAuth/RBAC/audit/tool)
-uv run --directory agents --group dev pytest -q            # 53 tests (unit + Testcontainers ITs)
+uv run --directory agents --group dev pytest -q            # 60 tests (+3 live-gated, skipped offline)
 uv run --directory agents python -m app.eval.agent_gate    # AGENT GATE: PASS (12/12 scenarios)
+```
+
+### 8.5 Live agent-path invariant gate (needs the running stack + GPU)
+The offline suite proves the agent *uses* the governed path (forwards only the caller Bearer, no clearance
+header). The literal §4.3 end-to-end gate — 0 cross-clearance citations / 0 PII / injection-quarantined
+*through the agent* — runs against a live Gateway+rag-engine (like the other live lanes):
+```bash
+make -C infra gpu-up && set -a && . ./.env && set +a
+mvn -pl rag-engine spring-boot:run &   mvn -pl gateway spring-boot:run &
+ATLAS_LIVE_AGENT_PATH=1 GATEWAY_URL=http://localhost:8080 \
+  uv run --directory agents --group dev pytest -q tests/test_agent_path_invariants.py
+make -C infra gpu-down
 ```
 
 ## 9. Production deploy — *added in P5*

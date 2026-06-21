@@ -51,6 +51,7 @@ def _default_runner() -> GraphRunner:
         saver,
         mcp_client=McpClient(settings.mcp_base_url),
         token_provider=gateway.resource_token,
+        tool_retries=settings.agent_tool_retries,
     )
     return GraphRunner(graph, settings.agent_max_steps)
 
@@ -93,8 +94,10 @@ def start_run(
 def resume_run(
     run_id: str, request: ResumeRequest, runner: GraphRunner = Depends(get_runner)
 ) -> RunResponse:
-    """Resume a paused run with the human approval decision (single-use; ADR-0044/0046)."""
-    response = runner.resume(run_id, request.approved, request.note)
+    """Resume a paused run with the human decision (single-use; approval or clarification)."""
+    response = runner.resume(
+        run_id, approved=request.approved, note=request.note, breach=request.breach
+    )
     if response is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown run")
     return response

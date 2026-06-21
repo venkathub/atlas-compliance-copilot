@@ -41,6 +41,8 @@ class Settings(BaseSettings):
 
     # --- Safety / scaling caps (ASI10). Consumed by the graph in task 7. ---
     agent_max_steps: int = Field(12, validation_alias="ATLAS_AGENT_MAX_STEPS")
+    # Bounded retries for the governed tool call — only on connect errors (no duplicate write).
+    agent_tool_retries: int = Field(2, validation_alias="ATLAS_AGENT_TOOL_RETRIES")
 
     # --- Deterministic breach rule (ADR-0049 Q5). Consumed by the assess node in task 7. ---
     sar_reporting_threshold: float = Field(

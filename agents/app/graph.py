@@ -40,6 +40,41 @@ def _approve_node(state: dict[str, Any]) -> dict[str, Any]:
     return {"approval": decision, "trace": trace, "step_count": state.get("step_count", 0) + 1}
 
 
+def _clarify_node(state: dict[str, Any]) -> dict[str, Any]:
+    # Mid-task field confirmation (D-P4-4 "elicitation/clarify"): the breach amount wasn't
+    # machine-readable, so pause and ask the human to confirm whether a breach occurred. Uses
+    # the same durable graph interrupt as the approval gate (the authoritative HITL mechanism).
+    decision = interrupt(
+        {
+            "clarify": "Could not determine the exception amount from the cited context; "
+            "confirm whether a reporting-threshold breach occurred.",
+            "citations": state.get("contexts", []),
+        }
+    )
+    breach = bool(decision.get("breach"))
+    trace = state.get("trace", []) + [{"node": "clarify", "breach": breach}]
+    if not breach:
+        return {"breach": False, "trace": trace, "step_count": state.get("step_count", 0) + 1}
+    detail = "Human-confirmed breach (amount not machine-readable in the source)"
+    contexts = state.get("contexts", [])
+    proposed = {
+        "tool": "open_draft_sar",
+        "args": {
+            "account": state["account"],
+            "period": state["period"],
+            "rationale": detail,
+            "citations": sorted({c.get("n") for c in contexts if c.get("n") is not None}),
+        },
+    }
+    return {
+        "breach": True,
+        "breach_detail": detail,
+        "proposed_action": proposed,
+        "trace": trace,
+        "step_count": state.get("step_count", 0) + 1,
+    }
+
+
 def _rejected_node(state: dict[str, Any]) -> dict[str, Any]:
     note = (state.get("approval") or {}).get("note")
     trace = state.get("trace", []) + [{"node": "rejected"}]
@@ -57,8 +92,17 @@ def _finalize_node(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def _breach_branch(state: dict[str, Any]) -> str:
-    """Deterministic conditional edge: breach → approval gate, else finalize."""
-    return "approve" if state.get("breach") else "finalize"
+    """Deterministic conditional edge: breach → approval gate; ambiguous → clarify; else end."""
+    if state.get("breach"):
+        return "approve"
+    if state.get("ambiguous"):
+        return "clarify"
+    return "finalize"
+
+
+def _clarify_branch(state: dict[str, Any]) -> str:
+    """After clarification: a confirmed breach still needs the approval gate; else finalize."""
+    return "approve" if state.get("proposed_action") else "finalize"
 
 
 def _approval_branch(state: dict[str, Any]) -> str:
@@ -73,6 +117,7 @@ def build_graph(
     mcp_client: Any = None,
     token_provider: Any = None,
     top_k: int = 6,
+    tool_retries: int = 2,
 ):
     """Compile the planner-executor graph with injected Gateway, MCP client + token provider."""
     builder = StateGraph(AgentState)
@@ -80,8 +125,10 @@ def build_graph(
     builder.add_node("retrieve", instrument_node("retrieve", make_retrieve_node(gateway, top_k)))
     builder.add_node("assess", instrument_node("assess", make_assess_node(threshold)))
     builder.add_node("approve", instrument_node("approve", _approve_node))
+    builder.add_node("clarify", instrument_node("clarify", _clarify_node))
     builder.add_node(
-        "act_sar", instrument_node("act_sar", make_act_sar_node(mcp_client, token_provider))
+        "act_sar",
+        instrument_node("act_sar", make_act_sar_node(mcp_client, token_provider, tool_retries)),
     )
     builder.add_node("rejected", instrument_node("rejected", _rejected_node))
     builder.add_node("finalize", instrument_node("finalize", _finalize_node))
@@ -90,7 +137,12 @@ def build_graph(
     builder.add_edge("planner", "retrieve")
     builder.add_edge("retrieve", "assess")
     builder.add_conditional_edges(
-        "assess", _breach_branch, {"approve": "approve", "finalize": "finalize"}
+        "assess",
+        _breach_branch,
+        {"approve": "approve", "clarify": "clarify", "finalize": "finalize"},
+    )
+    builder.add_conditional_edges(
+        "clarify", _clarify_branch, {"approve": "approve", "finalize": "finalize"}
     )
     builder.add_conditional_edges(
         "approve", _approval_branch, {"act_sar": "act_sar", "rejected": "rejected"}

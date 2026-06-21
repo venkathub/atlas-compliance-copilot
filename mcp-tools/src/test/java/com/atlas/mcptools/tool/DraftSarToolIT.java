@@ -73,6 +73,7 @@ class DraftSarToolIT extends AbstractAgentSchemaIT {
         assertThat(result.status()).isEqualTo("DRAFT");
         assertThat(result.draftRef()).matches("SAR-\\d{4}-\\d{6}");
         assertThat(result.createdAt()).isNotBlank();
+        assertThat(result.auditRef()).matches("audit_\\d+");
 
         // sar_draft row persisted with provenance.
         Map<String, Object> row = appJdbc.queryForMap(

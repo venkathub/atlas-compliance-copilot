@@ -33,6 +33,7 @@ class AgentState(TypedDict, total=False):
     breach: bool
     breach_amount: float | None
     breach_detail: str | None
+    ambiguous: bool  # money context present but no parseable amount → ask for clarification
     proposed_action: dict[str, Any] | None  # {tool, args} dry-run preview shown at the gate
 
     # --- human-in-the-loop (task 8) ---

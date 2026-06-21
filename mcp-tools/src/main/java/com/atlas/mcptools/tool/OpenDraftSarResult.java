@@ -7,6 +7,7 @@ package com.atlas.mcptools.tool;
  * @param draftRef  human-facing reference, e.g. {@code SAR-2026-000123}
  * @param status    always {@code DRAFT} on creation (never auto-filed)
  * @param createdAt ISO-8601 creation timestamp
+ * @param auditRef  reference to the immutable {@code SUCCESS} audit row (e.g. {@code audit_42})
  */
-public record OpenDraftSarResult(String draftRef, String status, String createdAt) {
+public record OpenDraftSarResult(String draftRef, String status, String createdAt, String auditRef) {
 }

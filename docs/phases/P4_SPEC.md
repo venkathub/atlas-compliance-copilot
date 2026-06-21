@@ -642,41 +642,52 @@ P4 adds **no new default model**; it **routes agent reasoning** to an existing t
 
 ## 6. Definition of Done (P4 — generic DoD from CLAUDE.md, instantiated)
 
-- [ ] **Code complete & matches this spec.** `/agents` (LangGraph planner→executor, durable Postgres
-      checkpointer, HITL interrupt/resume, MCP client) + `/mcp-tools` (Spring AI MCP server, OAuth 2.1 resource
-      server, `open_draft_sar` governed write, per-call clearance re-check, append-only hash-chained audit) —
-      all config env-swappable (no hardcoded models/keys/URLs/secrets).
-- [ ] **Unit + integration tests pass in CI.** Agent graph unit tests (structure, planner, assess, branch,
-      HITL, checkpointer, tool-call correctness) + MCP-tool Java unit/ITs (resource server, clearance re-check,
-      transactional write, audit append-only + tamper-detection, Streamable HTTP) all green.
-- [ ] **Safety hard gates met & recorded:** **0** unapproved writes; **0** unauthorized actions; audit
-      completeness **100%** + chain verifies; durable **resume-after-restart** passes; P1 D4/D7 + PII egress
-      remain green **through the agent path**.
-- [ ] **Eval thresholds met & recorded (agents):** the agent eval set runs as a **merge-blocking** gate
-      (cassette-replay in CI); HITL-respected + authorization-respected = **100%**; task-success + tool-call
-      correctness ≥ floors calibrated on the first live run; thresholds recorded (e.g. `agent-baseline.json`).
-- [ ] **Roadmap P4 exit criteria met** (ROADMAP §2 P4): planner-executor completes the conditional action E2E;
-      ≥1 MCP tool exposes a governed write over Streamable HTTP secured as an OAuth 2.1 resource server (RFC
-      8707) with audit logging; **no state change without explicit HITL approval** (interrupt/elicitation);
-      agent state durably checkpointed in Postgres (resume after interrupt/restart); tools re-check clearance;
-      audit log append-only/immutable + queryable; agent runs traced (Langfuse) + evaluated as a CI gate; tool
-      contracts + safety boundaries documented; decisions logged.
-- [ ] **Security & standards alignment recorded:** controls mapped to the **OWASP Top 10 for Agentic
-      Applications (2026)** ASI01–ASI10 (§8.2) — at minimum ASI01/02/03/06/07/09/10 with evidence; MCP pinned to
-      spec **`2025-11-25`** on **Streamable HTTP** (SSE not used); RFC 8707 audience-restricted, single-use
-      replay-protected approval verified; Spring AI bumped to **1.1.x on Spring Boot 3.x** (D-P4-10; Spring AI
-      2.0 / Boot 4 deferred as future work) with frozen P1/P3 gates re-green.
-- [ ] **Module READMEs + `docs/DECISIONS.md` updated** (**ADR-0041–0050 logged 2026-06-21**; add dated
-      implementation notes as tasks land; ADR-0046 extends ADR-0003 for resource-scoped tokens; ADR-0042 extends
-      ADR-0035 for the agent tier; ADR-0050 updates the ADR-0008 Spring AI pin). Tool contracts + safety
-      boundaries documented.
-- [ ] **Runs cleanly from a fresh clone** via `infra` compose + documented `.env`; RUNBOOK updated (start a run,
-      approve/reject, query the audit log, GPU bring-up/pause).
-- [ ] **A 30-second demo path:** mint a `compliance` token → start the forcing-story run → see the cited summary
-      + breach + `AWAITING_APPROVAL` → approve → see the audited `SAR-…` draft + immutable audit row (and the
-      sub-`compliance` user getting a refusal + no write).
-- [ ] **A resume-ready, quantified portfolio bullet** drafted in `docs/PORTFOLIO.md` (e.g. governed agentic
-      action with mandatory HITL, OAuth 2.1 MCP tool, tamper-evident audit, agent eval gate at X% task success).
+> **STATUS — COMPLETE (2026-06-21).** Full suite green: rag-engine 90u+40IT · gateway 66u+14IT ·
+> mcp-tools 12u+21IT · agents 60 tests (+3 live-gated, skipped offline) · agent eval gate 12/12 ·
+> evals 63 + both RAG gates · gpu-helper 24 · ruff clean. Notes below record *how* each item is met,
+> including the owner-confirmed deviations.
+
+- [x] **Code complete & matches this spec.** `/agents` (LangGraph planner→executor, durable Postgres
+      checkpointer, HITL interrupt/resume, clarify/field-confirmation, MCP client) + `/mcp-tools` (Spring AI
+      MCP server, OAuth 2.1 resource server, `open_draft_sar` governed write returning `auditRef`, per-call
+      clearance re-check, append-only hash-chained audit) — all config env-swappable. *Deviations (logged):
+      caller identity read from Spring Security `SecurityContextHolder` rather than a manual
+      `TransportContextExtractor` (ADR-0046 note, same outcome); "mid-task field confirmation" realized as a
+      durable graph `clarify` interrupt rather than MCP-protocol elicitation, given the deterministic
+      single-tool design + raw-httpx client (ADR-0044 note).*
+- [x] **Unit + integration tests pass in CI.** Agent graph/HITL/clarify/checkpointer/act-retry/tool-call +
+      MCP-tool Java unit/ITs (resource server, clearance re-check, transactional write + auditRef, audit
+      append-only + tamper-detection, Streamable HTTP) all green.
+- [x] **Safety hard gates met & recorded:** **0** unapproved writes; **0** unauthorized actions; audit
+      completeness **100%** + chain verifies; durable **resume-after-restart** passes; single-use approval
+      (no duplicate write); **bounded tool retries only on connect errors** (no duplicate write). P1 D4/D7 +
+      PII egress through the **agent path**: offline conformance gate proves the agent uses the governed
+      `/v1/query` with only the caller's Bearer + no clearance header (cannot bypass P1/P3), and a
+      **live-tagged** end-to-end gate (`test_agent_path_invariants.py`, `ATLAS_LIVE_AGENT_PATH=1`) asserts
+      0 cross-clearance citations / 0 PII / injection-quarantined through the agent against the running stack.
+- [x] **Eval thresholds met & recorded (agents):** the agent eval set is a **merge-blocking** gate (offline,
+      no GPU — the agent is deterministic, owner-confirmed, so no cassettes/DeepEval needed; ADR-0024 note);
+      HITL-respected + authorization-respected = **100%**; task-success/tool-selection/argument/plan-adherence
+      = 1.0 ≥ floors in `agents/data/agent-baseline.json`.
+- [x] **Roadmap P4 exit criteria met** (ROADMAP §2 P4): planner-executor completes the conditional action
+      E2E; the MCP tool exposes a governed write over Streamable HTTP secured as an OAuth 2.1 resource server
+      (RFC 8707) with audit logging; **no state change without explicit HITL approval** (graph `interrupt`;
+      field confirmation via `clarify`); state durably checkpointed in Postgres (resume after restart); tool
+      re-checks clearance; audit log append-only/immutable + queryable; runs traced (OTel→Langfuse) + a CI
+      eval gate; contracts + safety boundaries documented; decisions logged.
+- [x] **Security & standards alignment recorded:** controls mapped to the **OWASP Top 10 for Agentic
+      Applications (2026)** ASI01/02/03/06/07/09/10 (§8.2) with evidence; MCP pinned to spec **`2025-11-25`**
+      on **Streamable HTTP** (SSE not used); RFC 8707 audience-restricted, single-use replay-protected
+      approval verified; Spring AI bumped to **1.1.8 on Spring Boot 3.5** (D-P4-10; Spring AI 2.0/Boot 4
+      deferred) with frozen P1/P3 gates re-green.
+- [x] **Module READMEs + `docs/DECISIONS.md` updated** (ADR-0041–0050 + 0024/0030 dated implementation/
+      deviation notes). Tool contracts + safety boundaries documented.
+- [x] **Runs cleanly from a fresh clone** via `infra` compose + documented `.env`; RUNBOOK §8 (start a run,
+      approve/reject, query the audit log, GPU note, live agent-path gate).
+- [x] **A 30-second demo path:** RUNBOOK §8.2 — mint a `compliance` token → start the forcing-story run →
+      cited summary + breach + `AWAITING_APPROVAL` → approve → audited `SAR-…` draft + immutable audit row
+      (and the sub-`compliance` refusal / no write).
+- [x] **A resume-ready, quantified portfolio bullet** drafted in `docs/PORTFOLIO.md` (P4 section).
 
 ---
 

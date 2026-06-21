@@ -165,15 +165,17 @@ SCENARIOS: list[Scenario] = [
         expect_citations=[2],
     ),
     Scenario(
-        name="ambiguous_no_amount_no_action",
+        name="ambiguous_amount_triggers_clarify",
+        # A money context ($) is present but no parseable figure → ask to clarify, never guess.
         gateway_payload=_payload(
-            "exceptions are under review; figures pending", [_cite(1, "pending")]
+            "an exception was flagged; amount $ (pending finalization)",
+            [_cite(1, "amount $ — finance to confirm")],
         ),
         caller="priya",
         caller_authorized=True,
         approval=None,
         mcp_deny=False,
-        expect_status="COMPLETED",
+        expect_status="AWAITING_CLARIFICATION",
         expect_attempt=False,
         expect_write=False,
     ),

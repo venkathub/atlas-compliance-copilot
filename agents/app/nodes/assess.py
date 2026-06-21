@@ -28,6 +28,15 @@ def make_assess_node(threshold: float) -> Callable[[dict], dict]:
         breach_amount = max(amounts) if amounts else None
         breach = breach_amount is not None and breach_amount >= threshold
 
+        # Ambiguous: a money context is present (a `$` in answer/snippets) but no amount could be
+        # parsed — the agent must ask for mid-task field confirmation (clarify) rather than guess.
+        ambiguous = False
+        if not breach and not amounts:
+            text = (state.get("answer") or "") + " ".join(
+                c.get("snippet") or "" for c in contexts
+            )
+            ambiguous = "$" in text
+
         breaching = sorted({n for (n, amt) in per_citation if amt >= threshold and n is not None})
         if breach and not breaching:
             # Amount only in the free answer (not attributable to a citation) → cite all contexts.
@@ -47,11 +56,14 @@ def make_assess_node(threshold: float) -> Callable[[dict], dict]:
                 },
             }
 
-        trace = state.get("trace", []) + [{"node": "assess", "breach": breach}]
+        trace = state.get("trace", []) + [
+            {"node": "assess", "breach": breach, "ambiguous": ambiguous}
+        ]
         return {
             "breach": breach,
             "breach_amount": breach_amount,
             "breach_detail": detail,
+            "ambiguous": ambiguous,
             "proposed_action": proposed,
             "trace": trace,
             "step_count": state.get("step_count", 0) + 1,

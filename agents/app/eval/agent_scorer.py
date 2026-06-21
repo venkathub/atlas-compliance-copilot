@@ -19,7 +19,9 @@ from app.mcp_client import McpError
 from app.runner import GraphRunner
 
 # The plan the deterministic graph is allowed to follow (for plan-adherence).
-_ALLOWED_NODES = {"planner", "retrieve", "assess", "approve", "act_sar", "rejected", "finalize"}
+_ALLOWED_NODES = {
+    "planner", "retrieve", "assess", "approve", "clarify", "act_sar", "rejected", "finalize"
+}
 
 
 def _fake_jwt(sub: str) -> str:

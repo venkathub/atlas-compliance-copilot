@@ -17,8 +17,8 @@ class StubRunner:
         self.calls.append((query, account, period, bearer))
         return self.response
 
-    def resume(self, run_id, approved, note):
-        self.calls.append(("resume", run_id, approved, note))
+    def resume(self, run_id, approved=None, note=None, breach=None):
+        self.calls.append(("resume", run_id, approved, note, breach))
         return self.response
 
     def get(self, run_id):
@@ -90,7 +90,7 @@ def test_resume_returns_run_state():
 
 def test_resume_unknown_run_is_404():
     class NoneRunner(StubRunner):
-        def resume(self, run_id, approved, note):
+        def resume(self, run_id, approved=None, note=None, breach=None):
             return None
 
     _override(NoneRunner(RunResponse(runId="x", status="COMPLETED")))

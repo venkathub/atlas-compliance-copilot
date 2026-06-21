@@ -14,10 +14,14 @@ class RunRequest(BaseModel):
 
 
 class ResumeRequest(BaseModel):
-    """The human approval decision that unlocks (or declines) a paused run."""
+    """The human decision that unlocks/declines a paused run.
 
-    approved: bool
+    For an approval pause use `approved`; for a clarification pause (ambiguous breach) use `breach`.
+    """
+
+    approved: bool | None = None
     note: str | None = None
+    breach: bool | None = None
 
 
 class Citation(BaseModel):
@@ -36,7 +40,7 @@ class RunResponse(BaseModel):
     """Run state (shape per §2.3). Populated by the graph in task 7+."""
 
     runId: str
-    status: str  # AWAITING_APPROVAL | COMPLETED | REJECTED | FAILED
+    status: str  # AWAITING_APPROVAL | AWAITING_CLARIFICATION | COMPLETED | REJECTED | FAILED
     answer: str | None = None
     citations: list[Citation] = Field(default_factory=list)
     proposedAction: ProposedAction | None = None

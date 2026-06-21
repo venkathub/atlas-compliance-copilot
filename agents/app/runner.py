@@ -16,7 +16,7 @@ from app.jwt_utils import jwt_sub
 from app.models import Citation, ProposedAction, RunResponse
 from app.tracing import run_span
 
-_APPROVE_NODE = "approve"
+_RESUMABLE = {"approve", "clarify"}
 _TERMINAL = {"COMPLETED", "REJECTED", "FAILED"}
 
 
@@ -51,29 +51,32 @@ class GraphRunner:
         with run_span(run_id, account=account):
             self._graph.invoke(state_in, self._config(run_id))
         response = self._render(run_id)
-        if response.status == "AWAITING_APPROVAL":
-            metrics.AWAITING_APPROVAL.inc()
-        else:
+        if response.status in _TERMINAL:
             self._record_terminal(response)
+        elif response.status == "AWAITING_APPROVAL":
+            metrics.AWAITING_APPROVAL.inc()
         return response
 
-    def resume(self, run_id: str, approved: bool, note: str | None) -> RunResponse | None:
+    def resume(
+        self, run_id: str, approved: bool | None = None, note: str | None = None,
+        breach: bool | None = None,
+    ) -> RunResponse | None:
         snapshot = self._graph.get_state(self._config(run_id))
         if not snapshot.values:
             return None  # unknown run → 404
-        # Single-use approval (ASI07): only a run paused at the gate can be resumed; a consumed
-        # approval (run already past the gate / terminal) cannot authorize a second/mutated write.
-        if _APPROVE_NODE not in snapshot.next:
+        # Single-use approval (ASI07): only a run paused at a gate (approve/clarify) can resume; a
+        # consumed decision (run past the gate / terminal) cannot authorize a 2nd/mutated write.
+        if not (_RESUMABLE & set(snapshot.next)):
             return self._render(run_id)  # already resolved — return terminal state, no re-execution
         created_at = snapshot.values.get("created_at")
+        payload = {"approved": approved, "note": note, "breach": breach}
         with run_span(run_id, account=snapshot.values.get("account"), approved=approved):
-            self._graph.invoke(
-                Command(resume={"approved": approved, "note": note}), self._config(run_id)
-            )
+            self._graph.invoke(Command(resume=payload), self._config(run_id))
         response = self._render(run_id)
-        if created_at is not None:
+        if created_at is not None and response.status in _TERMINAL:
             metrics.APPROVAL_LATENCY.observe(max(0.0, time.time() - created_at))
-        self._record_terminal(response)
+        if response.status in _TERMINAL:
+            self._record_terminal(response)
         return response
 
     def get(self, run_id: str) -> RunResponse | None:
@@ -96,7 +99,14 @@ class GraphRunner:
     def _render(self, run_id: str) -> RunResponse:
         snapshot = self._graph.get_state(self._config(run_id))
         values = snapshot.values
-        status = "AWAITING_APPROVAL" if snapshot.next else values.get("status", "COMPLETED")
+        if "clarify" in snapshot.next:
+            status = "AWAITING_CLARIFICATION"
+        elif "approve" in snapshot.next:
+            status = "AWAITING_APPROVAL"
+        elif snapshot.next:
+            status = "RUNNING"
+        else:
+            status = values.get("status", "COMPLETED")
         return to_response(run_id, values, status)
 
 
@@ -106,12 +116,14 @@ def to_response(run_id: str, state: dict[str, Any], status: str) -> RunResponse:
         Citation(**c) for c in state.get("contexts", []) or [] if c.get("n") is not None
     ]
     result = state.get("result") or {}
+    action = result.get("action")
     return RunResponse(
         runId=run_id,
         status=status,
         answer=state.get("answer"),
         citations=citations,
         proposedAction=ProposedAction(**proposed) if proposed else None,
-        action=result.get("action"),
+        action=action,
+        auditRef=action.get("auditRef") if action else None,
         trace=state.get("trace", []) or [],
     )

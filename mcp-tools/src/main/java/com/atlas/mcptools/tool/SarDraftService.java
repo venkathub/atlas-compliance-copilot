@@ -1,6 +1,7 @@
 package com.atlas.mcptools.tool;
 
 import com.atlas.mcptools.audit.AuditPhase;
+import com.atlas.mcptools.audit.AuditRecord;
 import com.atlas.mcptools.audit.AuditService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,10 +52,11 @@ public class SarDraftService {
                 OffsetDateTime.class,
                 draftRef, account, period, rationale, citationsJson, clearance, runId);
 
-        auditService.append(runId, "open_draft_sar", AuditPhase.SUCCESS, caller, clearance,
-                argsDigest, draftRef);
+        AuditRecord success = auditService.append(runId, "open_draft_sar", AuditPhase.SUCCESS,
+                caller, clearance, argsDigest, draftRef);
 
-        return new OpenDraftSarResult(draftRef, "DRAFT", createdAt.toInstant().toString());
+        return new OpenDraftSarResult(
+                draftRef, "DRAFT", createdAt.toInstant().toString(), "audit_" + success.seq());
     }
 
     private String toJson(List<Integer> citations) {
