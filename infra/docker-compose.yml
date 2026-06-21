@@ -123,6 +123,10 @@ services:
       ATLAS_AGENT_MODEL: ${ATLAS_AGENT_MODEL:-qwen2.5:7b-instruct}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       AGENT_DB_URL: ${AGENT_DB_URL:-postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas}@postgres:5432/${POSTGRES_DB:-atlas}}
+      # Observability (OTel → Langfuse; export OFF by default, fail-soft).
+      OTEL_TRACES_EXPORT_ENABLED: ${OTEL_TRACES_EXPORT_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://langfuse-web:3000/api/public/otel/v1/traces}
+      LANGFUSE_OTEL_AUTH_HEADER: ${LANGFUSE_OTEL_AUTH_HEADER:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

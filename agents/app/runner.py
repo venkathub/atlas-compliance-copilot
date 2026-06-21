@@ -1,18 +1,23 @@
 """Run orchestration: drive the compiled graph, persist via the checkpointer, and shape the run-API
-response (P4_SPEC §2.3). Handles the durable HITL pause/resume and the single-use approval guard.
+response (P4_SPEC §2.3). Handles the durable HITL pause/resume, the single-use approval guard, and
+the observability hooks (root run span + Prometheus metrics).
 """
 
 from __future__ import annotations
 
+import time
 from typing import Any
 from uuid import uuid4
 
 from langgraph.types import Command
 
+from app import metrics
 from app.jwt_utils import jwt_sub
 from app.models import Citation, ProposedAction, RunResponse
+from app.tracing import run_span
 
 _APPROVE_NODE = "approve"
+_TERMINAL = {"COMPLETED", "REJECTED", "FAILED"}
 
 
 class GraphRunner:
@@ -38,11 +43,19 @@ class GraphRunner:
             "bearer": bearer,
             "run_id": run_id,
             "caller": jwt_sub(bearer),
+            "created_at": time.time(),
             "trace": [],
             "step_count": 0,
         }
-        self._graph.invoke(state_in, self._config(run_id))
-        return self._render(run_id)
+        metrics.RUNS_STARTED.inc()
+        with run_span(run_id, account=account):
+            self._graph.invoke(state_in, self._config(run_id))
+        response = self._render(run_id)
+        if response.status == "AWAITING_APPROVAL":
+            metrics.AWAITING_APPROVAL.inc()
+        else:
+            self._record_terminal(response)
+        return response
 
     def resume(self, run_id: str, approved: bool, note: str | None) -> RunResponse | None:
         snapshot = self._graph.get_state(self._config(run_id))
@@ -52,16 +65,33 @@ class GraphRunner:
         # approval (run already past the gate / terminal) cannot authorize a second/mutated write.
         if _APPROVE_NODE not in snapshot.next:
             return self._render(run_id)  # already resolved — return terminal state, no re-execution
-        self._graph.invoke(
-            Command(resume={"approved": approved, "note": note}), self._config(run_id)
-        )
-        return self._render(run_id)
+        created_at = snapshot.values.get("created_at")
+        with run_span(run_id, account=snapshot.values.get("account"), approved=approved):
+            self._graph.invoke(
+                Command(resume={"approved": approved, "note": note}), self._config(run_id)
+            )
+        response = self._render(run_id)
+        if created_at is not None:
+            metrics.APPROVAL_LATENCY.observe(max(0.0, time.time() - created_at))
+        self._record_terminal(response)
+        return response
 
     def get(self, run_id: str) -> RunResponse | None:
         snapshot = self._graph.get_state(self._config(run_id))
         if not snapshot.values:
             return None
         return self._render(run_id)
+
+    @staticmethod
+    def _record_terminal(response: RunResponse) -> None:
+        if response.status not in _TERMINAL:
+            return
+        metrics.RUNS_TOTAL.labels(status=response.status).inc()
+        if response.status == "COMPLETED" and response.action is not None:
+            metrics.TOOL_CALLS.labels(outcome="ok").inc()
+        if response.status == "FAILED":
+            metrics.TOOL_CALLS.labels(outcome="error").inc()
+            metrics.FAILURES.inc()
 
     def _render(self, run_id: str) -> RunResponse:
         snapshot = self._graph.get_state(self._config(run_id))

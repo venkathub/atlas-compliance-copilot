@@ -19,6 +19,7 @@ class AgentState(TypedDict, total=False):
     bearer: str  # the caller's JWT, forwarded to the Gateway (verified-clearance, ADR-0034)
     run_id: str  # the originating run (thread) id — used as open_draft_sar's runId
     caller: str  # the caller's subject (from the bearer) — used to mint the aud-scoped MCP token
+    created_at: float  # run start epoch seconds (for the approval-latency metric)
 
     # --- planner ---
     plan: list[str]

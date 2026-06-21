@@ -47,6 +47,15 @@ class Settings(BaseSettings):
         10_000.0, validation_alias="ATLAS_SAR_REPORTING_THRESHOLD"
     )
 
+    # --- Observability (ADR-0030). OTel spans export OPT-IN (default off) so tests/CI never reach
+    # Langfuse; spans are still created in-process. Reuses the rag-engine/gateway env-var names. ---
+    otel_traces_export_enabled: bool = Field(False, validation_alias="OTEL_TRACES_EXPORT_ENABLED")
+    otel_exporter_otlp_traces_endpoint: str = Field(
+        "http://localhost:3000/api/public/otel/v1/traces",
+        validation_alias="OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+    )
+    langfuse_otel_auth_header: str = Field("", validation_alias="LANGFUSE_OTEL_AUTH_HEADER")
+
     def db_url(self) -> str:
         """Resolve the libpq connection URL for the checkpointer (explicit URL wins over parts)."""
         if self.agent_db_url:

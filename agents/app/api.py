@@ -10,6 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
+from prometheus_client import make_asgi_app
 
 from app.checkpointer import _with_search_path, ensure_schema, ping_db
 from app.config import Settings, get_settings
@@ -18,8 +19,13 @@ from app.graph import build_graph
 from app.mcp_client import McpClient
 from app.models import ResumeRequest, RunRequest, RunResponse
 from app.runner import GraphRunner
+from app.tracing import setup_tracing
 
 app = FastAPI(title="Atlas Agent Orchestrator", version="0.1.0")
+
+# OTel tracing (opt-in export; fail-soft) + Prometheus metrics endpoint for the Grafana agent panel.
+setup_tracing(get_settings())
+app.mount("/metrics", make_asgi_app())
 
 
 @lru_cache

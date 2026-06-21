@@ -23,6 +23,7 @@ from app.nodes.assess import make_assess_node
 from app.nodes.planner import planner_node
 from app.nodes.retrieve import make_retrieve_node
 from app.state import AgentState
+from app.tracing import instrument_node
 
 
 def _approve_node(state: dict[str, Any]) -> dict[str, Any]:
@@ -75,13 +76,15 @@ def build_graph(
 ):
     """Compile the planner-executor graph with injected Gateway, MCP client + token provider."""
     builder = StateGraph(AgentState)
-    builder.add_node("planner", planner_node)
-    builder.add_node("retrieve", make_retrieve_node(gateway, top_k))
-    builder.add_node("assess", make_assess_node(threshold))
-    builder.add_node("approve", _approve_node)
-    builder.add_node("act_sar", make_act_sar_node(mcp_client, token_provider))
-    builder.add_node("rejected", _rejected_node)
-    builder.add_node("finalize", _finalize_node)
+    builder.add_node("planner", instrument_node("planner", planner_node))
+    builder.add_node("retrieve", instrument_node("retrieve", make_retrieve_node(gateway, top_k)))
+    builder.add_node("assess", instrument_node("assess", make_assess_node(threshold)))
+    builder.add_node("approve", instrument_node("approve", _approve_node))
+    builder.add_node(
+        "act_sar", instrument_node("act_sar", make_act_sar_node(mcp_client, token_provider))
+    )
+    builder.add_node("rejected", instrument_node("rejected", _rejected_node))
+    builder.add_node("finalize", instrument_node("finalize", _finalize_node))
 
     builder.set_entry_point("planner")
     builder.add_edge("planner", "retrieve")

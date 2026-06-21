@@ -705,6 +705,19 @@
 - **Consequences:** A redaction IT asserts no above-clearance text / PII (the `poisoned/expectations.json`
   strings) reaches traces; GenAI semconv is **`Development`-status in 2026**, so the emitted version is pinned
   via `OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental` (recorded in `baseline.json`).
+- **Implementation note (2026-06-21, P4 Task 10 — agent tracing + Grafana panel):** the `/agents` service
+  (Python) emits a root `agent.run` span with child `agent.node.*` spans (planner/retrieve/assess/approve/
+  act_sar), `run_id` as an attribute, via the OpenTelemetry SDK. Consistent with this ADR, export is **opt-in
+  + fail-soft**: with `OTEL_TRACES_EXPORT_ENABLED=false` (default) the global tracer provider is left untouched
+  (spans are cheap no-ops, nothing reaches Langfuse); when enabled, a `BatchSpanProcessor` + OTLP/HTTP exporter
+  ship to the same Langfuse endpoint (reusing `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `LANGFUSE_OTEL_AUTH_HEADER`),
+  so agent/gateway/RAG stitch into one trace view. Content-capture stays metadata-only (no chunk text / PII).
+  The agent also exposes **Prometheus** metrics at `/metrics` (`atlas_agent_runs_total{status}`,
+  `_runs_started_total`, `_awaiting_approval_total`, `_tool_calls_total{outcome}`, `_failures_total`,
+  `_approval_latency_seconds`) recorded in the runner (nodes stay pure); a Grafana dashboard
+  (`infra/grafana/dashboards/atlas-agents.json`: run rate by status, tool-call rate, failures, approval-latency
+  p50/p95) + a Prometheus scrape job for `agents` are added. Tests: 3 (metrics endpoint + counter increment +
+  in-memory span exporter asserting root + node spans).
 - **Implementation note (Task 3, 2026-06-14):** Instrumented via the **Micrometer Observation API**
   (not hand-rolled OTel spans) so Spring AI's `ChatModel`/`EmbeddingModel` auto-emit `gen_ai.*` spans and nest
   under a root `atlas.query` span carrying `atlas.request_id`/`atlas.clearance`; child `retrieve` +

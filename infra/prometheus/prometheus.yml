@@ -31,6 +31,16 @@ scrape_configs:
           service: gateway
           phase: p3
 
+  # Agent Orchestrator (P4) — run count, tool-call rate, approval latency, failures
+  # (prometheus-client at /metrics). Runs on the HOST in dev (uv run uvicorn).
+  - job_name: agents
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:${AGENT_PORT}"]
+        labels:
+          service: agents
+          phase: p4
+
   # Prometheus scraping itself (sanity target).
   - job_name: prometheus
     static_configs:

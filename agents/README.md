@@ -9,10 +9,11 @@ then calls the `mcp-tools` `open_draft_sar` action — every run durably checkpo
 > (run pauses, state checkpointed) → human **resume** → governed **`open_draft_sar`** write over MCP
 > (aud-scoped Bearer from the Gateway resource-token endpoint). `resume` is **single-use** (ASI07) and
 > survives **process restart** (durable Postgres checkpointer, G8); `act_sar` is structurally reachable
-> only via the approval gate. Tracing (task 10) and the **agent eval gate** (task 11) land next.
-> An end-to-end IT (`tests/test_e2e_forcing_story.py`, Testcontainers Postgres) exercises the full
-> lifecycle through the real graph + checkpointer + real Gateway/MCP clients (HTTP boundary faked),
-> asserting the safety hard gates (no unapproved/duplicate write, reject → no write, restart, tool-deny).
+> only via the approval gate. An end-to-end IT (`tests/test_e2e_forcing_story.py`, Testcontainers
+> Postgres) exercises the full lifecycle through the real graph + checkpointer + real Gateway/MCP
+> clients (HTTP boundary faked), asserting the safety hard gates. Runs are **traced** (OTel → Langfuse,
+> opt-in) and **metered** (Prometheus `/metrics` → Grafana agent panel). The **agent eval gate** (task 11)
+> lands next.
 >
 > The forcing-story agent is **fully deterministic** (owner-confirmed): the breach decision + routing are a
 > pure function of retrieved citations — no agent LLM call — so the safety path is unpromptable and the eval
@@ -54,3 +55,14 @@ Endpoints:
 | `AGENT_DB_URL` / `POSTGRES_*` | — / `atlas@localhost:5432/atlas` | checkpointer datasource (`agent` schema) |
 | `ATLAS_AGENT_MAX_STEPS` | `12` | step/iteration cap (ASI10) |
 | `ATLAS_SAR_REPORTING_THRESHOLD` | `10000` | deterministic breach threshold (ADR-0049, used in task 7) |
+| `OTEL_TRACES_EXPORT_ENABLED` | `false` | opt-in span export to Langfuse (OTLP); fail-soft |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Langfuse OTLP URL | trace export endpoint |
+| `LANGFUSE_OTEL_AUTH_HEADER` | — | `Authorization` header for the OTLP export |
+
+### Observability (task 10)
+- **Tracing (ADR-0030):** root `agent.run` span + child `agent.node.*` spans (planner/retrieve/assess/
+  approve/act_sar), `run_id` attribute. Export is opt-in (`OTEL_TRACES_EXPORT_ENABLED`) and fail-soft;
+  off by default so tests/CI never reach Langfuse. Metadata-only (no chunk text / PII).
+- **Metrics:** Prometheus at `/metrics` — `atlas_agent_runs_total{status}`, `_runs_started_total`,
+  `_awaiting_approval_total`, `_tool_calls_total{outcome}`, `_failures_total`, `_approval_latency_seconds`.
+  Grafana dashboard: `infra/grafana/dashboards/atlas-agents.json`.
