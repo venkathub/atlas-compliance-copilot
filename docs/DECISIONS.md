@@ -235,6 +235,25 @@
   the ASI07 replay vector.
 - **Consequences:** a shared/managed signing config + token audience to manage (env, no secrets in code); new
   hard gates — per-call authz re-check and single-use/replay-protected approval.
+- **Implementation note (2026-06-21, P4 Task 4 — resource server + clearance re-check landed; token minting +
+  single-use approval = Task 5):** `/mcp` is secured as a Spring Security **OAuth 2.1 resource server**
+  (`spring-boot-starter-oauth2-resource-server`). `ResourceServerConfig` builds a `NimbusJwtDecoder.withSecretKey`
+  (HS256 over `SHA-256(signing-key)` — mcp-tools owns its own `SecurityKeys`, matching the gateway derivation)
+  with delegating validators: timestamp + `JwtIssuerValidator` + an **audience** `JwtClaimValidator` (the `aud`
+  must contain `atlas-mcp-tools`, RFC 8707). One `SecurityFilterChain`: `/actuator/**` permitAll, `/mcp/**`
+  authenticated, CSRF off, STATELESS — so missing/expired/forged/wrong-`aud`/wrong-`iss` → **401**. The
+  **per-call clearance re-check** is *not* an HTTP 403: `TokenToolCallerContext` (`@Primary`) reads the validated
+  `JwtAuthenticationToken` from the `SecurityContextHolder` (the WebMVC Streamable-HTTP tool runs on the request
+  thread, so the thread-local carries it — verified by an HTTP `tools/call` E2E), and `ClearanceRecheck` refuses
+  `< compliance` → `InsufficientClearanceException` → an MCP tool error + a **`DENIED`** audit row (LLM06 / ASI03).
+  **Implementation choice vs the spec's `TransportContextExtractor`:** because Spring Security already validates
+  the token and populates the security context on the request thread, the caller identity is read from the
+  `SecurityContextHolder` rather than a manual `TransportContextExtractor` — same outcome (validated identity in
+  the tool), less code; the extractor remains the fallback if tool execution ever moves off the request thread.
+  Config is env-driven (`atlas.mcp.token.*`). Tests: **6 IT** resource-server (missing/expired/forged/wrong-aud/
+  wrong-iss → 401; valid aud-token → 200) + the tool **DENIED** path (sub-`compliance` → DENIED audit, no draft)
+  + the existing tool/transport ITs updated to carry a compliance Bearer. The single-use, replay-protected
+  approval precondition (the second half of this ADR) is Task 5.
 
 ### ADR-0045 — Agent service placement (standalone, consumes the Gateway)
 - **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-5)

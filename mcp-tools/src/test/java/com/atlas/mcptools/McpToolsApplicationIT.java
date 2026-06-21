@@ -126,6 +126,10 @@ class McpToolsApplicationIT extends AbstractAgentSchemaIT {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(java.util.List.of(
                 MediaType.APPLICATION_JSON, MediaType.parseMediaType("text/event-stream")));
+        // The /mcp endpoint is an OAuth 2.1 resource server (task 4) — all calls carry an
+        // audience-scoped compliance Bearer token.
+        headers.setBearerAuth(com.atlas.mcptools.auth.TestTokens.valid(
+                TOKEN_SIGNING_KEY, TOKEN_ISSUER, TOKEN_AUDIENCE, "priya", "compliance"));
         if (sessionId != null) {
             headers.set(SESSION_HEADER, sessionId);
         }

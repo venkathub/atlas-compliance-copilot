@@ -5,11 +5,12 @@ enterprise action over **MCP Streamable HTTP** (spec `2025-11-25`), with product
 around the write: OAuth 2.1 resource-server auth (RFC 8707), a per-call clearance re-check, a
 transactional draft-SAR write, and an append-only, tamper-evident audit log.
 
-> **Status — P4 task 3.** The Spring AI MCP server (WebMVC, Streamable HTTP) exposes the one governed
-> write tool **`open_draft_sar`**, backed by the **append-only, hash-chained audit log** (`agent.tool_audit`,
-> ADR-0048) and a transactional **`agent.sar_draft`** write (ADR-0049). Still to come in the remaining P4
-> tasks: the OAuth 2.1 resource server + per-call clearance re-check (task 4) and the single-use,
-> graph-bound approval precondition (task 5) — see `docs/phases/P4_SPEC.md`.
+> **Status — P4 task 4.** The MCP server exposes the governed `open_draft_sar` tool over Streamable HTTP,
+> backed by the append-only hash-chained audit log (`agent.tool_audit`, ADR-0048) and a transactional
+> `agent.sar_draft` write (ADR-0049), and the `/mcp` endpoint is now an **OAuth 2.1 resource server**
+> (RFC 8707 audience-restricted JWT) with a **per-call clearance re-check** (ADR-0046, LLM06). Still to
+> come: the single-use, graph-bound approval precondition (task 5) and the sim-IdP minting aud-scoped
+> tokens (task 5) — see `docs/phases/P4_SPEC.md`.
 
 ## Purpose
 Turn an answer into a **governed action**: when the agent (`/agents`) decides an AML exception breaches
@@ -27,6 +28,16 @@ DRAFT Suspicious Activity Report for review — never auto-filed, fully audited.
 - **Governance seam:** caller + clearance come from `ToolCallerContext` (task-3 default: configured identity);
   task 4 replaces it with the token-derived identity + the per-call clearance re-check, and task 5 adds the
   single-use approval precondition. The authoritative human-in-the-loop gate is the agent graph (task 8).
+
+## OAuth 2.1 resource server (ADR-0046) — RFC 8707 + per-call clearance re-check
+- **`/mcp` requires an audience-restricted Bearer JWT.** Spring Security validates **signature (HS256), `exp`,
+  `iss`, and `aud`** (the `aud` must name this server — RFC 8707 resource indicator). Missing / expired /
+  forged / wrong-`aud` / wrong-`iss` tokens get **401** before reaching the tool. `/actuator/**` stays open.
+- **Per-call clearance re-check (LLM06 / ASI03).** `ToolCallerContext` derives the caller + clearance from the
+  validated JWT (via the security context); `ClearanceRecheck` refuses anything below `compliance` →
+  `InsufficientClearanceException` → an MCP tool error + a **`DENIED`** audit row (not a 401). This is
+  defense-in-depth, independent of P1 RBAC and the token's validity.
+- The HMAC signing key is shared with the sim-IdP (gateway), which mints the aud-scoped tokens in task 5.
 
 ## Audit log (ADR-0048) — append-only + tamper-evident
 - **Two DB identities (least privilege):** the runtime pool connects as the restricted role
@@ -87,6 +98,10 @@ All P4 tasks are model-free for this module; no GPU is required.
 | `ATLAS_MCP_DB_URL` | `jdbc:postgresql://localhost:5432/atlas` | shared Postgres (agent schema) |
 | `ATLAS_MCP_DB_USERNAME` / `_PASSWORD` | `atlas` / `atlas` | **privileged** Flyway/migration identity |
 | `ATLAS_MCP_DB_APP_USERNAME` / `_PASSWORD` | `atlas_mcp_app` / — | **least-privilege** runtime identity |
+| `ATLAS_MCP_TOKEN_SIGNING_KEY` | `change-me-locally` | HMAC secret shared with the sim-IdP (HS256) |
+| `ATLAS_MCP_TOKEN_ISSUER` | `atlas-sim-idp` | expected token `iss` |
+| `ATLAS_MCP_TOKEN_AUDIENCE` | `atlas-mcp-tools` | expected token `aud` (RFC 8707) |
+| `ATLAS_MCP_REQUIRED_CLEARANCE` | `compliance` | minimum clearance for the per-call re-check |
 
 OAuth 2.1 (RFC 8707) audience/issuer/key and the breach-threshold vars are introduced in the tasks that
 consume them.

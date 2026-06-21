@@ -5,14 +5,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.atlas.mcptools.AbstractAgentSchemaIT;
 import com.atlas.mcptools.audit.AuditChainVerifier;
+import com.atlas.mcptools.auth.InsufficientClearanceException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 /**
  * Contract IT for the governed draft-SAR write (ADR-0049): the tool writes ATTEMPT then a
@@ -39,6 +45,24 @@ class DraftSarToolIT extends AbstractAgentSchemaIT {
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
         ownerJdbc.update("DELETE FROM agent.sar_draft");
         ownerJdbc.execute("TRUNCATE agent.tool_audit RESTART IDENTITY");
+        authenticateAs("priya", "compliance");
+    }
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    /** Place a validated-JWT principal in the security context (as the resource-server filter would). */
+    private static void authenticateAs(String subject, String clearance) {
+        Jwt jwt = Jwt.withTokenValue("test-token")
+                .header("alg", "HS256")
+                .subject(subject)
+                .claim("clearance", clearance)
+                .issuedAt(Instant.now().minusSeconds(5))
+                .expiresAt(Instant.now().plusSeconds(3600))
+                .build();
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
     }
 
     @Test
@@ -92,5 +116,21 @@ class DraftSarToolIT extends AbstractAgentSchemaIT {
         assertThatThrownBy(() -> tool.openDraftSar("Northwind", "2026-Q2", big, List.of(1), "run_1"))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(appJdbc.queryForObject("SELECT count(*) FROM agent.sar_draft", Integer.class)).isZero();
+    }
+
+    @Test
+    void subComplianceCallerIsDeniedWithNoWrite() {
+        authenticateAs("analyst-bob", "analyst"); // below the required 'compliance'
+
+        assertThatThrownBy(() -> tool.openDraftSar(
+                "Northwind", "2026-Q2", "exceeds", List.of(1, 2), "run_1"))
+                .isInstanceOf(InsufficientClearanceException.class);
+
+        // No draft, and the audit records ATTEMPT then DENIED (LLM06 / ASI03).
+        assertThat(appJdbc.queryForObject("SELECT count(*) FROM agent.sar_draft", Integer.class)).isZero();
+        List<String> phases = appJdbc.queryForList(
+                "SELECT phase FROM agent.tool_audit ORDER BY seq", String.class);
+        assertThat(phases).containsExactly("ATTEMPT", "DENIED");
+        assertThat(verifier.verify().valid()).isTrue();
     }
 }

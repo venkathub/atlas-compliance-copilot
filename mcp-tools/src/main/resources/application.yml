@@ -39,6 +39,20 @@ spring:
         name: ${ATLAS_MCP_SERVER_NAME:atlas-mcp-tools}
         version: ${ATLAS_MCP_SERVER_VERSION:0.1.0}
 
+# MCP tool server config (env-swappable, never hardcoded — CLAUDE.md).
+atlas:
+  mcp:
+    # Task-3 caller-identity seam defaults (used only if the token-backed context is absent).
+    default-caller: ${ATLAS_MCP_DEFAULT_CALLER:agent}
+    default-clearance: ${ATLAS_MCP_DEFAULT_CLEARANCE:compliance}
+    # OAuth 2.1 resource server (task 4, ADR-0046). HMAC secret shared with the sim-IdP (gateway);
+    # the token's aud must name this server (RFC 8707). required-clearance gates the per-call re-check.
+    token:
+      signing-key: ${ATLAS_MCP_TOKEN_SIGNING_KEY:change-me-locally}
+      issuer: ${ATLAS_MCP_TOKEN_ISSUER:atlas-sim-idp}
+      audience: ${ATLAS_MCP_TOKEN_AUDIENCE:atlas-mcp-tools}
+      required-clearance: ${ATLAS_MCP_REQUIRED_CLEARANCE:compliance}
+
 management:
   endpoints:
     web:

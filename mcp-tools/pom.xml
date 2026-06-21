@@ -34,6 +34,14 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- OAuth 2.1 resource server (P4 task 4, ADR-0046): Spring Security validates the RFC 8707
+             audience-restricted Bearer JWT (sig+exp+iss+aud) on the /mcp endpoint. Brings Spring
+             Security + spring-security-oauth2-jose + nimbus-jose-jwt. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
         <!-- Micrometer Prometheus registry: exposes /actuator/prometheus for the P4 agent/tool dashboard. -->
         <dependency>
             <groupId>io.micrometer</groupId>
@@ -67,6 +75,14 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Nimbus JOSE+JWT: mint HS256 aud-scoped test tokens (mirrors the gateway sim-IdP). The
+             version is pinned in the parent (also used at runtime via the oauth2 resource server). -->
+        <dependency>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
             <scope>test</scope>
         </dependency>
 

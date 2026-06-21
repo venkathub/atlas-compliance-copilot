@@ -3,6 +3,8 @@ package com.atlas.mcptools.tool;
 import com.atlas.mcptools.audit.AuditPhase;
 import com.atlas.mcptools.audit.AuditService;
 import com.atlas.mcptools.audit.Digests;
+import com.atlas.mcptools.auth.ClearanceRecheck;
+import com.atlas.mcptools.auth.InsufficientClearanceException;
 import com.atlas.mcptools.tool.ToolCallerContext.CallerIdentity;
 import java.util.List;
 import org.slf4j.Logger;
@@ -31,12 +33,14 @@ public class DraftSarTool {
     private final SarDraftService sarDraftService;
     private final AuditService auditService;
     private final ToolCallerContext callerContext;
+    private final ClearanceRecheck clearanceRecheck;
 
     public DraftSarTool(SarDraftService sarDraftService, AuditService auditService,
-            ToolCallerContext callerContext) {
+            ToolCallerContext callerContext, ClearanceRecheck clearanceRecheck) {
         this.sarDraftService = sarDraftService;
         this.auditService = auditService;
         this.callerContext = callerContext;
+        this.clearanceRecheck = clearanceRecheck;
     }
 
     @McpTool(
@@ -55,6 +59,16 @@ public class DraftSarTool {
         String argsDigest = Digests.sha256Hex(argsCanonical(account, period, rationale, citations));
 
         auditService.append(runId, TOOL, AuditPhase.ATTEMPT, id.caller(), id.clearance(), argsDigest, null);
+
+        // Per-call authorization re-check (LLM06 / ASI03) — independent of P1 RBAC and the token's
+        // validity. A caller below the required clearance is refused here, not at the HTTP layer.
+        try {
+            clearanceRecheck.require(id.clearance());
+        } catch (InsufficientClearanceException e) {
+            auditService.append(runId, TOOL, AuditPhase.DENIED, id.caller(), id.clearance(), argsDigest, null);
+            log.warn("open_draft_sar DENIED for caller {} ({}): {}", id.caller(), id.clearance(), e.getMessage());
+            throw e;
+        }
 
         try {
             SarInputValidator.validate(account, period, rationale, citations);

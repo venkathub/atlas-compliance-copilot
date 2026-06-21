@@ -20,6 +20,11 @@ abstract public class AbstractAgentSchemaIT {
     protected static final String APP_ROLE = "atlas_mcp_app";
     protected static final String APP_PASSWORD = "app-secret-pw";
 
+    /** Resource-server token config (task 4) — shared with {@code TestTokens} for minting. */
+    protected static final String TOKEN_SIGNING_KEY = "it-mcp-signing-key";
+    protected static final String TOKEN_ISSUER = "atlas-sim-idp";
+    protected static final String TOKEN_AUDIENCE = "atlas-mcp-tools";
+
     @SuppressWarnings("resource")
     protected static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>(DockerImageName.parse("postgres:16"));
@@ -37,5 +42,9 @@ abstract public class AbstractAgentSchemaIT {
         // Least-privilege runtime identity (the app pool).
         registry.add("ATLAS_MCP_DB_APP_USERNAME", () -> APP_ROLE);
         registry.add("ATLAS_MCP_DB_APP_PASSWORD", () -> APP_PASSWORD);
+        // OAuth 2.1 resource-server config (task 4).
+        registry.add("ATLAS_MCP_TOKEN_SIGNING_KEY", () -> TOKEN_SIGNING_KEY);
+        registry.add("ATLAS_MCP_TOKEN_ISSUER", () -> TOKEN_ISSUER);
+        registry.add("ATLAS_MCP_TOKEN_AUDIENCE", () -> TOKEN_AUDIENCE);
     }
 }
