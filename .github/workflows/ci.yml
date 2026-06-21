@@ -49,12 +49,15 @@ jobs:
         run: |
           uvx ruff check evals
           uvx ruff check infra/gpu
+          uvx ruff check agents
       - name: Pytest (evals harness)
         # uv run respects evals/.python-version (3.12) + dependency groups; the heavy
         # `ragas` group is NOT installed (not a default group), proving the suite is light.
         run: uv run --directory evals --with pytest pytest -q
       - name: Pytest (GPU lifecycle helper)
         run: uv run --directory infra/gpu --with pytest pytest -q
+      - name: Pytest (agents — model-free; checkpointer IT uses Testcontainers/Docker)
+        run: uv run --directory agents --group dev pytest -q
 
   evals-gate:
     name: Eval gate (RAGAS + adversarial, cassette-replay)
@@ -75,6 +78,12 @@ jobs:
         env:
           ATLAS_EVAL_THROUGH_GATEWAY: "true"
         run: uv run --directory evals python -m atlas_evals.gate
+      # The AGENT merge gate (P4). The agent is deterministic, so this runs fully offline (no GPU, no
+      # cassettes): every committed scenario is replayed through the real graph with a stubbed
+      # Gateway/MCP, scored trajectory-first, and gated on the HITL/authorization hard gates + metric
+      # floors (agent-baseline.json). Non-zero exit blocks merge.
+      - name: Run agent eval merge gate
+        run: uv run --directory agents python -m app.eval.agent_gate
       - name: Upload eval report
         if: always()
         uses: actions/upload-artifact@v7

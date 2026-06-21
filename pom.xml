@@ -22,16 +22,24 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- Centralized versions (monorepo single source of truth). -->
-        <spring-boot.version>3.4.7</spring-boot.version>
-        <spring-ai.version>1.0.0</spring-ai.version>
+        <!--
+          P4 Task 0 / D-P4-10 / ADR-0050 (2026-06-21): bumped repo-wide to Spring AI 1.1.x on
+          Spring Boot 3.x to get the MCP server stack (Streamable-HTTP WebMVC, @McpTool, MCP
+          Security) for /mcp-tools, WITHOUT triggering a Boot-4 migration. Spring AI 1.1.8 (the
+          latest 1.1.x, 2026-06-12) ships on Spring Boot 3.5.15 and MCP SDK 0.18.3. Spring AI
+          2.0.x requires Spring Boot 4.x and is deliberately deferred (out of P4 scope; ADR-0050).
+          Previous pin was Spring AI 1.0.0 / Boot 3.4.7 (ADR-0008).
+        -->
+        <spring-boot.version>3.5.15</spring-boot.version>
+        <spring-ai.version>1.1.8</spring-ai.version>
         <!--
           Spring Cloud release train for the P3 API Gateway (ADR-0033, gateway-server-webmvc).
-          2024.0.x (Moorgate) is the train that pairs with Spring Boot 3.4.x — the compatibility
-          verifier matches any 3.4.patch, so 3.4.7 is in range. On Boot 3.4 the WebMVC gateway
-          starter is `spring-cloud-starter-gateway-mvc` (renamed to `-gateway-server-webmvc` only
-          on the Boot 4 / Spring Cloud 2025+ train the spec's §8.1 refers to).
+          P4 Task 0: bumped 2024.0.x (Moorgate, Boot 3.4) -> 2025.0.x (Northfields), the train that
+          pairs with Spring Boot 3.5.x. On the 2025.0 train the WebMVC gateway starter
+          `spring-cloud-starter-gateway-mvc` is DEPRECATED in favour of
+          `spring-cloud-starter-gateway-server-webmvc` (gateway/pom.xml renamed accordingly).
         -->
-        <spring-cloud.version>2024.0.1</spring-cloud.version>
+        <spring-cloud.version>2025.0.2</spring-cloud.version>
 
         <!--
           Nimbus JOSE+JWT — used DIRECTLY by the P3 gateway (mint/verify the simulated-IdP clearance
@@ -67,7 +75,7 @@
     <modules>
         <module>rag-engine</module>
         <module>gateway</module>
-        <!-- mcp-tools : added in P4 (governed MCP tool servers).    -->
+        <module>mcp-tools</module>
     </modules>
 
     <dependencyManagement>
@@ -119,6 +127,14 @@
                     <version>${maven-compiler-plugin.version}</version>
                     <configuration>
                         <release>${maven.compiler.release}</release>
+                        <!--
+                          Retain method parameter names in bytecode (-parameters). Spring Boot's
+                          starter-parent enables this by default; we parent off atlas-parent, so set it
+                          explicitly. Required by the Spring AI MCP @McpTool/@McpToolParam model
+                          (P4 /mcp-tools), which derives the tool's JSON-schema property names from the
+                          method parameter names — without it they degrade to arg0, arg1, ….
+                        -->
+                        <parameters>true</parameters>
                     </configuration>
                 </plugin>
                 <plugin>

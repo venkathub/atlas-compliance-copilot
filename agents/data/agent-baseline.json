@@ -1,0 +1,9 @@
+{
+  "scenarios_version": 1,
+  "task_success_floor": 0.80,
+  "tool_selection_floor": 0.90,
+  "argument_correctness_floor": 0.90,
+  "plan_adherence_floor": 0.95,
+  "recorded_at": "2026-06-21",
+  "note": "Agent is deterministic (no LLM): scored offline, no GPU/cassettes. Floors per P4_SPEC \u00a74.5; hard gates (HITL/authorization) are 100%/0 and not negotiable."
+}

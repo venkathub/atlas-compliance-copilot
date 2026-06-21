@@ -21,11 +21,13 @@
     </description>
 
     <dependencies>
-        <!-- Spring Cloud Gateway Server (WebMVC / Servlet, blocking) — ADR-0033. On the Boot 3.4
-             train this starter is `spring-cloud-starter-gateway-mvc`; it pulls in spring-boot-starter-web. -->
+        <!-- Spring Cloud Gateway Server (WebMVC / Servlet, blocking) — ADR-0033. P4 Task 0 (ADR-0050):
+             on the Spring Cloud 2025.0 (Northfields) train this starter was renamed from the now-
+             deprecated `spring-cloud-starter-gateway-mvc` to `spring-cloud-starter-gateway-server-webmvc`
+             (same WebMVC server gateway; pulls in spring-boot-starter-web). -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-gateway-mvc</artifactId>
+            <artifactId>spring-cloud-starter-gateway-server-webmvc</artifactId>
         </dependency>
 
         <dependency>

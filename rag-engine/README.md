@@ -11,7 +11,7 @@ guardrail (LLM01), and grounded QA with inline citations over `POST /v1/query`. 
 Ollama connectivity probe is retained.
 
 ## Stack
-- Spring Boot 3.4.7 · Spring AI 1.0.0 (`spring-ai-starter-model-ollama`) · Java 21
+- Spring Boot 3.5.15 · Spring AI 1.1.8 (`spring-ai-starter-model-ollama`) · Java 21
 - Postgres 16 + **pgvector** (vector store + RBAC metadata), schema managed by **Flyway**
 - Versions centralized in the root `pom.xml` (monorepo BOM/plugin management).
 

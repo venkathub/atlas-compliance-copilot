@@ -1,0 +1,68 @@
+server:
+  port: ${MCP_TOOLS_PORT:8082}
+
+spring:
+  application:
+    name: mcp-tools
+  datasource:
+    # RUNTIME pool connects as the LEAST-PRIVILEGE app role (INSERT/SELECT-only on the audit log;
+    # ADR-0048). Env-driven, never hardcoded (CLAUDE.md). initialization-fail-timeout=-1 defers the
+    # first connection until AFTER Flyway (which runs as the privileged user below) has created the
+    # role — avoiding the chicken-and-egg at startup.
+    url: ${ATLAS_MCP_DB_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:atlas}}
+    username: ${ATLAS_MCP_DB_APP_USERNAME:atlas_mcp_app}
+    password: ${ATLAS_MCP_DB_APP_PASSWORD:atlas_mcp_app}
+    hikari:
+      initialization-fail-timeout: -1
+  flyway:
+    # Migrations run as a PRIVILEGED role (creates the agent schema, the app role, GRANTs, trigger).
+    # mcp-tools keeps its OWN history table inside the `agent` schema (isolated from rag-engine).
+    enabled: true
+    locations: classpath:db/migration
+    user: ${ATLAS_MCP_DB_USERNAME:atlas}
+    password: ${ATLAS_MCP_DB_PASSWORD:atlas}
+    schemas: agent
+    default-schema: agent
+    create-schemas: true
+    placeholders:
+      # Bound into V2's CREATE/ALTER ROLE so the app-role password is env-driven, never hardcoded.
+      app_password: ${ATLAS_MCP_DB_APP_PASSWORD:atlas_mcp_app}
+  ai:
+    mcp:
+      server:
+        # Spring AI MCP server (ADR-0043 / D-P4-3). Streamable HTTP on WebMVC (SSE is deprecated;
+        # ADR-0050 bumped Spring AI to 1.1.x for this stack). MCP spec 2025-11-25. P4 task 1 registers
+        # NO tools — open_draft_sar (a governed write) is added in task 3; OAuth 2.1 + clearance re-check
+        # in tasks 4–5. Identity/name/version are env-swappable (never hardcoded — CLAUDE.md).
+        enabled: true
+        protocol: STREAMABLE
+        name: ${ATLAS_MCP_SERVER_NAME:atlas-mcp-tools}
+        version: ${ATLAS_MCP_SERVER_VERSION:0.1.0}
+
+# MCP tool server config (env-swappable, never hardcoded — CLAUDE.md).
+atlas:
+  mcp:
+    # Task-3 caller-identity seam defaults (used only if the token-backed context is absent).
+    default-caller: ${ATLAS_MCP_DEFAULT_CALLER:agent}
+    default-clearance: ${ATLAS_MCP_DEFAULT_CLEARANCE:compliance}
+    # OAuth 2.1 resource server (task 4, ADR-0046). HMAC secret shared with the sim-IdP (gateway);
+    # the token's aud must name this server (RFC 8707). required-clearance gates the per-call re-check.
+    token:
+      signing-key: ${ATLAS_MCP_TOKEN_SIGNING_KEY:change-me-locally}
+      issuer: ${ATLAS_MCP_TOKEN_ISSUER:atlas-sim-idp}
+      audience: ${ATLAS_MCP_TOKEN_AUDIENCE:atlas-mcp-tools}
+      required-clearance: ${ATLAS_MCP_REQUIRED_CLEARANCE:compliance}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # `prometheus` exposes /actuator/prometheus for the P4 agent/tool dashboard scrape.
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: never
+  prometheus:
+    metrics:
+      export:
+        enabled: true

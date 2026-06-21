@@ -76,6 +76,63 @@ services:
       - "${GATEWAY_PORT:-8080}:8080"
     restart: unless-stopped
 
+  # ── Governed MCP Tool Server (P4, ADR-0043) ─────────────────────────────────
+  # Spring AI MCP server (Streamable HTTP on WebMVC). Task-1 skeleton is DB-free (the
+  # sar_draft/tool_audit datasource arrives in task 2); it boots standalone with health.
+  mcp-tools:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: mcp-tools/Dockerfile
+    image: atlas/mcp-tools:0.1.0-SNAPSHOT
+    container_name: atlas-mcp-tools
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MCP_TOOLS_PORT: 8082
+      ATLAS_MCP_SERVER_NAME: ${ATLAS_MCP_SERVER_NAME:-atlas-mcp-tools}
+      ATLAS_MCP_SERVER_VERSION: ${ATLAS_MCP_SERVER_VERSION:-0.1.0}
+      # Shared Postgres (agent schema). Flyway = privileged role; runtime = least-privilege app role.
+      ATLAS_MCP_DB_URL: ${ATLAS_MCP_DB_URL:-jdbc:postgresql://postgres:5432/${POSTGRES_DB:-atlas}}
+      ATLAS_MCP_DB_USERNAME: ${ATLAS_MCP_DB_USERNAME:-${POSTGRES_USER:-atlas}}
+      ATLAS_MCP_DB_PASSWORD: ${ATLAS_MCP_DB_PASSWORD:-${POSTGRES_PASSWORD:-atlas}}
+      ATLAS_MCP_DB_APP_USERNAME: ${ATLAS_MCP_DB_APP_USERNAME:-atlas_mcp_app}
+      ATLAS_MCP_DB_APP_PASSWORD: ${ATLAS_MCP_DB_APP_PASSWORD:-change-me-locally}
+    ports:
+      - "${MCP_TOOLS_PORT:-8082}:8082"
+    restart: unless-stopped
+
+  # ── Agent Orchestrator (P4) ─────────────────────────────────────────────────
+  # Python / LangGraph. Calls the Gateway for retrieval + the MCP server for actions; durable
+  # checkpointer over the shared Postgres `agent` schema (ADR-0047). Skeleton until tasks 7-8.
+  agents:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: agents/Dockerfile
+    image: atlas/agents:0.1.0-SNAPSHOT
+    container_name: atlas-agents
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGENT_PORT: 8083
+      GATEWAY_BASE_URL: ${GATEWAY_BASE_URL:-http://gateway:8080}
+      MCP_BASE_URL: ${MCP_BASE_URL:-http://mcp-tools:8082/mcp}
+      ATLAS_AGENT_MODEL: ${ATLAS_AGENT_MODEL:-qwen2.5:7b-instruct}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      AGENT_DB_URL: ${AGENT_DB_URL:-postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas}@postgres:5432/${POSTGRES_DB:-atlas}}
+      # Observability (OTel → Langfuse; export OFF by default, fail-soft).
+      OTEL_TRACES_EXPORT_ENABLED: ${OTEL_TRACES_EXPORT_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://langfuse-web:3000/api/public/otel/v1/traces}
+      LANGFUSE_OTEL_AUTH_HEADER: ${LANGFUSE_OTEL_AUTH_HEADER:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${AGENT_PORT:-8083}:8083"
+    restart: unless-stopped
+
   # ── Observability plane (P2) ────────────────────────────────────────────────
   # Langfuse v3 self-host (D-P2-5). REUSES atlas-postgres (db `langfuse`) + atlas-redis,
   # and adds only ClickHouse (analytics store) + MinIO (S3 event/blob store), per the

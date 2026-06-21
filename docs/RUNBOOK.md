@@ -406,4 +406,78 @@ Offline (no GPU), the eval-through-gateway gate **replays committed cassettes** 
 (`RedisSemanticCacheIT`, `PiiEgressGateTest`, `RbacNegativeAccessIT`, `PromptInjectionIT`) all pass via
 `mvn verify`.
 
-## 8. Production deploy — *added in P5*
+## 8. Agent Orchestrator + MCP Tools — P4
+
+The P4 agent turns answers into **governed actions**: it retrieves through the Gateway, deterministically
+decides whether an AML exception breaches the reporting threshold, **pauses for human approval**, and only
+then opens a draft SAR via the MCP tool server — every action audited (append-only, hash-chained) and the
+agent run evaluated as a CI merge gate. **The P4 agent is deterministic — no LLM call — so this whole flow
+is GPU-free.**
+
+### 8.1 Bring up the P4 stack
+```bash
+# Postgres (P0) + the two new P4 services (Spring Boot mcp-tools + Python/LangGraph agents).
+set -a && . ./.env && set +a
+docker compose -f infra/docker-compose.yml --profile app up -d postgres mcp-tools agents
+# health
+curl -fsS localhost:${MCP_TOOLS_PORT:-8082}/actuator/health
+curl -fsS localhost:${AGENT_PORT:-8083}/healthz
+```
+The MCP server and agent share the Gateway's signing key + issuer so the resource-scoped (RFC 8707) token
+verifies across the hop: keep `ATLAS_IDP_SIGNING_KEY == ATLAS_MCP_TOKEN_SIGNING_KEY` and
+`ATLAS_IDP_ISSUER == ATLAS_MCP_TOKEN_ISSUER` (defaults already align in `.env.example`).
+
+### 8.2 30-second demo (forcing story · GPU-free)
+```bash
+GW=http://localhost:${GATEWAY_PORT:-8080};  AG=http://localhost:${AGENT_PORT:-8083}
+
+# 1) Mint a compliance clearance token for Priya (the agent forwards it to the Gateway for retrieval).
+TOKEN=$(curl -fsS -X POST "$GW/v1/auth/token" -H 'Content-Type: application/json' \
+          -d '{"user":"priya"}' | jq -r .token)
+
+# 2) Start the run → cited summary + breach + status AWAITING_APPROVAL + a dry-run proposedAction.
+RUN=$(curl -fsS -X POST "$AG/v1/agent/runs" -H "Authorization: Bearer $TOKEN" \
+        -H 'Content-Type: application/json' \
+        -d '{"query":"Summarize open AML exceptions for Northwind this quarter, and if any breach the reporting threshold, open a draft SAR for my review.","account":"Northwind","period":"2026-Q2"}')
+echo "$RUN" | jq '{runId, status, proposedAction}'
+RUN_ID=$(echo "$RUN" | jq -r .runId)
+
+# 3) Approve → the agent mints an aud-scoped token, calls open_draft_sar over MCP, returns the draftRef.
+curl -fsS -X POST "$AG/v1/agent/runs/$RUN_ID/resume" -H 'Content-Type: application/json' \
+     -d '{"approved":true,"note":"Reviewed; proceed"}' | jq '{status, action}'
+
+# (Refusal path) A sub-compliance caller never sees the breach (P1 RBAC) → no breach → no action;
+# and even a forced write is DENIED at the MCP resource server (per-call clearance re-check, LLM06).
+```
+
+### 8.3 Query the append-only audit log (compliance review)
+```bash
+# Every tool invocation writes an immutable, hash-chained row (ATTEMPT → APPROVED/SUCCESS/DENIED/…).
+docker compose -f infra/docker-compose.yml exec postgres \
+  psql -U "${POSTGRES_USER:-atlas}" -d "${POSTGRES_DB:-atlas}" -c \
+  "SELECT seq, ts, run_id, phase, caller, clearance, result_ref FROM agent.tool_audit ORDER BY seq;"
+```
+`UPDATE`/`DELETE` are rejected (least-privilege grant + an owner-proof trigger); tamper-evidence is proven
+by `AuditChainVerifier` in `mcp-tools` (`AuditServiceIT` — disabling the guard + mutating a row is detected).
+The draft itself: `SELECT draft_ref, account, period, status FROM agent.sar_draft;`.
+
+### 8.4 Tests & the agent eval gate (offline, GPU-free)
+```bash
+mvn -pl mcp-tools verify                                   # 12 unit + 21 IT (OAuth/RBAC/audit/tool)
+uv run --directory agents --group dev pytest -q            # 60 tests (+3 live-gated, skipped offline)
+uv run --directory agents python -m app.eval.agent_gate    # AGENT GATE: PASS (12/12 scenarios)
+```
+
+### 8.5 Live agent-path invariant gate (needs the running stack + GPU)
+The offline suite proves the agent *uses* the governed path (forwards only the caller Bearer, no clearance
+header). The literal §4.3 end-to-end gate — 0 cross-clearance citations / 0 PII / injection-quarantined
+*through the agent* — runs against a live Gateway+rag-engine (like the other live lanes):
+```bash
+make -C infra gpu-up && set -a && . ./.env && set +a
+mvn -pl rag-engine spring-boot:run &   mvn -pl gateway spring-boot:run &
+ATLAS_LIVE_AGENT_PATH=1 GATEWAY_URL=http://localhost:8080 \
+  uv run --directory agents --group dev pytest -q tests/test_agent_path_invariants.py
+make -C infra gpu-down
+```
+
+## 9. Production deploy — *added in P5*

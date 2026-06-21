@@ -6,6 +6,8 @@ import com.atlas.gateway.auth.DownstreamClearanceSigner;
 import com.atlas.gateway.auth.GatewayProperties;
 import com.atlas.gateway.auth.IdpProperties;
 import com.atlas.gateway.auth.JwtClearanceFilter;
+import com.atlas.gateway.auth.ResourceScopedTokenIssuer;
+import com.atlas.gateway.auth.ResourceTokenProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.core.Ordered;
@@ -19,7 +21,7 @@ import org.springframework.context.annotation.Configuration;
  * to {@code rag-engine}. All config is env-swappable via {@link IdpProperties}/{@link GatewayProperties}.
  */
 @Configuration
-@EnableConfigurationProperties({IdpProperties.class, GatewayProperties.class})
+@EnableConfigurationProperties({IdpProperties.class, GatewayProperties.class, ResourceTokenProperties.class})
 public class AuthConfig {
 
     @Bean
@@ -30,6 +32,12 @@ public class AuthConfig {
     @Bean
     ClearanceTokenService clearanceTokenService(IdpProperties props) {
         return new ClearanceTokenService(props);
+    }
+
+    /** Resource-scoped (RFC 8707) token issuer for the MCP hop (ADR-0046, P4 task 5). Additive. */
+    @Bean
+    ResourceScopedTokenIssuer resourceScopedTokenIssuer(IdpProperties idp, ResourceTokenProperties resource) {
+        return new ResourceScopedTokenIssuer(idp, resource);
     }
 
     @Bean

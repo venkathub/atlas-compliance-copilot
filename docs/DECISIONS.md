@@ -13,6 +13,16 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0050 | 2026-06-21 | Spring AI version for P4 (bump to 1.1.x on Spring Boot 3.x; defer 2.0/Boot 4) | Accepted | P4 |
+| 0049 | 2026-06-21 | Governed action scope, breach rule & SAR write target | Accepted | P4 |
+| 0048 | 2026-06-21 | Tamper-evident append-only hash-chained audit log | Accepted | P4 |
+| 0047 | 2026-06-21 | Durable agent checkpointer (Postgres, agent schema) | Accepted | P4 |
+| 0046 | 2026-06-21 | Clearance propagation to MCP tools + replay-protected approval (RFC 8707) | Accepted | P4 |
+| 0045 | 2026-06-21 | Agent service placement (standalone, consumes the Gateway) | Accepted | P4 |
+| 0044 | 2026-06-21 | Human-in-the-loop placement & mechanism (LangGraph interrupt) | Accepted | P4 |
+| 0043 | 2026-06-21 | MCP tool server stack (Spring AI MCP server, Streamable-HTTP WebMVC) | Accepted | P4 |
+| 0042 | 2026-06-21 | Agent reasoning model tier (tier2 qwen2.5:7b) | Accepted | P4 |
+| 0041 | 2026-06-21 | Agent orchestration topology (LangGraph planner–executor) | Accepted | P4 |
 | 0040 | 2026-06-14 | Cost-units model & cost-delta reporting | Accepted | P3 |
 | 0039 | 2026-06-14 | Circuit-breaker scope & fallback | Accepted | P3 |
 | 0038 | 2026-06-14 | Gateway resource controls (rate-limit, budget caps, LLM10) | Accepted | P3 |
@@ -61,11 +71,351 @@
 > (`ROADMAP.md` §8). **ADR-0033–0040 are the P3 grooming decisions** (`docs/phases/P3_SPEC.md` §3 + §8
 > web-validated gap analysis), owner-confirmed 2026-06-14 before P3 implementation begins; **ADR-0034 supersedes
 > ADR-0016** by replacing the P1 clearance-header shim with the simulated-IdP verified-clearance trust boundary.
+> **ADR-0041–0050 are the P4 grooming decisions** (`docs/phases/P4_SPEC.md` §3 + §8 web-validated gap
+> analysis), owner-confirmed 2026-06-21 before P4 implementation begins; **ADR-0042 extends ADR-0035** (agent
+> model tier), **ADR-0046 extends ADR-0003** (RFC 8707 resource-scoped tokens + replay-protected approval),
+> **ADR-0047 reuses ADR-0002** (one shared Postgres), and **ADR-0050 updates the Spring AI pin from ADR-0008**.
 > Each remains open to revision with a new superseding ADR if a later phase surfaces evidence against it.
 
 ---
 
 ## 2. Decisions
+
+### ADR-0050 — Spring AI version for P4 (bump to 1.1.x on Spring Boot 3.x; defer 2.0/Boot 4)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-10), §8 (G-P4-2)
+- **Context:** The repo is pinned to **Spring AI `1.0.0` on Spring Boot `3.4.7`** (ADR-0008). The P4 MCP **server**
+  needs Streamable-HTTP **WebMVC** (`spring.ai.mcp.server.protocol=STREAMABLE`), annotation-driven
+  `@McpTool`/`@McpToolParam`, the `TransportContextExtractor` auth hook, and the MCP-Security integration. Web
+  validation (June 2026) found these already ship in **Spring AI `1.1.x`, which stays on Spring Boot 3.x**, while
+  **Spring AI `2.0.x` requires Spring Boot `4.0`** (Spring Framework 7, Jakarta EE 11, Jackson 3, JSpecify) and
+  "cannot be loaded in a 3.x context."
+- **Options considered:** (a) **bump repo-wide to the latest `1.1.x`, staying on Boot 3.x**, as P4 Task 0;
+  (b) bump only `mcp-tools` to 1.1.x (two Spring AI versions in one reactor → BOM/transitive risk);
+  (c) adopt Spring AI 2.0 / Boot 4 now (a multi-month, repo-wide framework migration — Jackson 2→3 silent
+  JSON-shape changes, removed deprecated APIs, third-party Boot-4 blockers, Spring Cloud Gateway/Security
+  upgrades); (d) stay on 1.0.0 (weaker MCP-server maturity → risk of SSE/hand-wired Java SDK).
+- **Decision:** **(a)** — minor bump to **Spring AI 1.1.x on Spring Boot 3.x** as Task 0; bump Boot to 3.5.x only
+  if 1.1.x requires it (low-risk same-major patch, the recommended pre-4.0 step). **Spring AI 2.0 / Spring Boot 4
+  is explicitly out of P4 scope**, recorded as a deliberate future-work track.
+- **Rationale:** gets the current MCP server idiom with a **minor** bump on the same Boot major line (Advisor/
+  VectorStore/RAG/embedding/chat APIs shipped in 1.0 and are stable through 1.1), avoiding a disproportionate
+  Boot-4 migration that would destabilize frozen P1/P3 for zero P4 benefit. Honest production shape: one Spring
+  AI version across the reactor.
+- **Consequences:** Task 0's acceptance test = **all frozen P1/P3 unit/IT + eval cassette gates + RBAC/PII hard
+  gates re-green** (cassettes re-recorded only if a fingerprint legitimately changes). Watch the
+  `FunctionCallback`→`ToolCallback` deprecation (rag-engine uses `ChatModel`/`EmbeddingModel`/`ChatClient`/
+  evaluators, not `FunctionCallback`, so low exposure). The Boot 4 / Spring AI 2.0 migration is planned against
+  the Spring Boot 3.5 / Framework 6.2 EOL (2026-06-30) on its own timeline; revisit with a superseding ADR.
+- **Implementation note (2026-06-21, P4 Task 0 — landed & gate-verified):**
+  - **Concrete pins:** `spring-ai.version` `1.0.0`→**`1.1.8`** (latest 1.1.x, 2026-06-12; MCP SDK 0.18.3),
+    `spring-boot.version` `3.4.7`→**`3.5.15`** (the Boot version Spring AI 1.1.8 ships on), `spring-cloud.version`
+    `2024.0.1` (Moorgate)→**`2025.0.2`** (Northfields, the train that pairs with Boot 3.5).
+  - **Gateway starter rename (owner-confirmed):** Spring Cloud 2025.0 deprecates `spring-cloud-starter-gateway-mvc`
+    in favour of **`spring-cloud-starter-gateway-server-webmvc`** (same WebMVC server gateway); `gateway/pom.xml`
+    switched to the non-deprecated artifact (avoids a per-boot deprecation warning). ADR-0033 unchanged in intent.
+  - **Spring AI API shift:** `FactCheckingEvaluator(ChatClient.Builder)` was removed in 1.1.x in favour of
+    `FactCheckingEvaluator.builder(..)`. Since the static `builder(..)` does **not** seed a default prompt, the
+    1.0.x `DEFAULT_EVALUATION_PROMPT_TEXT` is now passed verbatim in `InlineEvaluators` to keep behaviour and eval
+    fingerprints identical. (`FunctionCallback` is unused, as predicted — no exposure.)
+  - **Circuit-breaker behavioural change (ADR-0039 touch):** in spring-cloud-circuitbreaker **3.3.x**,
+    `Resilience4JCircuitBreakerFactory.create(id)` resolves the circuit-breaker **and** time-limiter configs from
+    the resilience4j **registries** (`getConfiguration(id)`→registry default) and **ignores** the factory's
+    `configureDefault(..)` map — the mechanism the 2024.0 train used via a `Customizer` bean. The gateway's
+    `Customizer<Resilience4JCircuitBreakerFactory>` therefore silently no-opped, dropping the rag-engine
+    TimeLimiter back to Resilience4j's **1s** default (a normal multi-second model call would then wrongly 503).
+    Fix: `ResilienceConfig.modelCircuitBreaker` now registers a named `"rag-engine"` configuration directly in the
+    `CircuitBreakerRegistry` + `TimeLimiterRegistry` (TimeLimiter aligned to `ATLAS_REQUEST_TIMEOUT_MS`) before
+    `create(..)` — order-independent and version-correct. No behaviour change for callers; ADR-0039 intent intact.
+  - **Acceptance — all frozen gates re-green (GPU off, no cassette churn):** rag-engine **90 unit + 40 IT**,
+    gateway **59 unit + 14 IT** (incl. RBAC negative-access, prompt-injection, PII-egress, circuit-breaker
+    timeout ITs); `ruff` clean; evals harness **63 passed**; GPU-lifecycle helper **24 passed**; eval merge gate
+    **PASS** on both the direct and `ATLAS_EVAL_THROUGH_GATEWAY` paths. Cassettes unchanged (no legitimate
+    fingerprint drift).
+
+### ADR-0049 — Governed action scope, breach rule & SAR write target
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-9), §7 (Q5, Q6)
+- **Context:** P4 must turn the answer into a real, governed enterprise action (open a draft SAR) without
+  over-broad agency (LLM06 / OWASP ASI02 tool-misuse, ASI10 scaling). Three sub-choices: how many tools, how the
+  breach condition is decided, and what the write target is.
+- **Options considered:**
+  - *Tool scope (Q6):* (a) **exactly one least-privilege write tool** `open_draft_sar` (+ only the read helpers
+    it needs); (b) several tools / a tool marketplace.
+  - *Breach rule (Q5):* (a) **a single configurable numeric threshold** over the period (deterministic);
+    (b) a multi-factor rule (amount **and** exception type); (c) an LLM-judged breach.
+  - *Write target (D-P4-9):* (a) **a transactional write to a `sar_draft` Postgres table** (status DRAFT, links
+    citations + run_id); (b) render a SAR markdown/PDF artifact to disk; (c) a stub/no-op tool.
+- **Decision:** **Q6 → (a)** one least-privilege tool; **Q5 → (a)** a single configurable threshold; **D-P4-9 →
+  (a)** a transactional `sar_draft` Postgres write returned for human review.
+- **Rationale:** one tool keeps the agency surface minimal and auditable (no tool-chaining/confused-deputy
+  paths); a deterministic single threshold makes the `assess` node testable and the breach decision grounded in
+  citations rather than LLM whim (ASI01 resistance); a transactional DB write is a real, inspectable, audited
+  state change with no external integration — a stronger "governed action" story than file IO or a stub.
+- **Consequences:** the threshold is env/config-driven and documented; P5 may render a SAR artifact from the
+  `sar_draft` row; adding a second tool requires a new ADR. No external/real SAR filing (FinCEN) — synthetic
+  Layer-2 data only.
+- **Implementation note (2026-06-21, P4 Task 3 — tool + write landed; breach rule deferred to Task 7):** the
+  governed write tool `open_draft_sar` is exposed over Streamable HTTP via the Spring AI annotation model
+  (`org.springaicommunity.mcp.annotation.@McpTool`/`@McpToolParam`), auto-discovered by
+  `McpServerAnnotationScannerAutoConfiguration`; a record return type (`OpenDraftSarResult`) yields **structured
+  output** `{draftRef,status,createdAt}`. `V3__atlas_sar_draft.sql` adds `agent.sar_draft` (+ a `sar_draft_ref_seq`
+  for the `SAR-<year>-<6 digits>` ref) with INSERT/SELECT granted to `atlas_mcp_app`; it is intentionally *not*
+  append-only (a draft is mutable). `SarDraftService.createDraft` writes `sar_draft` (DRAFT) **and** the `SUCCESS`
+  audit row in one `@Transactional` (the audit append joins via REQUIRED) — proven atomic by a rollback IT
+  (`@MockitoBean` audit throws → 0 orphan drafts). Caller/clearance come from a `ToolCallerContext` seam (task-3
+  default identity; the OAuth re-check is task 4, the single-use approval precondition task 5 — owner-confirmed
+  "defer to 4/5"). **Required `-parameters` compiler flag** (added to the parent pom; Spring Boot's default we
+  don't inherit) so `@McpToolParam` names survive in the JSON schema instead of `arg0…argN`. The breach
+  *threshold* (Q5) lives in the agent's deterministic `assess` node (Task 7), not the tool. Tests: **5 unit**
+  (validator) + **9 IT** (tool ATTEMPT→SUCCESS atomic write, invalid period / oversized rationale rejected,
+  rollback atomicity, MCP `tools/list` schema + `tools/call` round-trip persisting a draft).
+- **Gap-closure note (2026-06-21):** `open_draft_sar` now also returns **`auditRef`** (the `SUCCESS`
+  `tool_audit` row, e.g. `audit_42`) in its structured output, so the agent surfaces it on the resume response
+  (§2.3) and a reviewer can pivot draft → audit row. The agent maps it into `action.auditRef` / the run's
+  top-level `auditRef`.
+
+### ADR-0048 — Tamper-evident append-only hash-chained audit log
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-8); ROADMAP §6 G9
+- **Context:** Compliance review needs a trustworthy, queryable trail of every governed tool action (ROADMAP §6
+  G9; OWASP ASI02/ASI03 auditability; NIST AI RMF / EU AI Act record-keeping per ADR-0007).
+- **Options considered:** (a) **append-only Postgres table with a hash-chain** (`prev_hash`/`row_hash`) + DB-level
+  INSERT/SELECT-only grant (REVOKE UPDATE/DELETE for the app role) + a chain verifier; (b) append-only table with
+  revoked UPDATE/DELETE only (no chain — not tamper-*evident*); (c) external WORM/object store (strongest, but
+  new infra + egress, off-budget/off-thesis).
+- **Decision:** **(a)** — `tool_audit` records every invocation phase (ATTEMPT/APPROVED/REJECTED/SUCCESS/DENIED/
+  ERROR), hash-chained as `row_hash = sha256(prev_hash || canonical_fields)`; an `AuditChainVerifier` recomputes
+  and flags any break; UPDATE/DELETE revoked at the DB layer.
+- **Rationale:** tamper-evident **and** queryable (`run_id`/`caller`/`tool`), cheap, reuses Postgres (ADR-0002),
+  and the chain verifier is a clean compliance demo. Args are stored as a digest (no raw PII; consistent with
+  ADR-0030).
+- **Consequences:** chain-maintenance code + a verifier test (good chain passes, tampered row detected); the
+  audit write is atomic with the `sar_draft` write (all-or-nothing); a privileged DBA could still drop the table
+  — out of scope for the self-hosted portfolio (note in RUNBOOK).
+- **Implementation note (2026-06-21, P4 Task 2 — landed & IT-verified):** `agent` schema + `agent.tool_audit`
+  created in `mcp-tools` migration `V2__atlas_agent_audit_schema.sql`. **Two protections** installed (stronger
+  than the ADR's grant-only wording): (1) the **GRANT model** — least-privilege role `atlas_mcp_app` gets
+  INSERT+SELECT only; (2) an **owner-proof `BEFORE UPDATE/DELETE` trigger** (`tool_audit_no_mutate`) — because a
+  Postgres table *owner* keeps UPDATE/DELETE regardless of REVOKE, so the grant alone is a no-op against the
+  owner. **Two DB identities:** Flyway runs as a privileged role (`spring.flyway.user`) and the runtime pool as
+  the restricted `atlas_mcp_app` (`spring.datasource.username`); Hikari `initialization-fail-timeout=-1` defers
+  the runtime pool until after Flyway provisions the role. mcp-tools keeps an **isolated Flyway history table in
+  the `agent` schema** so it never collides with rag-engine's `public` history (ADR-0047). The hash chain
+  (`row_hash = sha256(prev_hash || US-joined canonical fields)`, genesis = 64×'0') is computed by a pure
+  `AuditHasher`; `AuditService.append` serializes via `pg_advisory_xact_lock` and sets `ts` (truncated to µs) so
+  hashes round-trip exactly; `AuditChainVerifier` recomputes and reports the first broken `seq`. Owner-confirmed
+  the **dedicated-role + trigger** option. Tests: **7 unit** (chain math: determinism, genesis, mutated-field +
+  relinked-row detection) + **5 IT** (role/grants/trigger present; valid chain; UPDATE/DELETE denied for the app
+  role *and* the owner; tamper-after-guard-bypass detected), Testcontainers postgres:16, no GPU.
+
+### ADR-0047 — Durable agent checkpointer (Postgres, agent schema)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-7); ROADMAP §6 G8
+- **Context:** A production agent must **resume after interrupt or process restart** (ROADMAP §6 G8), and must
+  not let memory become a poisoning vector (OWASP ASI06).
+- **Options considered:** (a) **LangGraph Postgres checkpointer (`langgraph-checkpoint-postgres`) reusing the P0
+  Postgres in a separate `agent` schema**; (b) SQLite checkpointer (dev-simple, not shared-prod / multi-instance
+  safe); (c) in-memory checkpointer (fails the durability DoD).
+- **Decision:** **(a)** — durable Postgres checkpointer, isolated in an `agent` schema.
+- **Rationale:** one datastore (ADR-0002 ethos), production-shaped resume-after-restart, no new infra; per-run
+  isolated, trusted-write, validated state (the checkpointer holds agent run state, not a shared knowledge base)
+  blunts ASI06 memory poisoning.
+- **Consequences:** schema/migration ownership spans `mcp-tools` (audit/SAR) and `agents` (checkpoint) — isolated
+  via a dedicated `agent` schema; a resume-after-restart hard-gate test is required.
+- **Implementation note (2026-06-21, P4 Task 6 — checkpointer wired + module skeleton):** `/agents` opened as a
+  `uv` project (Python 3.12, mirroring `/evals`): FastAPI run API (`/healthz` live; `POST /v1/agent/runs`,
+  `/resume`, `GET …` return **501** until the graph lands in tasks 7–8), env-driven `Settings`
+  (pydantic-settings), and the durable **LangGraph `PostgresSaver`** (`langgraph-checkpoint-postgres`).
+  `checkpointer.open_checkpointer` idempotently `CREATE SCHEMA IF NOT EXISTS agent` and pins the connection
+  `search_path=agent`, so LangGraph's checkpoint tables live in the **`agent` schema** alongside (no collision
+  with) mcp-tools' `sar_draft`/`tool_audit`; `/agents` ensures the schema itself so it doesn't depend on
+  mcp-tools' migration order. Tests: **11 unit** (config parsing/aliases, run-API surface incl. 501 stubs +
+  422 validation) + **2 checkpointer ITs** (Testcontainers postgres:16: `setup()` + `put`/`get` round-trip;
+  checkpoint tables materialize in `agent`) — model-free, no GPU. Compose `agents` service (port 8083) +
+  `.env.example` Agent Orchestrator section + a CI pytest step added.
+
+### ADR-0046 — Clearance propagation to MCP tools + replay-protected approval (RFC 8707)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §2.4, §3 (D-P4-6); extends ADR-0003
+- **Context:** The verified clearance must flow client → agent → MCP tool and be re-validated at the tool
+  (defense-in-depth with P1 RBAC); the approval that unlocks a write must not be replayable (OWASP ASI07
+  "replayed approval"; ASI03 identity/privilege).
+- **Options considered:** (a) **audience-restricted Bearer tokens (RFC 8707 resource indicators)** — sim-IdP
+  mints a token with `aud=atlas-mcp-tools`; the agent forwards it; the MCP resource server validates
+  sig+exp+iss+**aud** and re-derives clearance; (b) reuse the gateway internal-clearance signed header
+  (ADR-0034) for the agent→MCP hop (consistent, but not the OAuth 2.1 resource-server / RFC 8707 skill the
+  roadmap §6 G2 wants); (c) network-trust only (unacceptable for a governed write).
+- **Decision:** **(a)** — extend the simulated IdP (ADR-0003) to mint **resource-scoped, short-lived** tokens;
+  the MCP server is an **OAuth 2.1 resource server** doing **per-call** clearance re-check (refuse `<compliance`
+  → `DENIED`). The approval/resume is **single-use, task-scoped** — bound to `run_id` + checkpoint version with a
+  unique `jti`+short `exp`, so a consumed approval cannot authorize a second or mutated write.
+- **Rationale:** demonstrates the current MCP security model (Streamable HTTP + OAuth 2.1 RS + RFC 8707), aligns
+  with ASI03 "task-scoped, short-lived tokens + per-step re-authorization + no credential sharing," and closes
+  the ASI07 replay vector.
+- **Consequences:** a shared/managed signing config + token audience to manage (env, no secrets in code); new
+  hard gates — per-call authz re-check and single-use/replay-protected approval.
+- **Implementation note (2026-06-21, P4 Task 4 — resource server + clearance re-check landed; token minting +
+  single-use approval = Task 5):** `/mcp` is secured as a Spring Security **OAuth 2.1 resource server**
+  (`spring-boot-starter-oauth2-resource-server`). `ResourceServerConfig` builds a `NimbusJwtDecoder.withSecretKey`
+  (HS256 over `SHA-256(signing-key)` — mcp-tools owns its own `SecurityKeys`, matching the gateway derivation)
+  with delegating validators: timestamp + `JwtIssuerValidator` + an **audience** `JwtClaimValidator` (the `aud`
+  must contain `atlas-mcp-tools`, RFC 8707). One `SecurityFilterChain`: `/actuator/**` permitAll, `/mcp/**`
+  authenticated, CSRF off, STATELESS — so missing/expired/forged/wrong-`aud`/wrong-`iss` → **401**. The
+  **per-call clearance re-check** is *not* an HTTP 403: `TokenToolCallerContext` (`@Primary`) reads the validated
+  `JwtAuthenticationToken` from the `SecurityContextHolder` (the WebMVC Streamable-HTTP tool runs on the request
+  thread, so the thread-local carries it — verified by an HTTP `tools/call` E2E), and `ClearanceRecheck` refuses
+  `< compliance` → `InsufficientClearanceException` → an MCP tool error + a **`DENIED`** audit row (LLM06 / ASI03).
+  **Implementation choice vs the spec's `TransportContextExtractor`:** because Spring Security already validates
+  the token and populates the security context on the request thread, the caller identity is read from the
+  `SecurityContextHolder` rather than a manual `TransportContextExtractor` — same outcome (validated identity in
+  the tool), less code; the extractor remains the fallback if tool execution ever moves off the request thread.
+  Config is env-driven (`atlas.mcp.token.*`). Tests: **6 IT** resource-server (missing/expired/forged/wrong-aud/
+  wrong-iss → 401; valid aud-token → 200) + the tool **DENIED** path (sub-`compliance` → DENIED audit, no draft)
+  + the existing tool/transport ITs updated to carry a compliance Bearer. The single-use, replay-protected
+  approval precondition (the second half of this ADR) is Task 5.
+- **Implementation note (2026-06-21, P4 Task 5 — sim-IdP resource-scoped token issuance, additive to the
+  frozen gateway):** the gateway sim-IdP now mints **RFC 8707 audience-restricted** tokens for the MCP hop.
+  Kept purely additive (no edits to the frozen `IdpProperties`/`SimIdpController` or their tests): new
+  `ResourceTokenProperties` (`atlas.idp.resource.{audience,ttl-seconds}`), `ResourceScopedTokenIssuer`
+  (reuses the sim-IdP HS256 signing key + issuer; adds `aud=atlas-mcp-tools`, a short `exp` (default 300s),
+  and a unique `jti`), and a separate `ResourceTokenController` exposing `POST /v1/auth/resource-token`
+  (under `/v1/auth/**`, which the trust-boundary filter skips). For the hop to verify, the gateway and
+  mcp-tools must share the signing key + issuer + audience (documented in `.env.example`; defaults already
+  align). Tests prove the minted token satisfies the **exact mcp-tools resource-server contract** (HS256
+  over `SHA-256(shared key)` + `iss` + `aud` + `exp` + subject/clearance), validated with Nimbus inside the
+  gateway module (no Spring Security added to the gateway — honors ADR-0034's deliberate minimal-Security
+  stance; the real `NimbusJwtDecoder` is exercised in mcp-tools' `ResourceServerIT`). Tests: **4 unit**
+  (issuer: claims/sig, unique jti, contract pass, wrong-aud fails) + **3** controller web tests
+  (known/unknown/missing user). The `jti` + short `exp` are the groundwork for ASI07 single-use approval;
+  the binding to `run_id` + checkpoint + consumption lands with the agent (Task 8).
+
+### ADR-0045 — Agent service placement (standalone, consumes the Gateway)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-5)
+- **Context:** Where does the agent sit relative to the P3 Gateway in P4 (no UI yet)?
+- **Options considered:** (a) **standalone Python agent service** (`POST /v1/agent/runs` + resume) that *calls*
+  the Gateway `/v1/query` for retrieval and the MCP server for actions; Gateway/UI integration deferred to P5;
+  (b) route agent traffic through the Gateway now (`gateway→agent`); (c) agent calls `rag-engine` directly
+  (bypassing the Gateway).
+- **Decision:** **(a)** — standalone agent service consuming the governed Gateway path.
+- **Rationale:** keeps P4 focused on agents + MCP; the agent still inherits P3's verified-clearance auth,
+  cost-aware routing, semantic cache, and PII redaction by calling `/v1/query`; clean seam for the P5 UI.
+- **Consequences:** exposing the agent behind the Gateway/UI (and any token-streaming) is P5 work; the agent
+  carries the caller's Bearer JWT, never a clearance header.
+
+### ADR-0044 — Human-in-the-loop placement & mechanism (LangGraph interrupt)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-4); ROADMAP §6 G3, R4
+- **Context:** No state change may occur without explicit human approval (ROADMAP R4; OWASP ASI09 human-agent
+  trust). Where is the authoritative gate, and what mechanism?
+- **Options considered:** (a) **authoritative gate in the LangGraph graph (`interrupt`→`Command(resume)`),
+  durably checkpointed, with the MCP tool independently enforcing a requires-approval precondition** (defense-in-
+  depth); MCP **elicitation** used only for mid-task field confirmation; (b) HITL only via MCP elicitation
+  (pause lives in the tool/transport — harder to checkpoint/evaluate); (c) HITL only at the tool (loses durable
+  resumable agent state, approval outside the trace).
+- **Decision:** **(a)** — graph-structural `interrupt` is the single, traceable, evaluable decision point; the
+  tool refuses any unapproved write; elicitation is complementary.
+- **Rationale:** the durable checkpointer (ADR-0047) makes the pause survive restart; the gate being graph
+  *structure* (not a promptable instruction) is what makes "no write without approval" testable; the approval
+  surface shows provenance/citations + the exact proposed args (a dry-run preview), countering ASI09.
+- **Consequences:** the `act_sar` node must be structurally unreachable without traversing the approval gate
+  (asserted in tests); HITL-respected is a 100% hard gate.
+- **Implementation note (2026-06-21, P4 Task 8 — HITL gate + MCP action landed):** the `approve` node is a
+  LangGraph **`interrupt()`** (run pauses with a dry-run `proposedAction` preview; state checkpointed); the run
+  API exposes `resume` (`Command(resume={"approved","note"})`) and `get` over the durable checkpointer. Routing:
+  `assess →(breach)→ approve →(approved)→ act_sar | →(reject)→ rejected`; **`act_sar`'s only graph predecessor is
+  `approve`** (asserted via `get_graph().edges`). `act_sar` mints an aud-scoped (RFC 8707) token via the Gateway
+  `/v1/auth/resource-token` for the caller (subject read from the bearer) and calls `open_draft_sar` over MCP
+  Streamable HTTP (`McpClient`, raw httpx; official async SDK noted as an alternative); an MCP error (e.g. the
+  per-call clearance re-check denying a sub-compliance caller) → `FAILED`, no write. `auditRef` is not surfaced
+  (the tool returns `draftRef`; the audit is queryable by `run_id`) — noted. **Single-use approval (ASI07):**
+  `resume` only proceeds when the run is paused at the gate (`get_state().next == ('approve',)`); a consumed
+  approval returns the terminal state with **no re-execution** — proven by a "2nd resume → no duplicate write"
+  test. **Durable resume-after-restart (G8):** a Testcontainers-Postgres IT starts a run (interrupt persisted)
+  then resumes it from a **brand-new graph + checkpointer instance** → COMPLETED, exactly one write. Tests:
+  **36** total (HITL approve/reject/single-use/structural, MCP client handshake + error, resume-after-restart IT,
+  run-API resume/get) — model-free; only the restart IT needs Docker.
+- **Gap-closure note (2026-06-21):** added **mid-task field confirmation** as a second durable graph interrupt
+  (`clarify`): when `assess` finds a money context but no machine-readable amount, the run pauses
+  `AWAITING_CLARIFICATION`; on `resume{breach:true}` it routes to the (separate) write-approval gate, so a
+  confirmed-by-clarification breach still requires explicit approval before any write. This realizes the spec's
+  "elicitation/clarify" (§4.4) via the authoritative graph mechanism rather than MCP-protocol elicitation
+  (unnecessary for the deterministic single-tool design + the raw-httpx client). Also added **bounded tool
+  retries** in `act_sar` limited to `httpx.ConnectError` (connection never established → no server-side write →
+  safe), never after a response (avoids duplicate SARs). Tests: clarify confirm/decline + retry/no-duplicate.
+
+### ADR-0043 — MCP tool server stack (Spring AI MCP server, Streamable-HTTP WebMVC)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-3), §8 (G-P4-1)
+- **Context:** The governed action surface is the Java/Spring "moat" (CLAUDE.md). MCP spec validated at the
+  current stable **`2025-11-25`** (OAuth Resource Server classification + RFC 8707 + elicitation + structured
+  tool output stabilized in `2025-06-18`; Streamable HTTP replaces SSE).
+- **Options considered:** (a) **Spring AI MCP Server starter (`spring-ai-starter-mcp-server-webmvc`,
+  protocol=STREAMABLE)** — annotation-driven `@McpTool`, Spring Security as OAuth 2.1 resource server, reuses the
+  Maven reactor + Postgres + WebMVC idiom (matches ADR-0033); (b) the official MCP Java SDK directly (more
+  boilerplate, weaker "Spring AI" story); (c) a Python FastMCP server co-located with the agent (abandons the
+  Java/Spring moat, splits governance from the DB write).
+- **Decision:** **(a)** — Spring AI MCP server on **Streamable-HTTP WebMVC**, SYNC server, `@McpTool` with auto
+  JSON-schema, returning **structured tool output**; auth header lifted via `TransportContextExtractor`.
+- **Rationale:** idiomatic Spring, current MCP transport/security model, single-runtime with the transactional
+  DB write and audit log; matches the blocking `rag-engine`/gateway idiom.
+- **Consequences:** requires the Spring AI 1.1.x bump (ADR-0050); only **our own** pinned/signed MCP server is
+  used (no third-party MCP — OWASP ASI04 supply chain); MCP pinned to spec `2025-11-25`.
+- **Implementation note (2026-06-21, P4 Task 1 — skeleton landed):** `/mcp-tools` added to the Maven reactor and
+  `infra/docker-compose.yml` (DB-free skeleton; the `agent`-schema datasource arrives in Task 2). Dependency
+  `spring-ai-starter-mcp-server-webmvc:1.1.8` resolves on the new BOM; `application.yml` sets
+  `spring.ai.mcp.server.protocol=STREAMABLE` with env-swappable `name`/`version`. Verified end-to-end: a real
+  Streamable-HTTP handshake on `POST /mcp` — `initialize` returns **200** + an `Mcp-Session-Id` and
+  `serverInfo.name=atlas-mcp-tools` (env config applied), advertising the `tools` capability; `tools/list`
+  (with session) returns an **empty** array (no tools yet — the skeleton logs `No tool methods found`). The
+  default streamable endpoint is `/mcp`; bare calls without a session correctly 400 "Session ID missing" — the
+  full tool list+call round-trip is a Task-3 transport test. Smoke tests: **4 passed** (context, health,
+  prometheus, MCP handshake), model-free / no Docker.
+
+### ADR-0042 — Agent reasoning model tier (tier2 qwen2.5:7b)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-2), §2.6; extends ADR-0035/ADR-0005
+- **Context:** Agent planning + structured tool-calling is more demanding than single-shot RAG; small models are
+  flaky at multi-tool planning/argument formatting, which would fight the task-success gate.
+- **Options considered:** (a) **route agent reasoning to tier2 `qwen2.5:7b-instruct`** (already pulled in P2/P3),
+  tier1 `qwen2.5:3b` for cheap sub-steps, frontier reserved for the P5 demo; (b) keep tier1 `qwen2.5:3b`
+  everywhere (cheapest, more failed runs); (c) use a frontier model for the agent (breaks the cost/self-hosted
+  thesis).
+- **Decision:** **(a)** — agent default = tier2, env-swappable via `ATLAS_AGENT_MODEL` (extends the ADR-0035
+  router; ADR-0005 models stand).
+- **Rationale:** reliable tool-calling/planning matters more than raw token cost for agents; still self-hosted +
+  cheap, within the ~8 GB GPU footprint (ADR-0006), and eval-floor-honoring.
+- **Consequences:** the tier1→tier2 cost/quality delta is recorded for the portfolio; nothing hardcoded
+  (CLAUDE.md).
+- **Deviation note (2026-06-21, P4 Task 7 — owner-confirmed "fully deterministic agent"):** for P4's single
+  forcing story the agent is implemented **fully deterministically** — the planner (fixed plan), `retrieve`
+  (Gateway call), `assess` (numeric threshold), and the SAR arg/rationale formulation are all code, with the
+  Gateway already returning the grounded answer. The agent therefore makes **no LLM call**, so `ATLAS_AGENT_MODEL`
+  / tier2 is configured but **unused in P4** (reserved). Rationale: the safety-critical path (breach decision,
+  routing, HITL gate) being deterministic is the stronger guarantee — it cannot be prompt-injected into skipping
+  the gate (ASI01) — and it makes the agent eval fully offline (no GPU/cassettes for the agent). This also
+  simplifies P4's eval lane: the trajectory is scored without a model. Re-introducing LLM-driven planning for
+  broader (non-forcing-story) queries is future work; revisit ADR-0042 then. (No `langchain-ollama` dependency
+  was added.)
+
+### ADR-0041 — Agent orchestration topology (LangGraph planner–executor)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-1)
+- **Context:** The agent must execute the forcing story's conditional action ("if breach → draft SAR") in a way
+  that is safe, traceable, and evaluable.
+- **Options considered:** (a) **explicit LangGraph planner→executor state graph** with a conditional `breach?`
+  edge, a tool node, and a graph-structural `interrupt` gate before any write; (b) a prebuilt ReAct agent
+  (`create_react_agent`) — least code, but the plan/branch is implicit and HITL/tool-call scoring is harder;
+  (c) a supervisor multi-agent topology (over-engineered for one conditional action; more cost/latency/
+  non-determinism, and exposes ASI07 inter-agent risks).
+- **Decision:** **(a)** — an explicit planner→executor graph.
+- **Rationale:** the conditional and the HITL gate are *real graph structure* (not LLM whim), which is exactly
+  what makes "no write without approval" provable, tool-call correctness scoreable, and the trace portfolio-
+  worthy; separating planning from execution also aligns with OWASP ASI08 guidance.
+- **Consequences:** more graph wiring than a prebuilt agent; step/iteration caps + no sub-agent spawning enforce
+  bounded agency (ASI10); the graph is the unit under the trajectory-first agent eval (ADR-0024 lineage).
+- **Implementation note (2026-06-21, P4 Task 7 — graph + RBAC retrieval landed):** built the explicit
+  `StateGraph` `planner → retrieve → assess → (breach? approve : finalize)` (`agents/app/graph.py`) with a
+  typed `AgentState`. `retrieve` calls the Gateway `POST /v1/query` with the **caller's Bearer** (no clearance
+  header — inherits P3 RBAC/cost/cache/PII, ADR-0045) and extracts currency amounts; `assess` is a **pure
+  deterministic** breach check (`max(amount) ≥ ATLAS_SAR_REPORTING_THRESHOLD`) that builds the `open_draft_sar`
+  dry-run preview grounded in the breaching citations. Topology is fixed code, so the conditional + (task-8)
+  gate are real structure, not LLM whim. Step cap via LangGraph `recursion_limit` (floored above the DAG depth;
+  ASI10). `start_run` now returns `COMPLETED` (no breach) or `AWAITING_APPROVAL` + `proposedAction` (breach);
+  `resume`/`get` remain 501 until task 8. Tests: **25** (amount extraction, planner, retrieve bearer-forwarding,
+  assess determinism incl. at-threshold, graph nodes + routing for breach/no-breach, step-cap, run-API via a
+  stubbed runner) — model-free, no GPU, no DB (MemorySaver + stub Gateway).
 
 ### ADR-0040 — Cost-units model & cost-delta reporting
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-8), §8.3
@@ -367,6 +717,19 @@
 - **Consequences:** A redaction IT asserts no above-clearance text / PII (the `poisoned/expectations.json`
   strings) reaches traces; GenAI semconv is **`Development`-status in 2026**, so the emitted version is pinned
   via `OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental` (recorded in `baseline.json`).
+- **Implementation note (2026-06-21, P4 Task 10 — agent tracing + Grafana panel):** the `/agents` service
+  (Python) emits a root `agent.run` span with child `agent.node.*` spans (planner/retrieve/assess/approve/
+  act_sar), `run_id` as an attribute, via the OpenTelemetry SDK. Consistent with this ADR, export is **opt-in
+  + fail-soft**: with `OTEL_TRACES_EXPORT_ENABLED=false` (default) the global tracer provider is left untouched
+  (spans are cheap no-ops, nothing reaches Langfuse); when enabled, a `BatchSpanProcessor` + OTLP/HTTP exporter
+  ship to the same Langfuse endpoint (reusing `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `LANGFUSE_OTEL_AUTH_HEADER`),
+  so agent/gateway/RAG stitch into one trace view. Content-capture stays metadata-only (no chunk text / PII).
+  The agent also exposes **Prometheus** metrics at `/metrics` (`atlas_agent_runs_total{status}`,
+  `_runs_started_total`, `_awaiting_approval_total`, `_tool_calls_total{outcome}`, `_failures_total`,
+  `_approval_latency_seconds`) recorded in the runner (nodes stay pure); a Grafana dashboard
+  (`infra/grafana/dashboards/atlas-agents.json`: run rate by status, tool-call rate, failures, approval-latency
+  p50/p95) + a Prometheus scrape job for `agents` are added. Tests: 3 (metrics endpoint + counter increment +
+  in-memory span exporter asserting root + node spans).
 - **Implementation note (Task 3, 2026-06-14):** Instrumented via the **Micrometer Observation API**
   (not hand-rolled OTel spans) so Spring AI's `ChatModel`/`EmbeddingModel` auto-emit `gen_ai.*` spans and nest
   under a root `atlas.query` span carrying `atlas.request_id`/`atlas.clearance`; child `retrieve` +
@@ -514,6 +877,16 @@
   pass-rate 1.000 (0 violations)** across the 10 red-team cases. `noise_sensitivity` dropped this run (RAGAS
   per-metric timeouts — report-only; raise the run-config timeout next calibration). Gate verified green in pure
   replay with RAGAS **not** installed.
+- **Agent-eval extension note (2026-06-21, P4 Task 11):** the trajectory-first **agent eval gate** lives in
+  `/agents` (`app/eval/`), not `/evals` — owner-confirmed, because the **fully deterministic agent** (ADR-0042
+  deviation) needs no cassettes/RAGAS and `/evals` is a separate `uv` project that can't import the graph
+  cleanly. 12 versioned scenarios (`scenarios.py`) are scored against the real graph with a stubbed
+  Gateway/MCP — **fully offline, no GPU** — on: task-success, tool-selection, argument-correctness,
+  step-efficiency, plan-adherence (floors in `data/agent-baseline.json`: ≥0.80 / ≥0.90 / ≥0.90 / ≥0.95) plus
+  the binary **HITL-respected** and **authorization-respected** hard gates (100% / 0 unapproved / 0 unauthorized
+  writes, 0 dangerous calls). `evaluate_agent_gate` is a pure, unit-tested function; the CLI
+  (`python -m app.eval.agent_gate`) prints `AGENT GATE: PASS/FAIL` and exits non-zero to **block merge** (wired
+  into the CI `evals-gate` job). First run: all 12 scenarios pass, every rate 1.0.
 
 ### ADR-0023 — Eval-context exposure on /v1/query (`includeContexts`)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §2.4, §3 (D-P2-3)
