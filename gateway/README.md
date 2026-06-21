@@ -49,6 +49,19 @@ Dev users (simulated IdP directory, `dev/clearance-users.json`): `guest-public` 
 `analyst-bob` (analyst), `priya` (compliance), `bsa-admin` (restricted). A missing/expired/forged
 token → `401`; `/v1/auth/**` and `/actuator/**` are unauthenticated.
 
+### Resource-scoped tokens for the MCP tool hop (ADR-0046, P4)
+
+`POST /v1/auth/resource-token` mints an **audience-restricted (RFC 8707)**, short-lived clearance JWT
+(`aud=atlas-mcp-tools`, unique `jti`) that the agent forwards to the `mcp-tools` server, which validates
+it as an OAuth 2.1 resource server. It reuses the sim-IdP signing key + issuer, so the MCP server must
+share them (`ATLAS_IDP_SIGNING_KEY == ATLAS_MCP_TOKEN_SIGNING_KEY`, issuer/audience aligned).
+
+```bash
+curl -fsS -X POST "$GW/v1/auth/resource-token" \
+     -H 'Content-Type: application/json' -d '{"user":"priya"}' | jq .
+# → { "token": "...", "audience": "atlas-mcp-tools", "clearance": "compliance", ... }
+```
+
 ## Architecture (target)
 
 ```

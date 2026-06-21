@@ -254,6 +254,21 @@
   wrong-iss → 401; valid aud-token → 200) + the tool **DENIED** path (sub-`compliance` → DENIED audit, no draft)
   + the existing tool/transport ITs updated to carry a compliance Bearer. The single-use, replay-protected
   approval precondition (the second half of this ADR) is Task 5.
+- **Implementation note (2026-06-21, P4 Task 5 — sim-IdP resource-scoped token issuance, additive to the
+  frozen gateway):** the gateway sim-IdP now mints **RFC 8707 audience-restricted** tokens for the MCP hop.
+  Kept purely additive (no edits to the frozen `IdpProperties`/`SimIdpController` or their tests): new
+  `ResourceTokenProperties` (`atlas.idp.resource.{audience,ttl-seconds}`), `ResourceScopedTokenIssuer`
+  (reuses the sim-IdP HS256 signing key + issuer; adds `aud=atlas-mcp-tools`, a short `exp` (default 300s),
+  and a unique `jti`), and a separate `ResourceTokenController` exposing `POST /v1/auth/resource-token`
+  (under `/v1/auth/**`, which the trust-boundary filter skips). For the hop to verify, the gateway and
+  mcp-tools must share the signing key + issuer + audience (documented in `.env.example`; defaults already
+  align). Tests prove the minted token satisfies the **exact mcp-tools resource-server contract** (HS256
+  over `SHA-256(shared key)` + `iss` + `aud` + `exp` + subject/clearance), validated with Nimbus inside the
+  gateway module (no Spring Security added to the gateway — honors ADR-0034's deliberate minimal-Security
+  stance; the real `NimbusJwtDecoder` is exercised in mcp-tools' `ResourceServerIT`). Tests: **4 unit**
+  (issuer: claims/sig, unique jti, contract pass, wrong-aud fails) + **3** controller web tests
+  (known/unknown/missing user). The `jti` + short `exp` are the groundwork for ASI07 single-use approval;
+  the binding to `run_id` + checkpoint + consumption lands with the agent (Task 8).
 
 ### ADR-0045 — Agent service placement (standalone, consumes the Gateway)
 - **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-5)
