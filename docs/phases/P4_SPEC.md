@@ -1,10 +1,14 @@
 # P4 — Agent Orchestrator (LangGraph) + MCP Tool Servers — SPEC
 
-> Status: **DECISIONS LOCKED — 2026-06-21.** All §3 decisions (D-P4-1…10) + the §7 clarifications (Q5 single
-> configurable breach threshold; Q6 exactly one write tool) are **owner-confirmed and logged as ADR-0041–0050**
-> in `docs/DECISIONS.md`. No P4 application code is written until this spec is approved to proceed; on the green
-> light, implementation begins at the §5 task breakdown (Task 0 = the Spring AI 1.1.x bump).
-> Date drafted: 2026-06-21.
+> Status: **COMPLETE — implemented & verified 2026-06-21** (built across 14 commits on `docs/p4-grooming`;
+> the §6 Definition of Done is checked honestly, with deviations noted inline). Full suite green: rag-engine
+> 90u+40IT · gateway 66u+14IT · mcp-tools 12u+21IT · agents 60 tests (+3 live-gated, skipped offline) ·
+> agent eval gate 12/12 · evals 63 + both RAG gates · gpu-helper 24 · ruff clean. The live agent-path
+> invariant gate (§4.3) runs in the live lane (running stack + GPU), like the P2/P3 live calibration.
+> All §3 decisions (D-P4-1…10) + the §7 clarifications (Q5 single configurable breach threshold; Q6 exactly
+> one write tool) are **owner-confirmed and logged as ADR-0041–0050** in `docs/DECISIONS.md`. Implementation
+> followed the §5 task breakdown (Task 0 = the Spring AI 1.1.x bump).
+> Date drafted: 2026-06-21 · Date completed: 2026-06-21.
 > **Updated 2026-06-21 with §8 — a web-validated (June 2026) P4 gap analysis** (8 refinements, G-P4-1…8, folded
 > into the sections below + a new **OWASP Agentic Top 10 (2026) → P4 control map**). The validation pinned the
 > **MCP spec to `2025-11-25`** (RFC 8707 / OAuth Resource Server from `2025-06-18`), surfaced one new decision —
@@ -708,8 +712,8 @@ These were surfaced as focused questions after this spec; **all are now owner-co
    (re-scoped from the original 2.0.x framing — 2.0 requires Boot 4, deferred as future work); frozen P1/P3 gate
    suite is the acceptance test (ADR-0050).
 
-> All §3 decisions are logged as **ADR-0041–0050** in `docs/DECISIONS.md`. Implementation proceeds per the §5
-> task breakdown (Task 0 = the Spring AI 1.1.x bump) once the spec is approved to proceed.
+> All §3 decisions are logged as **ADR-0041–0050** in `docs/DECISIONS.md`. Implementation followed the §5
+> task breakdown (Task 0 = the Spring AI 1.1.x bump) and is **complete** — see the §6 Definition of Done.
 
 ---
 
