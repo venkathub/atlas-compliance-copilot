@@ -151,6 +151,57 @@ masked — Spring Cloud's default **1-second TimeLimiter** (which 503'd every re
 semantic cache **not recreating its RediSearch index after a Redis restart** — each now covered by a
 regression IT. *(Off-path Presidio NER deep-scan, task 9, remains optional/env-gated — P3_SPEC §6.1.)*
 
-## P4 — Agent orchestrator + MCP (pending)
+## P4 — Governed agentic actions (complete · 2026-06-21)
+
+**One-liner:** Turned answers into **governed actions** — a LangGraph planner-executor agent that retrieves
+through the P3 Gateway, deterministically decides the reporting-threshold breach, **pauses for mandatory human
+approval**, and only then opens a draft SAR through a Spring-AI **MCP tool server** secured as an **OAuth 2.1
+resource server**, with an **append-only, hash-chained audit log** and a **merge-blocking agent eval gate** —
+no LLM on the safety path, so the whole flow is deterministic and GPU-free.
+
+**Resume bullets (draft):**
+- Built a **governed MCP tool server** (Java/**Spring AI 1.1**, **Streamable HTTP**, MCP spec `2025-11-25`)
+  exposing one least-privilege write tool (`open_draft_sar`) with **structured output** — secured as an
+  **OAuth 2.1 resource server** validating **RFC 8707 audience-restricted** JWTs (sig+exp+iss+aud) and a
+  **per-call clearance re-check** (OWASP **LLM06/ASI03**) that refuses sub-`compliance` callers independently
+  of upstream RBAC.
+- Engineered an **append-only, tamper-evident audit log** (Postgres): every tool invocation writes an immutable
+  **SHA-256 hash-chained** row, enforced by **two independent guards** — a least-privilege role (INSERT/SELECT
+  only) **and** an owner-proof `BEFORE UPDATE/DELETE` trigger — with a chain verifier that **detects** post-hoc
+  tampering (proven by an IT that disables the guard, mutates a row, and is caught).
+- Wrote the governed write as a **single transaction** (draft-SAR row + `SUCCESS` audit row, all-or-nothing) —
+  hard-tested for **0 orphan drafts** on a forced mid-transaction failure.
+- Built the agent (Python/**LangGraph**) as an **explicit planner-executor state graph** with a
+  **durable Postgres checkpointer**: a run **survives process restart** mid-decision and resumes from the
+  persisted checkpoint (proven by a fresh-instance resume IT).
+- Made human-in-the-loop a **graph-structural** safety invariant: the governed-write node is reachable **only**
+  through a LangGraph **`interrupt()` approval gate**, and the approval is **single-use / replay-protected**
+  (OWASP **ASI07**) — a consumed approval cannot authorize a second or mutated write.
+- Made the safety-critical path **fully deterministic** (no LLM): the breach decision + routing are a pure
+  function of retrieved citations, so a **prompt-injected source document cannot steer the agent into skipping
+  the gate or filing a SAR** (OWASP **ASI01**) — and the agent eval runs offline with no GPU.
+- Shipped a **merge-blocking, trajectory-first agent eval** (12 versioned scenarios — forcing story,
+  wrong-clearance, injection-in-source, rejection, tool-deny, …) scoring task-success, tool-selection,
+  argument-correctness, step-efficiency, and plan-adherence **plus** the binary **HITL-respected** and
+  **authorization-respected** hard gates; **12/12 pass, 0 unapproved / 0 unauthorized writes**.
+- Extended the sim-IdP to mint **RFC 8707 resource-scoped, single-use** tokens for the agent→tool hop, and
+  traced agent runs as **OTel spans** (root `agent.run` → node spans, opt-in export to Langfuse) with a
+  **Grafana agent panel** (run rate, tool-call rate, approval latency, failures).
+- Bumped the repo to **Spring AI 1.1.8 / Spring Boot 3.5** (for the MCP server stack) **without** a Boot-4
+  migration, re-greening all frozen P1/P3 unit/IT + eval gates.
+
+**Evidence:** full suite green — **mcp-tools 12 unit + 21 IT** (OAuth 2.1 resource server: missing/expired/
+forged/wrong-aud → 401; per-call DENY → no write; append-only denied for app role *and* owner; tamper detected;
+transactional rollback; MCP `tools/list`+`tools/call` round-trip), **agents 53 tests** (graph structure, HITL
+approve/reject/single-use, resume-after-restart, MCP client, E2E forcing story, observability), **agent eval
+12/12 (all rates 1.0)**, and the frozen **rag-engine 90 unit + 40 IT** + **gateway 66 unit + 14 IT** + both
+RAG eval gates still green after the Spring AI bump. ADR-0041–0050 (+0024/0030 notes).
+
+**Quantified:** 10 ADRs (0041–0050) · 1 governed write tool · **3 independent authorization checks**
+(Gateway RBAC · P1 retrieval filter · MCP per-call re-check) · **2 append-only guards** (grant + trigger) ·
+SHA-256 hash chain · **0 unapproved writes / 0 unauthorized writes / 0 orphan drafts** · single-use
+replay-protected approval · durable resume-after-restart · 12-scenario merge gate · OWASP Agentic
+**ASI01/02/03/06/07/09/10** mapped · MCP `2025-11-25` / Streamable HTTP / RFC 8707 · deterministic (GPU-free).
+
 ## P5 — UI + production deploy (pending)
 _Each populated as the phase lands, per the CLAUDE.md Definition of Done._
