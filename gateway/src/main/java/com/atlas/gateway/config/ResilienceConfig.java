@@ -15,8 +15,6 @@ import java.time.Duration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cloud.circuitbreaker.resilience4j.Resilience4JCircuitBreakerFactory;
-import org.springframework.cloud.circuitbreaker.resilience4j.Resilience4JConfigBuilder;
-import org.springframework.cloud.client.circuitbreaker.Customizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import redis.clients.jedis.JedisPooled;
@@ -59,27 +57,31 @@ public class ResilienceConfig {
         return new RequestLimits(props.maxInputTokens(), props.maxOutputTokens());
     }
 
-    /** Tune the breaker from config; applied to the {@code rag-engine} instance. */
-    @Bean
-    Customizer<Resilience4JCircuitBreakerFactory> circuitBreakerCustomizer(ResilienceProperties props) {
-        return factory -> factory.configureDefault(id -> new Resilience4JConfigBuilder(id)
-                .circuitBreakerConfig(CircuitBreakerConfig.custom()
-                        .failureRateThreshold(props.cbFailureRateThresholdPct())
-                        .waitDurationInOpenState(Duration.ofMillis(props.cbWaitDurationMs()))
-                        .slidingWindowSize(10)
-                        .build())
-                // Spring Cloud's Resilience4JCircuitBreaker wraps every call in a TimeLimiter whose
-                // DEFAULT is 1s — far below a real model call. Align it with the per-request timeout
-                // (ATLAS_REQUEST_TIMEOUT_MS) so a slow GPU trips the breaker, not every normal call (LLM10).
-                .timeLimiterConfig(TimeLimiterConfig.custom()
-                        .timeoutDuration(Duration.ofMillis(props.requestTimeoutMs()))
-                        .build())
-                .build());
-    }
-
+    /**
+     * Configure the {@code rag-engine} circuit-breaker instance directly on the resilience4j registries and
+     * create it.
+     *
+     * <p>P4 Task 0 (ADR-0050): on Spring Cloud 2025.0 / spring-cloud-circuitbreaker 3.3.x,
+     * {@code Resilience4JCircuitBreakerFactory.create(id)} resolves both the circuit-breaker and
+     * time-limiter configs from the resilience4j <em>registries</em> ({@code getConfiguration(id)} →
+     * registry default), and <em>ignores</em> the factory's {@code configureDefault(..)} map (the
+     * mechanism the old 2024.0 train used via a {@code Customizer} bean). Registering a named
+     * {@code "rag-engine"} configuration in each registry here is the order-independent, version-correct
+     * way to keep the breaker's TimeLimiter aligned with the per-request timeout
+     * ({@code ATLAS_REQUEST_TIMEOUT_MS}) — otherwise every call falls back to Resilience4j's 1s default
+     * TimeLimiter and a normal multi-second model call would wrongly trip the breaker (ADR-0039, LLM10).
+     */
     @Bean
     ModelCircuitBreaker modelCircuitBreaker(Resilience4JCircuitBreakerFactory factory,
             ResilienceProperties props) {
+        factory.getCircuitBreakerRegistry().addConfiguration("rag-engine", CircuitBreakerConfig.custom()
+                .failureRateThreshold(props.cbFailureRateThresholdPct())
+                .waitDurationInOpenState(Duration.ofMillis(props.cbWaitDurationMs()))
+                .slidingWindowSize(10)
+                .build());
+        factory.getTimeLimiterRegistry().addConfiguration("rag-engine", TimeLimiterConfig.custom()
+                .timeoutDuration(Duration.ofMillis(props.requestTimeoutMs()))
+                .build());
         return new ModelCircuitBreaker(factory.create("rag-engine"),
                 Math.max(1, props.cbWaitDurationMs() / 1000));
     }

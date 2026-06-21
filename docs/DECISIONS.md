@@ -106,6 +106,31 @@
   `FunctionCallback`→`ToolCallback` deprecation (rag-engine uses `ChatModel`/`EmbeddingModel`/`ChatClient`/
   evaluators, not `FunctionCallback`, so low exposure). The Boot 4 / Spring AI 2.0 migration is planned against
   the Spring Boot 3.5 / Framework 6.2 EOL (2026-06-30) on its own timeline; revisit with a superseding ADR.
+- **Implementation note (2026-06-21, P4 Task 0 — landed & gate-verified):**
+  - **Concrete pins:** `spring-ai.version` `1.0.0`→**`1.1.8`** (latest 1.1.x, 2026-06-12; MCP SDK 0.18.3),
+    `spring-boot.version` `3.4.7`→**`3.5.15`** (the Boot version Spring AI 1.1.8 ships on), `spring-cloud.version`
+    `2024.0.1` (Moorgate)→**`2025.0.2`** (Northfields, the train that pairs with Boot 3.5).
+  - **Gateway starter rename (owner-confirmed):** Spring Cloud 2025.0 deprecates `spring-cloud-starter-gateway-mvc`
+    in favour of **`spring-cloud-starter-gateway-server-webmvc`** (same WebMVC server gateway); `gateway/pom.xml`
+    switched to the non-deprecated artifact (avoids a per-boot deprecation warning). ADR-0033 unchanged in intent.
+  - **Spring AI API shift:** `FactCheckingEvaluator(ChatClient.Builder)` was removed in 1.1.x in favour of
+    `FactCheckingEvaluator.builder(..)`. Since the static `builder(..)` does **not** seed a default prompt, the
+    1.0.x `DEFAULT_EVALUATION_PROMPT_TEXT` is now passed verbatim in `InlineEvaluators` to keep behaviour and eval
+    fingerprints identical. (`FunctionCallback` is unused, as predicted — no exposure.)
+  - **Circuit-breaker behavioural change (ADR-0039 touch):** in spring-cloud-circuitbreaker **3.3.x**,
+    `Resilience4JCircuitBreakerFactory.create(id)` resolves the circuit-breaker **and** time-limiter configs from
+    the resilience4j **registries** (`getConfiguration(id)`→registry default) and **ignores** the factory's
+    `configureDefault(..)` map — the mechanism the 2024.0 train used via a `Customizer` bean. The gateway's
+    `Customizer<Resilience4JCircuitBreakerFactory>` therefore silently no-opped, dropping the rag-engine
+    TimeLimiter back to Resilience4j's **1s** default (a normal multi-second model call would then wrongly 503).
+    Fix: `ResilienceConfig.modelCircuitBreaker` now registers a named `"rag-engine"` configuration directly in the
+    `CircuitBreakerRegistry` + `TimeLimiterRegistry` (TimeLimiter aligned to `ATLAS_REQUEST_TIMEOUT_MS`) before
+    `create(..)` — order-independent and version-correct. No behaviour change for callers; ADR-0039 intent intact.
+  - **Acceptance — all frozen gates re-green (GPU off, no cassette churn):** rag-engine **90 unit + 40 IT**,
+    gateway **59 unit + 14 IT** (incl. RBAC negative-access, prompt-injection, PII-egress, circuit-breaker
+    timeout ITs); `ruff` clean; evals harness **63 passed**; GPU-lifecycle helper **24 passed**; eval merge gate
+    **PASS** on both the direct and `ATLAS_EVAL_THROUGH_GATEWAY` paths. Cassettes unchanged (no legitimate
+    fingerprint drift).
 
 ### ADR-0049 — Governed action scope, breach rule & SAR write target
 - **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-9), §7 (Q5, Q6)

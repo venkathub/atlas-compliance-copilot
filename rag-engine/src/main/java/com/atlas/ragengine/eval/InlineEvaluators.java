@@ -30,10 +30,26 @@ public class InlineEvaluators {
     private final RelevancyEvaluator relevancy;
     private final FactCheckingEvaluator factChecking;
 
+    /**
+     * The default fact-checking prompt that Spring AI's {@code FactCheckingEvaluator} used via its
+     * (now-removed) {@code FactCheckingEvaluator(ChatClient.Builder)} constructor in Spring AI 1.0.x.
+     * On the P4 Task 0 bump to Spring AI 1.1.x (ADR-0050) that public constructor was replaced by a
+     * builder whose static {@code builder(..)} does NOT seed a default prompt, so we pass the original
+     * text verbatim to keep the evaluator's behaviour (and eval fingerprints) unchanged.
+     */
+    private static final String DEFAULT_EVALUATION_PROMPT_TEXT =
+            "\tEvaluate whether or not the following claim is supported by the provided document.\n"
+                    + "\tRespond with \"yes\" if the claim is supported, or \"no\" if it is not.\n\n"
+                    + "\tDocument:\n\t{document}\n\n\tClaim:\n\t{claim}\n";
+
     public InlineEvaluators(boolean enabled, ChatClient.Builder chatClientBuilder) {
         this.enabled = enabled;
         this.relevancy = enabled ? new RelevancyEvaluator(chatClientBuilder) : null;
-        this.factChecking = enabled ? new FactCheckingEvaluator(chatClientBuilder) : null;
+        this.factChecking = enabled
+                ? FactCheckingEvaluator.builder(chatClientBuilder)
+                        .evaluationPrompt(DEFAULT_EVALUATION_PROMPT_TEXT)
+                        .build()
+                : null;
     }
 
     /** No-op evaluators for tests / when inline evaluation is disabled. */
