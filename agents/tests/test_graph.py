@@ -1,11 +1,19 @@
 """Graph-structure + routing tests (LangGraph MemorySaver; stubbed Gateway — no DB, no model)."""
 
+import base64
+import json
+
 from langgraph.checkpoint.memory import MemorySaver
 
 from app.graph import build_graph
 from app.runner import GraphRunner, to_response
 
 THRESHOLD = 10_000.0
+
+
+def fake_jwt(sub="priya"):
+    payload = base64.urlsafe_b64encode(json.dumps({"sub": sub}).encode()).decode().rstrip("=")
+    return f"hdr.{payload}.sig"
 
 
 class StubGateway:
@@ -36,23 +44,23 @@ NO_BREACH_PAYLOAD = {
 def test_graph_has_expected_nodes():
     graph = build_graph(StubGateway(NO_BREACH_PAYLOAD), THRESHOLD, MemorySaver())
     nodes = set(graph.get_graph().nodes)
-    for expected in {"planner", "retrieve", "assess", "approve", "finalize"}:
+    for expected in {"planner", "retrieve", "assess", "approve", "act_sar", "rejected", "finalize"}:
         assert expected in nodes
 
 
 def test_breach_run_pauses_at_approval_gate():
-    resp = _runner(BREACH_PAYLOAD).start("aml?", "Northwind", "2026-Q2", "tok")
+    resp = _runner(BREACH_PAYLOAD).start("aml?", "Northwind", "2026-Q2", fake_jwt())
     assert resp.status == "AWAITING_APPROVAL"
     assert resp.proposedAction is not None
     assert resp.proposedAction.tool == "open_draft_sar"
     assert resp.proposedAction.args["citations"] == [1]
-    # The trace shows the deterministic path through the approval gate.
+    # The run pauses at the interrupt: planner→retrieve→assess executed, approve not yet completed.
     visited = [t.get("node") for t in resp.trace]
-    assert visited == ["planner", "retrieve", "assess", "approve"]
+    assert visited == ["planner", "retrieve", "assess"]
 
 
 def test_no_breach_run_completes_without_action():
-    resp = _runner(NO_BREACH_PAYLOAD).start("aml?", "Northwind", "2026-Q2", "tok")
+    resp = _runner(NO_BREACH_PAYLOAD).start("aml?", "Northwind", "2026-Q2", fake_jwt())
     assert resp.status == "COMPLETED"
     assert resp.proposedAction is None
     visited = [t.get("node") for t in resp.trace]
@@ -60,21 +68,18 @@ def test_no_breach_run_completes_without_action():
 
 
 def test_step_cap_is_respected_dag_completes_within_limit():
-    # The graph is a DAG; the configured step cap (recursion_limit) is a safety ceiling never hit by
-    # a legitimate run (no unbounded loop, ASI10).
     graph = build_graph(StubGateway(NO_BREACH_PAYLOAD), THRESHOLD, MemorySaver())
     runner = GraphRunner(graph, max_steps=12)
-    resp = runner.start("aml?", "Northwind", "2026-Q2", "tok")
+    resp = runner.start("aml?", "Northwind", "2026-Q2", fake_jwt())
     assert resp.status == "COMPLETED"
 
 
 def test_to_response_maps_citations():
     state = {
-        "status": "COMPLETED",
         "answer": "ok",
         "contexts": [{"n": 1, "documentId": "d", "clearance": "compliance", "snippet": "s"}],
         "trace": [],
     }
-    resp = to_response("run_x", state)
+    resp = to_response("run_x", state, "COMPLETED")
     assert resp.runId == "run_x"
     assert resp.citations[0].n == 1

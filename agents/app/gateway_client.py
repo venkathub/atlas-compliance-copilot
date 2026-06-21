@@ -28,3 +28,14 @@ class GatewayClient:
         )
         resp.raise_for_status()
         return resp.json()
+
+    def resource_token(self, user: str) -> str:
+        """Mint an aud-scoped (RFC 8707) resource token for the MCP hop (ADR-0046)."""
+        resp = httpx.post(
+            f"{self._base_url}/v1/auth/resource-token",
+            json={"user": user},
+            headers={"Content-Type": "application/json"},
+            timeout=self._timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()["token"]

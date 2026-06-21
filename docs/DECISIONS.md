@@ -310,6 +310,21 @@
   surface shows provenance/citations + the exact proposed args (a dry-run preview), countering ASI09.
 - **Consequences:** the `act_sar` node must be structurally unreachable without traversing the approval gate
   (asserted in tests); HITL-respected is a 100% hard gate.
+- **Implementation note (2026-06-21, P4 Task 8 — HITL gate + MCP action landed):** the `approve` node is a
+  LangGraph **`interrupt()`** (run pauses with a dry-run `proposedAction` preview; state checkpointed); the run
+  API exposes `resume` (`Command(resume={"approved","note"})`) and `get` over the durable checkpointer. Routing:
+  `assess →(breach)→ approve →(approved)→ act_sar | →(reject)→ rejected`; **`act_sar`'s only graph predecessor is
+  `approve`** (asserted via `get_graph().edges`). `act_sar` mints an aud-scoped (RFC 8707) token via the Gateway
+  `/v1/auth/resource-token` for the caller (subject read from the bearer) and calls `open_draft_sar` over MCP
+  Streamable HTTP (`McpClient`, raw httpx; official async SDK noted as an alternative); an MCP error (e.g. the
+  per-call clearance re-check denying a sub-compliance caller) → `FAILED`, no write. `auditRef` is not surfaced
+  (the tool returns `draftRef`; the audit is queryable by `run_id`) — noted. **Single-use approval (ASI07):**
+  `resume` only proceeds when the run is paused at the gate (`get_state().next == ('approve',)`); a consumed
+  approval returns the terminal state with **no re-execution** — proven by a "2nd resume → no duplicate write"
+  test. **Durable resume-after-restart (G8):** a Testcontainers-Postgres IT starts a run (interrupt persisted)
+  then resumes it from a **brand-new graph + checkpointer instance** → COMPLETED, exactly one write. Tests:
+  **36** total (HITL approve/reject/single-use/structural, MCP client handshake + error, resume-after-restart IT,
+  run-API resume/get) — model-free; only the restart IT needs Docker.
 
 ### ADR-0043 — MCP tool server stack (Spring AI MCP server, Streamable-HTTP WebMVC)
 - **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-3), §8 (G-P4-1)

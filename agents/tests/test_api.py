@@ -17,6 +17,14 @@ class StubRunner:
         self.calls.append((query, account, period, bearer))
         return self.response
 
+    def resume(self, run_id, approved, note):
+        self.calls.append(("resume", run_id, approved, note))
+        return self.response
+
+    def get(self, run_id):
+        self.calls.append(("get", run_id))
+        return self.response
+
 
 def _override(runner):
     app.dependency_overrides[get_runner] = lambda: runner
@@ -72,9 +80,26 @@ def test_start_run_validates_period():
     assert r.status_code == 422
 
 
-def test_resume_not_wired_yet():
-    assert client.post("/v1/agent/runs/run_1/resume", json={"approved": True}).status_code == 501
+def test_resume_returns_run_state():
+    resp = RunResponse(runId="run_1", status="COMPLETED", action={"draftRef": "SAR-1"})
+    _override(StubRunner(resp))
+    r = client.post("/v1/agent/runs/run_1/resume", json={"approved": True, "note": "ok"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "COMPLETED"
 
 
-def test_get_run_not_wired_yet():
-    assert client.get("/v1/agent/runs/run_1").status_code == 501
+def test_resume_unknown_run_is_404():
+    class NoneRunner(StubRunner):
+        def resume(self, run_id, approved, note):
+            return None
+
+    _override(NoneRunner(RunResponse(runId="x", status="COMPLETED")))
+    r = client.post("/v1/agent/runs/missing/resume", json={"approved": True})
+    assert r.status_code == 404
+
+
+def test_get_run_returns_state():
+    _override(StubRunner(RunResponse(runId="run_1", status="AWAITING_APPROVAL")))
+    r = client.get("/v1/agent/runs/run_1")
+    assert r.status_code == 200
+    assert r.json()["status"] == "AWAITING_APPROVAL"

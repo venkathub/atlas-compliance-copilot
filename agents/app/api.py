@@ -1,8 +1,8 @@
 """FastAPI run API for the Atlas Agent Orchestrator (P4_SPEC §1, §2.3).
 
-Task 7 wires `POST /v1/agent/runs` to the planner-executor graph: a no-breach run completes; a
-breach run pauses at the approval gate (AWAITING_APPROVAL + a dry-run proposedAction). The
-human-in-the-loop resume and the MCP write land in task 8 (resume/get remain 501 until then).
+`POST /v1/agent/runs` drives the planner-executor graph: a no-breach run completes; a breach run
+pauses at the durable HITL gate (AWAITING_APPROVAL + a dry-run proposedAction). `POST .../resume`
+carries the human decision (single-use); `GET .../{id}` returns the run state from the checkpointer.
 """
 
 from __future__ import annotations
@@ -15,17 +15,16 @@ from app.checkpointer import _with_search_path, ensure_schema, ping_db
 from app.config import Settings, get_settings
 from app.gateway_client import GatewayClient
 from app.graph import build_graph
+from app.mcp_client import McpClient
 from app.models import ResumeRequest, RunRequest, RunResponse
 from app.runner import GraphRunner
 
 app = FastAPI(title="Atlas Agent Orchestrator", version="0.1.0")
 
-_NOT_WIRED = "not implemented yet (P4 task 8)"
-
 
 @lru_cache
 def _default_runner() -> GraphRunner:
-    """Build the production runner lazily (durable Postgres checkpointer + Gateway client)."""
+    """Build the production runner lazily (durable checkpointer + Gateway + MCP clients)."""
     from langgraph.checkpoint.postgres import PostgresSaver
     from psycopg.rows import dict_row
     from psycopg_pool import ConnectionPool
@@ -39,8 +38,13 @@ def _default_runner() -> GraphRunner:
     )
     saver = PostgresSaver(pool)
     saver.setup()
+    gateway = GatewayClient(settings.gateway_base_url)
     graph = build_graph(
-        GatewayClient(settings.gateway_base_url), settings.sar_reporting_threshold, saver
+        gateway,
+        settings.sar_reporting_threshold,
+        saver,
+        mcp_client=McpClient(settings.mcp_base_url),
+        token_provider=gateway.resource_token,
     )
     return GraphRunner(graph, settings.agent_max_steps)
 
@@ -80,12 +84,20 @@ def start_run(
 
 
 @app.post("/v1/agent/runs/{run_id}/resume", response_model=RunResponse)
-def resume_run(run_id: str, request: ResumeRequest) -> RunResponse:
-    """Resume a paused run with the human approval decision (task 8)."""
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=_NOT_WIRED)
+def resume_run(
+    run_id: str, request: ResumeRequest, runner: GraphRunner = Depends(get_runner)
+) -> RunResponse:
+    """Resume a paused run with the human approval decision (single-use; ADR-0044/0046)."""
+    response = runner.resume(run_id, request.approved, request.note)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown run")
+    return response
 
 
 @app.get("/v1/agent/runs/{run_id}", response_model=RunResponse)
-def get_run(run_id: str) -> RunResponse:
-    """Fetch a run's current state (task 8)."""
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=_NOT_WIRED)
+def get_run(run_id: str, runner: GraphRunner = Depends(get_runner)) -> RunResponse:
+    """Fetch a run's current state from the checkpointer."""
+    response = runner.get(run_id)
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown run")
+    return response

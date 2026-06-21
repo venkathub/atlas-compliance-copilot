@@ -5,11 +5,11 @@ Agent Orchestrator (P4) — the Python / LangGraph "brain" that turns a grounded
 PII redaction), evaluates the deterministic breach condition, **pauses for human approval**, and only
 then calls the `mcp-tools` `open_draft_sar` action — every run durably checkpointed and traced.
 
-> **Status — P4 task 7.** The planner-executor **graph** is wired: `planner → retrieve → assess →
-> (breach? approve : finalize)`. `POST /v1/agent/runs` retrieves through the Gateway (RBAC-inherited),
-> deterministically assesses the breach, and pauses at the approval gate (`AWAITING_APPROVAL` + a dry-run
-> `proposedAction`). The **HITL `interrupt`/resume + MCP `open_draft_sar` write** (task 8), tracing
-> (task 10), and the **agent eval gate** (task 11) land next. `resume`/`get` return `501` until task 8.
+> **Status — P4 task 8.** The full forcing-story agent works: breach → durable **HITL interrupt**
+> (run pauses, state checkpointed) → human **resume** → governed **`open_draft_sar`** write over MCP
+> (aud-scoped Bearer from the Gateway resource-token endpoint). `resume` is **single-use** (ASI07) and
+> survives **process restart** (durable Postgres checkpointer, G8); `act_sar` is structurally reachable
+> only via the approval gate. Tracing (task 10) and the **agent eval gate** (task 11) land next.
 >
 > The forcing-story agent is **fully deterministic** (owner-confirmed): the breach decision + routing are a
 > pure function of retrieved citations — no agent LLM call — so the safety path is unpromptable and the eval
