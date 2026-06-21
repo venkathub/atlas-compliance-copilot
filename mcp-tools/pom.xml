@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.atlas</groupId>
+        <artifactId>atlas-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>mcp-tools</artifactId>
+    <name>Atlas :: mcp-tools</name>
+    <description>
+        Governed MCP Tool Server (P4, ADR-0043) — exposes a single state-changing enterprise action
+        (open a draft Suspicious Activity Report) over MCP Streamable HTTP, secured as an OAuth 2.1
+        resource server (RFC 8707), with a per-call clearance re-check, a transactional sar_draft write,
+        and an append-only hash-chained audit log. P4 task 1: module skeleton (MCP server + health) only.
+    </description>
+
+    <dependencies>
+        <!-- Spring AI MCP Server (Streamable HTTP on WebMVC / Servlet) — ADR-0043 / D-P4-3 / ADR-0050.
+             Annotation-driven @McpTool with auto JSON-schema; brings in spring-boot-starter-web. The
+             open_draft_sar tool, OAuth 2.1 resource server, and audit log are layered on in later P4 tasks. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- Micrometer Prometheus registry: exposes /actuator/prometheus for the P4 agent/tool dashboard. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <!--
+                  classifier=exec mirrors rag-engine/gateway: the fat jar is published as
+                  mcp-tools-<ver>-exec.jar so the MAIN artifact stays a thin jar (resources at the
+                  classpath root) and the Dockerfile copies the -exec jar.
+                -->
+                <configuration>
+                    <classifier>exec</classifier>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Failsafe runs *IT integration tests; `live` (real GPU) is excluded by default
+                 via the parent's failsafe.excluded.groups property. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <excludedGroups>${failsafe.excluded.groups}</excludedGroups>
+                    <systemPropertyVariables>
+                        <api.version>${docker.api.version}</api.version>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- Mirrors rag-engine/gateway: the `live` profile drops the `live` JUnit-tag exclusion so
+             live-tagged ITs run too. -->
+        <profile>
+            <id>live</id>
+            <properties>
+                <failsafe.excluded.groups></failsafe.excluded.groups>
+            </properties>
+        </profile>
+    </profiles>
+</project>

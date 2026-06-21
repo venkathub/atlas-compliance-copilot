@@ -76,6 +76,24 @@ services:
       - "${GATEWAY_PORT:-8080}:8080"
     restart: unless-stopped
 
+  # ── Governed MCP Tool Server (P4, ADR-0043) ─────────────────────────────────
+  # Spring AI MCP server (Streamable HTTP on WebMVC). Task-1 skeleton is DB-free (the
+  # sar_draft/tool_audit datasource arrives in task 2); it boots standalone with health.
+  mcp-tools:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: mcp-tools/Dockerfile
+    image: atlas/mcp-tools:0.1.0-SNAPSHOT
+    container_name: atlas-mcp-tools
+    environment:
+      MCP_TOOLS_PORT: 8082
+      ATLAS_MCP_SERVER_NAME: ${ATLAS_MCP_SERVER_NAME:-atlas-mcp-tools}
+      ATLAS_MCP_SERVER_VERSION: ${ATLAS_MCP_SERVER_VERSION:-0.1.0}
+    ports:
+      - "${MCP_TOOLS_PORT:-8082}:8082"
+    restart: unless-stopped
+
   # ── Observability plane (P2) ────────────────────────────────────────────────
   # Langfuse v3 self-host (D-P2-5). REUSES atlas-postgres (db `langfuse`) + atlas-redis,
   # and adds only ClickHouse (analytics store) + MinIO (S3 event/blob store), per the

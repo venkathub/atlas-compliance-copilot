@@ -75,7 +75,7 @@
     <modules>
         <module>rag-engine</module>
         <module>gateway</module>
-        <!-- mcp-tools : added in P4 (governed MCP tool servers).    -->
+        <module>mcp-tools</module>
     </modules>
 
     <dependencyManagement>

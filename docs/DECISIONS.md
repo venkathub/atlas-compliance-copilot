@@ -252,6 +252,16 @@
   DB write and audit log; matches the blocking `rag-engine`/gateway idiom.
 - **Consequences:** requires the Spring AI 1.1.x bump (ADR-0050); only **our own** pinned/signed MCP server is
   used (no third-party MCP — OWASP ASI04 supply chain); MCP pinned to spec `2025-11-25`.
+- **Implementation note (2026-06-21, P4 Task 1 — skeleton landed):** `/mcp-tools` added to the Maven reactor and
+  `infra/docker-compose.yml` (DB-free skeleton; the `agent`-schema datasource arrives in Task 2). Dependency
+  `spring-ai-starter-mcp-server-webmvc:1.1.8` resolves on the new BOM; `application.yml` sets
+  `spring.ai.mcp.server.protocol=STREAMABLE` with env-swappable `name`/`version`. Verified end-to-end: a real
+  Streamable-HTTP handshake on `POST /mcp` — `initialize` returns **200** + an `Mcp-Session-Id` and
+  `serverInfo.name=atlas-mcp-tools` (env config applied), advertising the `tools` capability; `tools/list`
+  (with session) returns an **empty** array (no tools yet — the skeleton logs `No tool methods found`). The
+  default streamable endpoint is `/mcp`; bare calls without a session correctly 400 "Session ID missing" — the
+  full tool list+call round-trip is a Task-3 transport test. Smoke tests: **4 passed** (context, health,
+  prometheus, MCP handshake), model-free / no Docker.
 
 ### ADR-0042 — Agent reasoning model tier (tier2 qwen2.5:7b)
 - **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-2), §2.6; extends ADR-0035/ADR-0005
