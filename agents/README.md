@@ -10,6 +10,9 @@ then calls the `mcp-tools` `open_draft_sar` action — every run durably checkpo
 > (aud-scoped Bearer from the Gateway resource-token endpoint). `resume` is **single-use** (ASI07) and
 > survives **process restart** (durable Postgres checkpointer, G8); `act_sar` is structurally reachable
 > only via the approval gate. Tracing (task 10) and the **agent eval gate** (task 11) land next.
+> An end-to-end IT (`tests/test_e2e_forcing_story.py`, Testcontainers Postgres) exercises the full
+> lifecycle through the real graph + checkpointer + real Gateway/MCP clients (HTTP boundary faked),
+> asserting the safety hard gates (no unapproved/duplicate write, reject → no write, restart, tool-deny).
 >
 > The forcing-story agent is **fully deterministic** (owner-confirmed): the breach decision + routing are a
 > pure function of retrieved citations — no agent LLM call — so the safety path is unpromptable and the eval
