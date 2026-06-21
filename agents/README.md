@@ -5,10 +5,15 @@ Agent Orchestrator (P4) — the Python / LangGraph "brain" that turns a grounded
 PII redaction), evaluates the deterministic breach condition, **pauses for human approval**, and only
 then calls the `mcp-tools` `open_draft_sar` action — every run durably checkpointed and traced.
 
-> **Status — P4 task 6: skeleton.** This module ships the `uv` project, the run-API surface, and the
-> durable **Postgres checkpointer** (ADR-0047) wired against the shared `agent` schema. The
-> planner→executor **graph** (task 7), the **HITL approval gate + MCP action** (task 8), tracing
-> (task 10), and the **agent eval gate** (task 11) land next. Run endpoints currently return `501`.
+> **Status — P4 task 7.** The planner-executor **graph** is wired: `planner → retrieve → assess →
+> (breach? approve : finalize)`. `POST /v1/agent/runs` retrieves through the Gateway (RBAC-inherited),
+> deterministically assesses the breach, and pauses at the approval gate (`AWAITING_APPROVAL` + a dry-run
+> `proposedAction`). The **HITL `interrupt`/resume + MCP `open_draft_sar` write** (task 8), tracing
+> (task 10), and the **agent eval gate** (task 11) land next. `resume`/`get` return `501` until task 8.
+>
+> The forcing-story agent is **fully deterministic** (owner-confirmed): the breach decision + routing are a
+> pure function of retrieved citations — no agent LLM call — so the safety path is unpromptable and the eval
+> runs offline. `ATLAS_AGENT_MODEL` is reserved/unused in P4 (see DECISIONS ADR-0042 deviation note).
 
 ## Architecture (target, P4)
 - **Run API** (`app/api.py`, FastAPI): `POST /v1/agent/runs`, `POST /v1/agent/runs/{id}/resume`,

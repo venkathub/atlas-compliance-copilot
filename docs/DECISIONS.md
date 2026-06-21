@@ -352,6 +352,16 @@
   cheap, within the ~8 GB GPU footprint (ADR-0006), and eval-floor-honoring.
 - **Consequences:** the tier1→tier2 cost/quality delta is recorded for the portfolio; nothing hardcoded
   (CLAUDE.md).
+- **Deviation note (2026-06-21, P4 Task 7 — owner-confirmed "fully deterministic agent"):** for P4's single
+  forcing story the agent is implemented **fully deterministically** — the planner (fixed plan), `retrieve`
+  (Gateway call), `assess` (numeric threshold), and the SAR arg/rationale formulation are all code, with the
+  Gateway already returning the grounded answer. The agent therefore makes **no LLM call**, so `ATLAS_AGENT_MODEL`
+  / tier2 is configured but **unused in P4** (reserved). Rationale: the safety-critical path (breach decision,
+  routing, HITL gate) being deterministic is the stronger guarantee — it cannot be prompt-injected into skipping
+  the gate (ASI01) — and it makes the agent eval fully offline (no GPU/cassettes for the agent). This also
+  simplifies P4's eval lane: the trajectory is scored without a model. Re-introducing LLM-driven planning for
+  broader (non-forcing-story) queries is future work; revisit ADR-0042 then. (No `langchain-ollama` dependency
+  was added.)
 
 ### ADR-0041 — Agent orchestration topology (LangGraph planner–executor)
 - **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-1)
@@ -368,6 +378,17 @@
   worthy; separating planning from execution also aligns with OWASP ASI08 guidance.
 - **Consequences:** more graph wiring than a prebuilt agent; step/iteration caps + no sub-agent spawning enforce
   bounded agency (ASI10); the graph is the unit under the trajectory-first agent eval (ADR-0024 lineage).
+- **Implementation note (2026-06-21, P4 Task 7 — graph + RBAC retrieval landed):** built the explicit
+  `StateGraph` `planner → retrieve → assess → (breach? approve : finalize)` (`agents/app/graph.py`) with a
+  typed `AgentState`. `retrieve` calls the Gateway `POST /v1/query` with the **caller's Bearer** (no clearance
+  header — inherits P3 RBAC/cost/cache/PII, ADR-0045) and extracts currency amounts; `assess` is a **pure
+  deterministic** breach check (`max(amount) ≥ ATLAS_SAR_REPORTING_THRESHOLD`) that builds the `open_draft_sar`
+  dry-run preview grounded in the breaching citations. Topology is fixed code, so the conditional + (task-8)
+  gate are real structure, not LLM whim. Step cap via LangGraph `recursion_limit` (floored above the DAG depth;
+  ASI10). `start_run` now returns `COMPLETED` (no breach) or `AWAITING_APPROVAL` + `proposedAction` (breach);
+  `resume`/`get` remain 501 until task 8. Tests: **25** (amount extraction, planner, retrieve bearer-forwarding,
+  assess determinism incl. at-threshold, graph nodes + routing for breach/no-breach, step-cap, run-API via a
+  stubbed runner) — model-free, no GPU, no DB (MemorySaver + stub Gateway).
 
 ### ADR-0040 — Cost-units model & cost-delta reporting
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-8), §8.3

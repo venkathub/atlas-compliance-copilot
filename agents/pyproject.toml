@@ -12,6 +12,7 @@ dependencies = [
     "langgraph>=0.2",
     "langgraph-checkpoint-postgres>=2.0",
     "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",
 ]
 
 [dependency-groups]
@@ -23,6 +24,8 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+# B008: calling Depends()/Header() in argument defaults is the idiomatic FastAPI pattern.
+ignore = ["B008"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
