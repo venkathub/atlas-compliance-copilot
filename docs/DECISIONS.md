@@ -13,6 +13,16 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0050 | 2026-06-21 | Spring AI version for P4 (bump to 1.1.x on Spring Boot 3.x; defer 2.0/Boot 4) | Accepted | P4 |
+| 0049 | 2026-06-21 | Governed action scope, breach rule & SAR write target | Accepted | P4 |
+| 0048 | 2026-06-21 | Tamper-evident append-only hash-chained audit log | Accepted | P4 |
+| 0047 | 2026-06-21 | Durable agent checkpointer (Postgres, agent schema) | Accepted | P4 |
+| 0046 | 2026-06-21 | Clearance propagation to MCP tools + replay-protected approval (RFC 8707) | Accepted | P4 |
+| 0045 | 2026-06-21 | Agent service placement (standalone, consumes the Gateway) | Accepted | P4 |
+| 0044 | 2026-06-21 | Human-in-the-loop placement & mechanism (LangGraph interrupt) | Accepted | P4 |
+| 0043 | 2026-06-21 | MCP tool server stack (Spring AI MCP server, Streamable-HTTP WebMVC) | Accepted | P4 |
+| 0042 | 2026-06-21 | Agent reasoning model tier (tier2 qwen2.5:7b) | Accepted | P4 |
+| 0041 | 2026-06-21 | Agent orchestration topology (LangGraph planner–executor) | Accepted | P4 |
 | 0040 | 2026-06-14 | Cost-units model & cost-delta reporting | Accepted | P3 |
 | 0039 | 2026-06-14 | Circuit-breaker scope & fallback | Accepted | P3 |
 | 0038 | 2026-06-14 | Gateway resource controls (rate-limit, budget caps, LLM10) | Accepted | P3 |
@@ -61,11 +71,193 @@
 > (`ROADMAP.md` §8). **ADR-0033–0040 are the P3 grooming decisions** (`docs/phases/P3_SPEC.md` §3 + §8
 > web-validated gap analysis), owner-confirmed 2026-06-14 before P3 implementation begins; **ADR-0034 supersedes
 > ADR-0016** by replacing the P1 clearance-header shim with the simulated-IdP verified-clearance trust boundary.
+> **ADR-0041–0050 are the P4 grooming decisions** (`docs/phases/P4_SPEC.md` §3 + §8 web-validated gap
+> analysis), owner-confirmed 2026-06-21 before P4 implementation begins; **ADR-0042 extends ADR-0035** (agent
+> model tier), **ADR-0046 extends ADR-0003** (RFC 8707 resource-scoped tokens + replay-protected approval),
+> **ADR-0047 reuses ADR-0002** (one shared Postgres), and **ADR-0050 updates the Spring AI pin from ADR-0008**.
 > Each remains open to revision with a new superseding ADR if a later phase surfaces evidence against it.
 
 ---
 
 ## 2. Decisions
+
+### ADR-0050 — Spring AI version for P4 (bump to 1.1.x on Spring Boot 3.x; defer 2.0/Boot 4)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-10), §8 (G-P4-2)
+- **Context:** The repo is pinned to **Spring AI `1.0.0` on Spring Boot `3.4.7`** (ADR-0008). The P4 MCP **server**
+  needs Streamable-HTTP **WebMVC** (`spring.ai.mcp.server.protocol=STREAMABLE`), annotation-driven
+  `@McpTool`/`@McpToolParam`, the `TransportContextExtractor` auth hook, and the MCP-Security integration. Web
+  validation (June 2026) found these already ship in **Spring AI `1.1.x`, which stays on Spring Boot 3.x**, while
+  **Spring AI `2.0.x` requires Spring Boot `4.0`** (Spring Framework 7, Jakarta EE 11, Jackson 3, JSpecify) and
+  "cannot be loaded in a 3.x context."
+- **Options considered:** (a) **bump repo-wide to the latest `1.1.x`, staying on Boot 3.x**, as P4 Task 0;
+  (b) bump only `mcp-tools` to 1.1.x (two Spring AI versions in one reactor → BOM/transitive risk);
+  (c) adopt Spring AI 2.0 / Boot 4 now (a multi-month, repo-wide framework migration — Jackson 2→3 silent
+  JSON-shape changes, removed deprecated APIs, third-party Boot-4 blockers, Spring Cloud Gateway/Security
+  upgrades); (d) stay on 1.0.0 (weaker MCP-server maturity → risk of SSE/hand-wired Java SDK).
+- **Decision:** **(a)** — minor bump to **Spring AI 1.1.x on Spring Boot 3.x** as Task 0; bump Boot to 3.5.x only
+  if 1.1.x requires it (low-risk same-major patch, the recommended pre-4.0 step). **Spring AI 2.0 / Spring Boot 4
+  is explicitly out of P4 scope**, recorded as a deliberate future-work track.
+- **Rationale:** gets the current MCP server idiom with a **minor** bump on the same Boot major line (Advisor/
+  VectorStore/RAG/embedding/chat APIs shipped in 1.0 and are stable through 1.1), avoiding a disproportionate
+  Boot-4 migration that would destabilize frozen P1/P3 for zero P4 benefit. Honest production shape: one Spring
+  AI version across the reactor.
+- **Consequences:** Task 0's acceptance test = **all frozen P1/P3 unit/IT + eval cassette gates + RBAC/PII hard
+  gates re-green** (cassettes re-recorded only if a fingerprint legitimately changes). Watch the
+  `FunctionCallback`→`ToolCallback` deprecation (rag-engine uses `ChatModel`/`EmbeddingModel`/`ChatClient`/
+  evaluators, not `FunctionCallback`, so low exposure). The Boot 4 / Spring AI 2.0 migration is planned against
+  the Spring Boot 3.5 / Framework 6.2 EOL (2026-06-30) on its own timeline; revisit with a superseding ADR.
+
+### ADR-0049 — Governed action scope, breach rule & SAR write target
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-9), §7 (Q5, Q6)
+- **Context:** P4 must turn the answer into a real, governed enterprise action (open a draft SAR) without
+  over-broad agency (LLM06 / OWASP ASI02 tool-misuse, ASI10 scaling). Three sub-choices: how many tools, how the
+  breach condition is decided, and what the write target is.
+- **Options considered:**
+  - *Tool scope (Q6):* (a) **exactly one least-privilege write tool** `open_draft_sar` (+ only the read helpers
+    it needs); (b) several tools / a tool marketplace.
+  - *Breach rule (Q5):* (a) **a single configurable numeric threshold** over the period (deterministic);
+    (b) a multi-factor rule (amount **and** exception type); (c) an LLM-judged breach.
+  - *Write target (D-P4-9):* (a) **a transactional write to a `sar_draft` Postgres table** (status DRAFT, links
+    citations + run_id); (b) render a SAR markdown/PDF artifact to disk; (c) a stub/no-op tool.
+- **Decision:** **Q6 → (a)** one least-privilege tool; **Q5 → (a)** a single configurable threshold; **D-P4-9 →
+  (a)** a transactional `sar_draft` Postgres write returned for human review.
+- **Rationale:** one tool keeps the agency surface minimal and auditable (no tool-chaining/confused-deputy
+  paths); a deterministic single threshold makes the `assess` node testable and the breach decision grounded in
+  citations rather than LLM whim (ASI01 resistance); a transactional DB write is a real, inspectable, audited
+  state change with no external integration — a stronger "governed action" story than file IO or a stub.
+- **Consequences:** the threshold is env/config-driven and documented; P5 may render a SAR artifact from the
+  `sar_draft` row; adding a second tool requires a new ADR. No external/real SAR filing (FinCEN) — synthetic
+  Layer-2 data only.
+
+### ADR-0048 — Tamper-evident append-only hash-chained audit log
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-8); ROADMAP §6 G9
+- **Context:** Compliance review needs a trustworthy, queryable trail of every governed tool action (ROADMAP §6
+  G9; OWASP ASI02/ASI03 auditability; NIST AI RMF / EU AI Act record-keeping per ADR-0007).
+- **Options considered:** (a) **append-only Postgres table with a hash-chain** (`prev_hash`/`row_hash`) + DB-level
+  INSERT/SELECT-only grant (REVOKE UPDATE/DELETE for the app role) + a chain verifier; (b) append-only table with
+  revoked UPDATE/DELETE only (no chain — not tamper-*evident*); (c) external WORM/object store (strongest, but
+  new infra + egress, off-budget/off-thesis).
+- **Decision:** **(a)** — `tool_audit` records every invocation phase (ATTEMPT/APPROVED/REJECTED/SUCCESS/DENIED/
+  ERROR), hash-chained as `row_hash = sha256(prev_hash || canonical_fields)`; an `AuditChainVerifier` recomputes
+  and flags any break; UPDATE/DELETE revoked at the DB layer.
+- **Rationale:** tamper-evident **and** queryable (`run_id`/`caller`/`tool`), cheap, reuses Postgres (ADR-0002),
+  and the chain verifier is a clean compliance demo. Args are stored as a digest (no raw PII; consistent with
+  ADR-0030).
+- **Consequences:** chain-maintenance code + a verifier test (good chain passes, tampered row detected); the
+  audit write is atomic with the `sar_draft` write (all-or-nothing); a privileged DBA could still drop the table
+  — out of scope for the self-hosted portfolio (note in RUNBOOK).
+
+### ADR-0047 — Durable agent checkpointer (Postgres, agent schema)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-7); ROADMAP §6 G8
+- **Context:** A production agent must **resume after interrupt or process restart** (ROADMAP §6 G8), and must
+  not let memory become a poisoning vector (OWASP ASI06).
+- **Options considered:** (a) **LangGraph Postgres checkpointer (`langgraph-checkpoint-postgres`) reusing the P0
+  Postgres in a separate `agent` schema**; (b) SQLite checkpointer (dev-simple, not shared-prod / multi-instance
+  safe); (c) in-memory checkpointer (fails the durability DoD).
+- **Decision:** **(a)** — durable Postgres checkpointer, isolated in an `agent` schema.
+- **Rationale:** one datastore (ADR-0002 ethos), production-shaped resume-after-restart, no new infra; per-run
+  isolated, trusted-write, validated state (the checkpointer holds agent run state, not a shared knowledge base)
+  blunts ASI06 memory poisoning.
+- **Consequences:** schema/migration ownership spans `mcp-tools` (audit/SAR) and `agents` (checkpoint) — isolated
+  via a dedicated `agent` schema; a resume-after-restart hard-gate test is required.
+
+### ADR-0046 — Clearance propagation to MCP tools + replay-protected approval (RFC 8707)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §2.4, §3 (D-P4-6); extends ADR-0003
+- **Context:** The verified clearance must flow client → agent → MCP tool and be re-validated at the tool
+  (defense-in-depth with P1 RBAC); the approval that unlocks a write must not be replayable (OWASP ASI07
+  "replayed approval"; ASI03 identity/privilege).
+- **Options considered:** (a) **audience-restricted Bearer tokens (RFC 8707 resource indicators)** — sim-IdP
+  mints a token with `aud=atlas-mcp-tools`; the agent forwards it; the MCP resource server validates
+  sig+exp+iss+**aud** and re-derives clearance; (b) reuse the gateway internal-clearance signed header
+  (ADR-0034) for the agent→MCP hop (consistent, but not the OAuth 2.1 resource-server / RFC 8707 skill the
+  roadmap §6 G2 wants); (c) network-trust only (unacceptable for a governed write).
+- **Decision:** **(a)** — extend the simulated IdP (ADR-0003) to mint **resource-scoped, short-lived** tokens;
+  the MCP server is an **OAuth 2.1 resource server** doing **per-call** clearance re-check (refuse `<compliance`
+  → `DENIED`). The approval/resume is **single-use, task-scoped** — bound to `run_id` + checkpoint version with a
+  unique `jti`+short `exp`, so a consumed approval cannot authorize a second or mutated write.
+- **Rationale:** demonstrates the current MCP security model (Streamable HTTP + OAuth 2.1 RS + RFC 8707), aligns
+  with ASI03 "task-scoped, short-lived tokens + per-step re-authorization + no credential sharing," and closes
+  the ASI07 replay vector.
+- **Consequences:** a shared/managed signing config + token audience to manage (env, no secrets in code); new
+  hard gates — per-call authz re-check and single-use/replay-protected approval.
+
+### ADR-0045 — Agent service placement (standalone, consumes the Gateway)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-5)
+- **Context:** Where does the agent sit relative to the P3 Gateway in P4 (no UI yet)?
+- **Options considered:** (a) **standalone Python agent service** (`POST /v1/agent/runs` + resume) that *calls*
+  the Gateway `/v1/query` for retrieval and the MCP server for actions; Gateway/UI integration deferred to P5;
+  (b) route agent traffic through the Gateway now (`gateway→agent`); (c) agent calls `rag-engine` directly
+  (bypassing the Gateway).
+- **Decision:** **(a)** — standalone agent service consuming the governed Gateway path.
+- **Rationale:** keeps P4 focused on agents + MCP; the agent still inherits P3's verified-clearance auth,
+  cost-aware routing, semantic cache, and PII redaction by calling `/v1/query`; clean seam for the P5 UI.
+- **Consequences:** exposing the agent behind the Gateway/UI (and any token-streaming) is P5 work; the agent
+  carries the caller's Bearer JWT, never a clearance header.
+
+### ADR-0044 — Human-in-the-loop placement & mechanism (LangGraph interrupt)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-4); ROADMAP §6 G3, R4
+- **Context:** No state change may occur without explicit human approval (ROADMAP R4; OWASP ASI09 human-agent
+  trust). Where is the authoritative gate, and what mechanism?
+- **Options considered:** (a) **authoritative gate in the LangGraph graph (`interrupt`→`Command(resume)`),
+  durably checkpointed, with the MCP tool independently enforcing a requires-approval precondition** (defense-in-
+  depth); MCP **elicitation** used only for mid-task field confirmation; (b) HITL only via MCP elicitation
+  (pause lives in the tool/transport — harder to checkpoint/evaluate); (c) HITL only at the tool (loses durable
+  resumable agent state, approval outside the trace).
+- **Decision:** **(a)** — graph-structural `interrupt` is the single, traceable, evaluable decision point; the
+  tool refuses any unapproved write; elicitation is complementary.
+- **Rationale:** the durable checkpointer (ADR-0047) makes the pause survive restart; the gate being graph
+  *structure* (not a promptable instruction) is what makes "no write without approval" testable; the approval
+  surface shows provenance/citations + the exact proposed args (a dry-run preview), countering ASI09.
+- **Consequences:** the `act_sar` node must be structurally unreachable without traversing the approval gate
+  (asserted in tests); HITL-respected is a 100% hard gate.
+
+### ADR-0043 — MCP tool server stack (Spring AI MCP server, Streamable-HTTP WebMVC)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-3), §8 (G-P4-1)
+- **Context:** The governed action surface is the Java/Spring "moat" (CLAUDE.md). MCP spec validated at the
+  current stable **`2025-11-25`** (OAuth Resource Server classification + RFC 8707 + elicitation + structured
+  tool output stabilized in `2025-06-18`; Streamable HTTP replaces SSE).
+- **Options considered:** (a) **Spring AI MCP Server starter (`spring-ai-starter-mcp-server-webmvc`,
+  protocol=STREAMABLE)** — annotation-driven `@McpTool`, Spring Security as OAuth 2.1 resource server, reuses the
+  Maven reactor + Postgres + WebMVC idiom (matches ADR-0033); (b) the official MCP Java SDK directly (more
+  boilerplate, weaker "Spring AI" story); (c) a Python FastMCP server co-located with the agent (abandons the
+  Java/Spring moat, splits governance from the DB write).
+- **Decision:** **(a)** — Spring AI MCP server on **Streamable-HTTP WebMVC**, SYNC server, `@McpTool` with auto
+  JSON-schema, returning **structured tool output**; auth header lifted via `TransportContextExtractor`.
+- **Rationale:** idiomatic Spring, current MCP transport/security model, single-runtime with the transactional
+  DB write and audit log; matches the blocking `rag-engine`/gateway idiom.
+- **Consequences:** requires the Spring AI 1.1.x bump (ADR-0050); only **our own** pinned/signed MCP server is
+  used (no third-party MCP — OWASP ASI04 supply chain); MCP pinned to spec `2025-11-25`.
+
+### ADR-0042 — Agent reasoning model tier (tier2 qwen2.5:7b)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-2), §2.6; extends ADR-0035/ADR-0005
+- **Context:** Agent planning + structured tool-calling is more demanding than single-shot RAG; small models are
+  flaky at multi-tool planning/argument formatting, which would fight the task-success gate.
+- **Options considered:** (a) **route agent reasoning to tier2 `qwen2.5:7b-instruct`** (already pulled in P2/P3),
+  tier1 `qwen2.5:3b` for cheap sub-steps, frontier reserved for the P5 demo; (b) keep tier1 `qwen2.5:3b`
+  everywhere (cheapest, more failed runs); (c) use a frontier model for the agent (breaks the cost/self-hosted
+  thesis).
+- **Decision:** **(a)** — agent default = tier2, env-swappable via `ATLAS_AGENT_MODEL` (extends the ADR-0035
+  router; ADR-0005 models stand).
+- **Rationale:** reliable tool-calling/planning matters more than raw token cost for agents; still self-hosted +
+  cheap, within the ~8 GB GPU footprint (ADR-0006), and eval-floor-honoring.
+- **Consequences:** the tier1→tier2 cost/quality delta is recorded for the portfolio; nothing hardcoded
+  (CLAUDE.md).
+
+### ADR-0041 — Agent orchestration topology (LangGraph planner–executor)
+- **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-1)
+- **Context:** The agent must execute the forcing story's conditional action ("if breach → draft SAR") in a way
+  that is safe, traceable, and evaluable.
+- **Options considered:** (a) **explicit LangGraph planner→executor state graph** with a conditional `breach?`
+  edge, a tool node, and a graph-structural `interrupt` gate before any write; (b) a prebuilt ReAct agent
+  (`create_react_agent`) — least code, but the plan/branch is implicit and HITL/tool-call scoring is harder;
+  (c) a supervisor multi-agent topology (over-engineered for one conditional action; more cost/latency/
+  non-determinism, and exposes ASI07 inter-agent risks).
+- **Decision:** **(a)** — an explicit planner→executor graph.
+- **Rationale:** the conditional and the HITL gate are *real graph structure* (not LLM whim), which is exactly
+  what makes "no write without approval" provable, tool-call correctness scoreable, and the trace portfolio-
+  worthy; separating planning from execution also aligns with OWASP ASI08 guidance.
+- **Consequences:** more graph wiring than a prebuilt agent; step/iteration caps + no sub-agent spawning enforce
+  bounded agency (ASI10); the graph is the unit under the trajectory-first agent eval (ADR-0024 lineage).
 
 ### ADR-0040 — Cost-units model & cost-delta reporting
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P3 · **Spec:** `P3_SPEC.md` §3 (D-P3-8), §8.3
