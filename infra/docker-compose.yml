@@ -103,6 +103,32 @@ services:
       - "${MCP_TOOLS_PORT:-8082}:8082"
     restart: unless-stopped
 
+  # ── Agent Orchestrator (P4) ─────────────────────────────────────────────────
+  # Python / LangGraph. Calls the Gateway for retrieval + the MCP server for actions; durable
+  # checkpointer over the shared Postgres `agent` schema (ADR-0047). Skeleton until tasks 7-8.
+  agents:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: agents/Dockerfile
+    image: atlas/agents:0.1.0-SNAPSHOT
+    container_name: atlas-agents
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGENT_PORT: 8083
+      GATEWAY_BASE_URL: ${GATEWAY_BASE_URL:-http://gateway:8080}
+      MCP_BASE_URL: ${MCP_BASE_URL:-http://mcp-tools:8082/mcp}
+      ATLAS_AGENT_MODEL: ${ATLAS_AGENT_MODEL:-qwen2.5:7b-instruct}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      AGENT_DB_URL: ${AGENT_DB_URL:-postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas}@postgres:5432/${POSTGRES_DB:-atlas}}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${AGENT_PORT:-8083}:8083"
+    restart: unless-stopped
+
   # ── Observability plane (P2) ────────────────────────────────────────────────
   # Langfuse v3 self-host (D-P2-5). REUSES atlas-postgres (db `langfuse`) + atlas-redis,
   # and adds only ClickHouse (analytics store) + MinIO (S3 event/blob store), per the

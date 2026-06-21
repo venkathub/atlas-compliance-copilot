@@ -215,6 +215,17 @@
   blunts ASI06 memory poisoning.
 - **Consequences:** schema/migration ownership spans `mcp-tools` (audit/SAR) and `agents` (checkpoint) — isolated
   via a dedicated `agent` schema; a resume-after-restart hard-gate test is required.
+- **Implementation note (2026-06-21, P4 Task 6 — checkpointer wired + module skeleton):** `/agents` opened as a
+  `uv` project (Python 3.12, mirroring `/evals`): FastAPI run API (`/healthz` live; `POST /v1/agent/runs`,
+  `/resume`, `GET …` return **501** until the graph lands in tasks 7–8), env-driven `Settings`
+  (pydantic-settings), and the durable **LangGraph `PostgresSaver`** (`langgraph-checkpoint-postgres`).
+  `checkpointer.open_checkpointer` idempotently `CREATE SCHEMA IF NOT EXISTS agent` and pins the connection
+  `search_path=agent`, so LangGraph's checkpoint tables live in the **`agent` schema** alongside (no collision
+  with) mcp-tools' `sar_draft`/`tool_audit`; `/agents` ensures the schema itself so it doesn't depend on
+  mcp-tools' migration order. Tests: **11 unit** (config parsing/aliases, run-API surface incl. 501 stubs +
+  422 validation) + **2 checkpointer ITs** (Testcontainers postgres:16: `setup()` + `put`/`get` round-trip;
+  checkpoint tables materialize in `agent`) — model-free, no GPU. Compose `agents` service (port 8083) +
+  `.env.example` Agent Orchestrator section + a CI pytest step added.
 
 ### ADR-0046 — Clearance propagation to MCP tools + replay-protected approval (RFC 8707)
 - **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §2.4, §3 (D-P4-6); extends ADR-0003

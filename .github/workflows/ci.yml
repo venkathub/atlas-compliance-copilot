@@ -49,12 +49,15 @@ jobs:
         run: |
           uvx ruff check evals
           uvx ruff check infra/gpu
+          uvx ruff check agents
       - name: Pytest (evals harness)
         # uv run respects evals/.python-version (3.12) + dependency groups; the heavy
         # `ragas` group is NOT installed (not a default group), proving the suite is light.
         run: uv run --directory evals --with pytest pytest -q
       - name: Pytest (GPU lifecycle helper)
         run: uv run --directory infra/gpu --with pytest pytest -q
+      - name: Pytest (agents — model-free; checkpointer IT uses Testcontainers/Docker)
+        run: uv run --directory agents --group dev pytest -q
 
   evals-gate:
     name: Eval gate (RAGAS + adversarial, cassette-replay)
