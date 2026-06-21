@@ -5,15 +5,30 @@ enterprise action over **MCP Streamable HTTP** (spec `2025-11-25`), with product
 around the write: OAuth 2.1 resource-server auth (RFC 8707), a per-call clearance re-check, a
 transactional draft-SAR write, and an append-only, tamper-evident audit log.
 
-> **Status — P4 task 1: skeleton.** This module currently stands up the Spring AI MCP server (WebMVC,
-> Streamable HTTP) with actuator health/metrics and **no tools registered**. The governed
-> `open_draft_sar` tool, the `sar_draft`/`tool_audit` Postgres schema, the OAuth 2.1 resource server,
-> and the per-call clearance re-check are layered on in subsequent P4 tasks (see `docs/phases/P4_SPEC.md`).
+> **Status — P4 task 2.** The Spring AI MCP server (WebMVC, Streamable HTTP) is up with actuator
+> health/metrics and **no tools registered yet**, and the **append-only, hash-chained audit log** now
+> exists (`agent.tool_audit`, ADR-0048). The governed `open_draft_sar` tool + `sar_draft` table, the
+> OAuth 2.1 resource server, and the per-call clearance re-check are layered on in the remaining P4 tasks
+> (see `docs/phases/P4_SPEC.md`).
 
 ## Purpose
 Turn an answer into a **governed action**: when the agent (`/agents`) decides an AML exception breaches
 the reporting threshold and a human approves, it calls this server's `open_draft_sar` tool to create a
 DRAFT Suspicious Activity Report for review — never auto-filed, fully audited.
+
+## Audit log (ADR-0048) — append-only + tamper-evident
+- **Two DB identities (least privilege):** the runtime pool connects as the restricted role
+  `atlas_mcp_app` (INSERT/SELECT only on `agent.tool_audit`); **Flyway** runs as a privileged role that
+  creates the `agent` schema, the app role, the GRANTs, and the guard. Configured via
+  `spring.datasource.*` (app) vs `spring.flyway.user/password` (privileged).
+- **Append-only at the DB layer, two ways:** (1) the GRANT model (UPDATE/DELETE never granted to the app
+  role) and (2) a `BEFORE UPDATE/DELETE` trigger that raises — which holds even against the table owner
+  (a Postgres owner keeps UPDATE/DELETE regardless of REVOKE).
+- **Tamper-evident:** each row is `row_hash = sha256(prev_hash || canonical_fields)`, chained from a
+  genesis link. `AuditChainVerifier` recomputes the chain and reports the first broken `seq` — so even if
+  a privileged actor disables the guard and rewrites history, it is detectable.
+- **Reproducible hashes:** the app sets `ts` (truncated to microseconds) and appends under a
+  transaction-scoped advisory lock, keeping the chain strictly linear.
 
 ## Architecture (target, P4)
 - **MCP server** — Spring AI MCP server starter on WebMVC, Streamable HTTP (`spring.ai.mcp.server.protocol=STREAMABLE`); SSE is deprecated (ADR-0043 / ADR-0050).
@@ -57,6 +72,9 @@ All P4 tasks are model-free for this module; no GPU is required.
 | `MCP_TOOLS_PORT` | `8082` | HTTP port |
 | `ATLAS_MCP_SERVER_NAME` | `atlas-mcp-tools` | MCP `serverInfo.name` |
 | `ATLAS_MCP_SERVER_VERSION` | `0.1.0` | MCP `serverInfo.version` |
+| `ATLAS_MCP_DB_URL` | `jdbc:postgresql://localhost:5432/atlas` | shared Postgres (agent schema) |
+| `ATLAS_MCP_DB_USERNAME` / `_PASSWORD` | `atlas` / `atlas` | **privileged** Flyway/migration identity |
+| `ATLAS_MCP_DB_APP_USERNAME` / `_PASSWORD` | `atlas_mcp_app` / — | **least-privilege** runtime identity |
 
-Datasource, OAuth 2.1 (RFC 8707) audience/issuer/key, and the breach-threshold vars are introduced in
-the tasks that consume them.
+OAuth 2.1 (RFC 8707) audience/issuer/key and the breach-threshold vars are introduced in the tasks that
+consume them.

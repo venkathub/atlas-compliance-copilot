@@ -86,10 +86,19 @@ services:
       dockerfile: mcp-tools/Dockerfile
     image: atlas/mcp-tools:0.1.0-SNAPSHOT
     container_name: atlas-mcp-tools
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       MCP_TOOLS_PORT: 8082
       ATLAS_MCP_SERVER_NAME: ${ATLAS_MCP_SERVER_NAME:-atlas-mcp-tools}
       ATLAS_MCP_SERVER_VERSION: ${ATLAS_MCP_SERVER_VERSION:-0.1.0}
+      # Shared Postgres (agent schema). Flyway = privileged role; runtime = least-privilege app role.
+      ATLAS_MCP_DB_URL: ${ATLAS_MCP_DB_URL:-jdbc:postgresql://postgres:5432/${POSTGRES_DB:-atlas}}
+      ATLAS_MCP_DB_USERNAME: ${ATLAS_MCP_DB_USERNAME:-${POSTGRES_USER:-atlas}}
+      ATLAS_MCP_DB_PASSWORD: ${ATLAS_MCP_DB_PASSWORD:-${POSTGRES_PASSWORD:-atlas}}
+      ATLAS_MCP_DB_APP_USERNAME: ${ATLAS_MCP_DB_APP_USERNAME:-atlas_mcp_app}
+      ATLAS_MCP_DB_APP_PASSWORD: ${ATLAS_MCP_DB_APP_PASSWORD:-change-me-locally}
     ports:
       - "${MCP_TOOLS_PORT:-8082}:8082"
     restart: unless-stopped

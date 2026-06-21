@@ -16,16 +16,15 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
 /**
- * P4 task 1 — skeleton smoke tests. Model-free and dependency-free: the mcp-tools skeleton needs no
- * DB / Redis / GPU (datasource + Flyway arrive in task 2), so this runs in plain CI (no Docker).
- *
- * <p>Verifies the application context starts, actuator health/metrics are exposed, and the Spring AI
- * MCP server answers a real <b>Streamable-HTTP</b> handshake ({@code initialize} → session →
- * {@code tools/list}) advertising our configured identity and an <b>empty</b> tool list (the
- * {@code open_draft_sar} tool is added in task 3; the full tool-call round-trip is a task-3 test).
+ * P4 task 1 + 2 — full-context smoke tests. With the audit datasource added in task 2 the context
+ * needs a database, so this extends {@link AbstractAgentSchemaIT} (Testcontainers postgres). It verifies
+ * the context starts, actuator health/metrics are exposed, and the Spring AI MCP server answers a real
+ * <b>Streamable-HTTP</b> handshake ({@code initialize} → session → {@code tools/list}) advertising our
+ * configured identity and an <b>empty</b> tool list (the {@code open_draft_sar} tool is added in task 3;
+ * the full tool-call round-trip is a task-3 test).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class McpToolsApplicationTests {
+class McpToolsApplicationIT extends AbstractAgentSchemaIT {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String MCP_ENDPOINT = "/mcp";

@@ -4,6 +4,29 @@ server:
 spring:
   application:
     name: mcp-tools
+  datasource:
+    # RUNTIME pool connects as the LEAST-PRIVILEGE app role (INSERT/SELECT-only on the audit log;
+    # ADR-0048). Env-driven, never hardcoded (CLAUDE.md). initialization-fail-timeout=-1 defers the
+    # first connection until AFTER Flyway (which runs as the privileged user below) has created the
+    # role — avoiding the chicken-and-egg at startup.
+    url: ${ATLAS_MCP_DB_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:atlas}}
+    username: ${ATLAS_MCP_DB_APP_USERNAME:atlas_mcp_app}
+    password: ${ATLAS_MCP_DB_APP_PASSWORD:atlas_mcp_app}
+    hikari:
+      initialization-fail-timeout: -1
+  flyway:
+    # Migrations run as a PRIVILEGED role (creates the agent schema, the app role, GRANTs, trigger).
+    # mcp-tools keeps its OWN history table inside the `agent` schema (isolated from rag-engine).
+    enabled: true
+    locations: classpath:db/migration
+    user: ${ATLAS_MCP_DB_USERNAME:atlas}
+    password: ${ATLAS_MCP_DB_PASSWORD:atlas}
+    schemas: agent
+    default-schema: agent
+    create-schemas: true
+    placeholders:
+      # Bound into V2's CREATE/ALTER ROLE so the app-role password is env-driven, never hardcoded.
+      app_password: ${ATLAS_MCP_DB_APP_PASSWORD:atlas_mcp_app}
   ai:
     mcp:
       server:

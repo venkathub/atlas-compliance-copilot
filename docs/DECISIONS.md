@@ -171,6 +171,21 @@
 - **Consequences:** chain-maintenance code + a verifier test (good chain passes, tampered row detected); the
   audit write is atomic with the `sar_draft` write (all-or-nothing); a privileged DBA could still drop the table
   — out of scope for the self-hosted portfolio (note in RUNBOOK).
+- **Implementation note (2026-06-21, P4 Task 2 — landed & IT-verified):** `agent` schema + `agent.tool_audit`
+  created in `mcp-tools` migration `V2__atlas_agent_audit_schema.sql`. **Two protections** installed (stronger
+  than the ADR's grant-only wording): (1) the **GRANT model** — least-privilege role `atlas_mcp_app` gets
+  INSERT+SELECT only; (2) an **owner-proof `BEFORE UPDATE/DELETE` trigger** (`tool_audit_no_mutate`) — because a
+  Postgres table *owner* keeps UPDATE/DELETE regardless of REVOKE, so the grant alone is a no-op against the
+  owner. **Two DB identities:** Flyway runs as a privileged role (`spring.flyway.user`) and the runtime pool as
+  the restricted `atlas_mcp_app` (`spring.datasource.username`); Hikari `initialization-fail-timeout=-1` defers
+  the runtime pool until after Flyway provisions the role. mcp-tools keeps an **isolated Flyway history table in
+  the `agent` schema** so it never collides with rag-engine's `public` history (ADR-0047). The hash chain
+  (`row_hash = sha256(prev_hash || US-joined canonical fields)`, genesis = 64×'0') is computed by a pure
+  `AuditHasher`; `AuditService.append` serializes via `pg_advisory_xact_lock` and sets `ts` (truncated to µs) so
+  hashes round-trip exactly; `AuditChainVerifier` recomputes and reports the first broken `seq`. Owner-confirmed
+  the **dedicated-role + trigger** option. Tests: **7 unit** (chain math: determinism, genesis, mutated-field +
+  relinked-row detection) + **5 IT** (role/grants/trigger present; valid chain; UPDATE/DELETE denied for the app
+  role *and* the owner; tamper-after-guard-bypass detected), Testcontainers postgres:16, no GPU.
 
 ### ADR-0047 — Durable agent checkpointer (Postgres, agent schema)
 - **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-7); ROADMAP §6 G8
