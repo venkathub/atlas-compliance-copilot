@@ -865,6 +865,16 @@
   pass-rate 1.000 (0 violations)** across the 10 red-team cases. `noise_sensitivity` dropped this run (RAGAS
   per-metric timeouts — report-only; raise the run-config timeout next calibration). Gate verified green in pure
   replay with RAGAS **not** installed.
+- **Agent-eval extension note (2026-06-21, P4 Task 11):** the trajectory-first **agent eval gate** lives in
+  `/agents` (`app/eval/`), not `/evals` — owner-confirmed, because the **fully deterministic agent** (ADR-0042
+  deviation) needs no cassettes/RAGAS and `/evals` is a separate `uv` project that can't import the graph
+  cleanly. 12 versioned scenarios (`scenarios.py`) are scored against the real graph with a stubbed
+  Gateway/MCP — **fully offline, no GPU** — on: task-success, tool-selection, argument-correctness,
+  step-efficiency, plan-adherence (floors in `data/agent-baseline.json`: ≥0.80 / ≥0.90 / ≥0.90 / ≥0.95) plus
+  the binary **HITL-respected** and **authorization-respected** hard gates (100% / 0 unapproved / 0 unauthorized
+  writes, 0 dangerous calls). `evaluate_agent_gate` is a pure, unit-tested function; the CLI
+  (`python -m app.eval.agent_gate`) prints `AGENT GATE: PASS/FAIL` and exits non-zero to **block merge** (wired
+  into the CI `evals-gate` job). First run: all 12 scenarios pass, every rate 1.0.
 
 ### ADR-0023 — Eval-context exposure on /v1/query (`includeContexts`)
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §2.4, §3 (D-P2-3)

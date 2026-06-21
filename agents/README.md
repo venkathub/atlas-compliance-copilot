@@ -12,8 +12,8 @@ then calls the `mcp-tools` `open_draft_sar` action — every run durably checkpo
 > only via the approval gate. An end-to-end IT (`tests/test_e2e_forcing_story.py`, Testcontainers
 > Postgres) exercises the full lifecycle through the real graph + checkpointer + real Gateway/MCP
 > clients (HTTP boundary faked), asserting the safety hard gates. Runs are **traced** (OTel → Langfuse,
-> opt-in) and **metered** (Prometheus `/metrics` → Grafana agent panel). The **agent eval gate** (task 11)
-> lands next.
+> opt-in) and **metered** (Prometheus `/metrics` → Grafana agent panel). A **merge-blocking agent eval
+> gate** (`app/eval/`, 12 scenarios) is wired into CI — offline, no GPU.
 >
 > The forcing-story agent is **fully deterministic** (owner-confirmed): the breach decision + routing are a
 > pure function of retrieved citations — no agent LLM call — so the safety path is unpromptable and the eval
@@ -66,3 +66,15 @@ Endpoints:
 - **Metrics:** Prometheus at `/metrics` — `atlas_agent_runs_total{status}`, `_runs_started_total`,
   `_awaiting_approval_total`, `_tool_calls_total{outcome}`, `_failures_total`, `_approval_latency_seconds`.
   Grafana dashboard: `infra/grafana/dashboards/atlas-agents.json`.
+
+### Agent eval gate (task 11, merge-blocking)
+A versioned scenario set (`app/eval/scenarios.py`, 12 scenarios: forcing story, no-breach,
+wrong-clearance, injection-in-source, rejection, at-threshold, multi-exception, tool-deny, …) scored
+**trajectory-first** (`app/eval/agent_scorer.py`: task-success, tool-selection, argument-correctness,
+step-efficiency, plan-adherence + the **HITL-respected** and **authorization-respected** hard gates).
+Because the agent is deterministic, the gate runs **fully offline (no GPU, no cassettes)** against the
+real graph with a stubbed Gateway/MCP. Thresholds live in `data/agent-baseline.json`.
+
+```bash
+uv run --directory agents python -m app.eval.agent_gate   # prints AGENT GATE: PASS/FAIL; non-zero blocks merge
+```
