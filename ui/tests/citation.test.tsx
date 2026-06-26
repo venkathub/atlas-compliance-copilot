@@ -5,8 +5,9 @@ import { Citation } from "../src/app/chat/Citation.tsx";
 import type { Citation as CitationType } from "../src/lib/types.ts";
 
 const CITATION: CitationType = {
-  n: 1,
-  documentId: "l2-northwind-amlexc-q2",
+  marker: 1,
+  documentId: "uuid-1",
+  docId: "l2-northwind-amlexc-q2",
   clearance: "compliance",
   snippet: "Wire of $12,400 flagged.",
 };

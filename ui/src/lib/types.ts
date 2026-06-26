@@ -28,28 +28,66 @@ export interface LoginResponse {
 }
 
 // ── RAG chat (POST /v1/query, P3 envelope) ─────────────────────────────────
+// NOTE: field names mirror the REAL frozen Gateway contract (relays the rag-engine
+// QueryResponse + adds routing/cache/redaction/cost sections), which differs from the
+// spec §2.3 illustration: citation index is `marker` (not `n`); routing is
+// {modelTier,model,escalated}; cost is {promptTokens,completionTokens,costUnits,latencyMs}.
+export interface QueryRequest {
+  query: string;
+  topK?: number;
+  includeContexts?: boolean;
+}
+
 export interface Citation {
-  n: number;
-  documentId: string;
+  marker: number; // the [n] number
+  documentId: string; // UUID
+  docId?: string; // human slug, e.g. "l2-aml-policy-overview"
+  title?: string;
+  sourceUri?: string;
+  chunkId?: string;
   clearance: Clearance;
+  score?: number;
   snippet: string;
 }
 
 export interface Routing {
-  tier: string; // e.g. "TIER1_SMALL"
-  cache: "hit" | "miss" | string;
+  modelTier: string; // e.g. "tier1-small" | "cache"
+  model?: string; // concrete model id, e.g. "qwen2.5:3b-instruct"
+  escalated?: boolean;
+}
+
+export interface Cache {
+  hit: boolean;
+  similarity?: number; // only present on a hit
 }
 
 export interface Cost {
-  inputTokens: number;
-  outputTokens: number;
-  units: number;
+  promptTokens: number;
+  completionTokens: number;
+  costUnits: number;
+  latencyMs: number;
+}
+
+export interface RetrievalTrace {
+  denseHits: number;
+  sparseHits: number;
+  fused: number;
+  reranked: number;
+  clearanceApplied: string;
+}
+
+export interface Redaction {
+  applied: boolean;
+  counts: Record<string, number>;
 }
 
 export interface QueryResponse {
   answer: string; // inline [n]-cited markdown — treated as UNTRUSTED at render (LLM05)
   citations: Citation[];
+  retrieval?: RetrievalTrace;
   routing: Routing;
+  cache: Cache;
+  redaction?: Redaction;
   cost: Cost;
 }
 

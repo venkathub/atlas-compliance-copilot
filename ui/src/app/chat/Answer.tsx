@@ -32,7 +32,7 @@ export function Answer({
         <div className="flex flex-wrap items-center gap-1 border-t border-slate-100 pt-2 text-sm">
           <span className="mr-1 text-xs uppercase tracking-wide text-slate-500">Sources</span>
           {citations.map((c) => (
-            <Citation key={c.n} citation={c} />
+            <Citation key={c.marker} citation={c} />
           ))}
         </div>
       )}

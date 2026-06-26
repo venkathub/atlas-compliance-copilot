@@ -5,8 +5,9 @@ import type { Citation } from "../src/lib/types.ts";
 
 const CITATIONS: Citation[] = [
   {
-    n: 1,
-    documentId: "l2-northwind-amlexc-q2",
+    marker: 1,
+    documentId: "uuid-1",
+    docId: "l2-northwind-amlexc-q2",
     clearance: "compliance",
     snippet: "Exception over $10k.",
   },

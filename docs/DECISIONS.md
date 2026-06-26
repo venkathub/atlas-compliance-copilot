@@ -240,6 +240,13 @@
   intelligence / contracts frozen." The final rendered payload stays byte-identical to today's envelope,
   preserving grounding/citation/cost guarantees.
 - **Consequences:** If SSE (b) is later added it is additive (`Accept: text/event-stream`); the JSON path remains.
+- **Implementation note (2026-06-26, Task 3 — chat answer reveal):** `useProgressiveReveal` reveals the
+  already-complete `/v1/query` answer word-by-word (`prefers-reduced-motion` → instant) — converging on the
+  byte-identical answer. Verified against the **real** frozen `/v1/query` contract, which differs from the spec
+  §2.3 illustration (corrected in `ui/src/lib/types.ts`): citation index is **`marker`** (not `n`) and carries
+  `docId`/`title`/`sourceUri`/`score`; telemetry is `routing{modelTier,model,escalated}` + `cache{hit}` +
+  `cost{promptTokens,completionTokens,costUnits,latencyMs}` + a `redaction{applied,counts}` section — surfaced
+  as `MetaBadges` (cost-as-a-feature). The agent-trace polling (c) lands with Task 4.
 
 ### ADR-0050 — Spring AI version for P4 (bump to 1.1.x on Spring Boot 3.x; defer 2.0/Boot 4)
 - **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-10), §8 (G-P4-2)

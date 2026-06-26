@@ -5,14 +5,32 @@ contracts. Streamed, cited answers; the human-in-the-loop agent approval surface
 collapsible execution trace; and a **read-only** admin area (eval scores, cost/latency,
 audit log). All model/markdown output is **sanitized before render** (OWASP LLM05).
 
-> **Status — P5 Task 2 (safe render, LLM05).** Auth (Task 1) in place, plus the
-> **render-boundary sanitizer** (`lib/sanitize.ts`: `marked` → DOMPurify allowlist,
-> link hardening, scheme allowlist) and the `Answer` + `Citation` components. The
-> **phase-blocking LLM05 XSS-fixture gate** (`tests/sanitize.test.ts`) proves
-> `<script>` / `onerror` / `javascript:` / `data:` payloads render inert. Still to
-> come: the chat query path (Task 3), the agent/HITL surface (Task 4), the additive
-> `GET /v1/audit` admin views (Task 6), the Caddy reverse proxy + CSP (Task 7), and
-> deploy automation (Tasks 8/10).
+> **Status — P5 Task 3 (RAG chat path).** Auth (1) + safe render (2) in place, plus
+> the **chat query path**: a composer + conversation list calling the frozen
+> `POST /v1/query` (`useQuery`), the cited `Answer`, **cost/cache/latency `MetaBadges`**,
+> a **client-side progressive reveal** (`useProgressiveReveal`, reduced-motion aware),
+> and the **AI-transparency** surface (session-start disclosure + per-message
+> "AI-generated" label, G-P5-4). Still to come: the agent/HITL surface (Task 4), the
+> additive `GET /v1/audit` admin views (Task 6), the Caddy reverse proxy + CSP (Task 7),
+> and deploy automation (Tasks 8/10).
+
+## Real `/v1/query` contract (frozen Gateway)
+
+The chat path matches the **actual** Gateway response (it relays the rag-engine
+envelope and merges `routing`/`cache`/`redaction`/`cost`), which differs from the spec
+§2.3 illustration — corrected in `lib/types.ts` since the backend is frozen:
+
+```
+POST /v1/query  body { "query": "…", "topK"?, "includeContexts"? }
+200  { answer, citations[], retrieval?, routing{modelTier,model,escalated},
+       cache{hit,similarity?}, redaction{applied,counts}, cost{promptTokens,
+       completionTokens,costUnits,latencyMs} }
+```
+
+Citation index is **`marker`** (not `n`); citations also carry `docId` (human slug),
+`title`, `sourceUri`, `score`. Errors surfaced as calm messages: **402** budget,
+**413** too-long, **429** rate-limit, **503** unavailable. No streaming exists
+server-side, so the "live" feel is the client-side reveal (D-P5-1a / ADR-0051).
 
 ## Safe rendering (OWASP LLM05)
 

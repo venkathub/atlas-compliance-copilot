@@ -4,6 +4,7 @@ import { LoginPage } from "./auth/LoginPage.tsx";
 import { useAuth } from "./auth/AuthContext.tsx";
 import { useClearance } from "./auth/useClearance.ts";
 import { clearanceLabel } from "./auth/clearance.ts";
+import { ChatPage } from "./chat/ChatPage.tsx";
 import type { Clearance } from "../lib/types.ts";
 
 /**
@@ -62,11 +63,7 @@ function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-// Placeholder surfaces — replaced by the real Chat (Tasks 3–4) and Admin (Task 6).
-function ChatPlaceholder() {
-  return <p className="text-slate-600">Chat surface — implemented in P5 Tasks 2–4.</p>;
-}
-
+// Admin remains a placeholder until Task 6.
 function AdminPlaceholder() {
   return <p className="text-slate-600">Admin (read-only) — implemented in P5 Task 6.</p>;
 }
@@ -80,7 +77,7 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <AppShell>
-              <ChatPlaceholder />
+              <ChatPage />
             </AppShell>
           </RequireAuth>
         }
