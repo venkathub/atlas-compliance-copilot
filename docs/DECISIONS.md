@@ -152,6 +152,14 @@
 - **Consequences:** No persistence across refresh. UI clearance gating is **UX only** — backends re-enforce
   (P1 RBAC, MCP OAuth re-check, refuse-`<compliance` on `/v1/audit`). Builds on **ADR-0034**; upgrade to (c) via
   a new ADR if real auth is added.
+- **Implementation note (2026-06-26, Task 1 — resolves the §7 assumption):** the real frozen `SimIdpController`
+  contract differs from the spec §2.3 illustration — request field is **`user`** (not `subject`); the response
+  also returns **`tokenType`** + **`subject`**. The sim-IdP returns the verified **`clearance`** in the response
+  body, so the SPA needs **no client-side JWT decoding** (smaller XSS surface). Seeded identities surfaced in the
+  one-click picker (owner-confirmed: show all four): **`priya`** (compliance), **`bsa-admin`** (restricted),
+  **`analyst-bob`** (analyst), **`guest-public`** (public); clearance ladder `public < analyst < compliance <
+  restricted`. No `/refresh` endpoint and **no Gateway CORS change** (the ADR-0052 single-origin proxy makes
+  every call same-origin) — the Gateway stays frozen.
 
 ### ADR-0055 — Reverse proxy + TLS; P5 deploy-gate scope (live box deferred)
 - **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §1.7, §3 (D-P5-5), §4.5, §8 (G-P5-6)

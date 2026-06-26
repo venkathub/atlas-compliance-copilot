@@ -5,12 +5,37 @@ contracts. Streamed, cited answers; the human-in-the-loop agent approval surface
 collapsible execution trace; and a **read-only** admin area (eval scores, cost/latency,
 audit log). All model/markdown output is **sanitized before render** (OWASP LLM05).
 
-> **Status — P5 Task 0 (skeleton).** Vite + React + TypeScript + Tailwind v4 toolchain
-> scaffolded and wired into CI (lint · typecheck · format · unit test · build). The
-> `apiClient` fetch wrapper, the typed backend contracts (`src/lib/types.ts`), and a
-> `sanitize` **stub** are in place. **No app logic yet** — auth (Task 1), the sanitized
-> chat surface (Tasks 2–4), the additive `GET /v1/audit` admin views (Task 6), the
-> Caddy reverse proxy (Task 7), and deploy automation (Tasks 8/10) follow.
+> **Status — P5 Task 1 (auth).** Toolchain scaffolded + wired into CI (Task 0). The
+> **in-memory** sim-IdP login + `AuthContext` are in place: a one-click identity picker
+> (`/login`), Bearer-attach + `401`→login on the `apiClient`, clearance-based tab gating,
+> and a minimal router (`/login`, `/chat`, clearance-gated `/admin`). Chat/admin bodies
+> are placeholders — the sanitized chat surface (Tasks 2–4), the additive `GET /v1/audit`
+> admin views (Task 6), the Caddy reverse proxy (Task 7), and deploy automation (Tasks
+> 8/10) follow.
+
+## sim-IdP contract (real, frozen Gateway)
+
+The login surface matches the **actual** `SimIdpController` contract, which differs from
+the spec §2.3 illustration (corrected here, since the backend is frozen):
+
+```
+POST /v1/auth/token   body { "user": "priya" }          # field is `user`, not `subject`
+200  { token, tokenType:"Bearer", expiresIn:3600, subject, clearance }
+```
+
+Seeded identities (the only accepted logins) and their clearance:
+
+| `user` (login id) | Clearance    | Who                  |
+| ----------------- | ------------ | -------------------- |
+| `priya`           | `compliance` | Priya — Compliance   |
+| `bsa-admin`       | `restricted` | BSA Officer / Admin  |
+| `analyst-bob`     | `analyst`    | Bob — Markets Analyst|
+| `guest-public`    | `public`     | Public Guest         |
+
+Clearance ladder: `public < analyst < compliance < restricted`. There is no `/refresh`
+endpoint — a page refresh drops the in-memory token and the user re-logs-in (D-P5-6).
+No CORS is needed on the Gateway: the single-origin proxy (dev: Vite proxy; prod: Caddy)
+makes every call same-origin (ADR for D-P5-2). The Gateway stays untouched.
 
 ## Design boundaries (why this stays thin)
 

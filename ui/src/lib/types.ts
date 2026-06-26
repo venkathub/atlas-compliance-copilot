@@ -5,18 +5,26 @@
  * trusted backends return; it never constructs a write or holds a secret.
  */
 
-/** Clearance levels (ascending). Mirrors the sim-IdP / RBAC vocabulary. */
-export type Clearance = "public" | "analyst" | "compliance";
+/**
+ * Clearance levels (ascending). Mirrors the FROZEN sim-IdP / RBAC vocabulary
+ * (gateway `Clearance` enum): public(0) < analyst(1) < compliance(2) < restricted(3).
+ */
+export type Clearance = "public" | "analyst" | "compliance" | "restricted";
 
 // ── Login (POST /v1/auth/token, sim-IdP) ───────────────────────────────────
+// NOTE: field names mirror the REAL frozen Gateway contract (SimIdpController),
+// which differs from the spec §2.3 illustration: the request field is `user`
+// (not `subject`), and the response also returns `tokenType` + `subject`.
 export interface LoginRequest {
-  subject: string; // seeded identity, e.g. "priya" | "analyst" | "public"
+  user: string; // seeded identity: "priya" | "analyst-bob" | "guest-public" | "bsa-admin"
 }
 
 export interface LoginResponse {
   token: string;
+  tokenType: string; // "Bearer"
+  expiresIn: number; // seconds (default 3600)
+  subject: string; // echoes the requested user id
   clearance: Clearance;
-  expiresIn: number; // seconds
 }
 
 // ── RAG chat (POST /v1/query, P3 envelope) ─────────────────────────────────
