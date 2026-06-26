@@ -53,6 +53,31 @@ DRAFT Suspicious Activity Report for review — never auto-filed, fully audited.
 - **Reproducible hashes:** the app sets `ts` (truncated to microseconds) and appends under a
   transaction-scoped advisory lock, keeping the chain strictly linear.
 
+## Read-only audit query (P5 Task 5) — `GET /v1/audit`
+
+The first hand-written HTTP endpoint in the module (the rest is the MCP server): a **read-only**,
+**compliance-gated** view for the UI admin "Audit" tab. **Additive — no new write path; the
+append-only chain stays owned by `AuditService`.**
+
+```
+GET /v1/audit?page=0&size=25[&caller=…][&runId=…]    Authorization: Bearer <jwt>
+200 { page, size, total, chainVerified, rows: [ { seq, ts, runId, tool, phase, caller, clearance, resultRef } ] }
+401  no/invalid token        403  valid token but clearance < compliance
+```
+
+- **Auth:** the same OAuth 2.1 resource server that guards `/mcp` now also requires a valid Bearer on
+  `/v1/audit` (`ResourceServerConfig`); a per-request `ClearanceRecheck.require(...)` refuses
+  `< compliance` → **403** (the token is valid, the clearance isn't).
+- **SELECT-only** via `JdbcTemplate` (`AuditQueryDao`), newest-first by `seq`, offset pagination
+  (`size` clamped 1–100). The runtime app role already has `SELECT`.
+- **`chainVerified`** is a **global** integrity flag — `AuditChainVerifier.verify()` recomputes the
+  whole chain (genesis → tip), independent of the returned page.
+- **LLM02:** the projection omits `args_digest` and the hash-chain columns (`prev_hash`/`row_hash`) —
+  it surfaces refs/digests, never raw PII.
+- **Filters** are `caller` and `runId` (both indexed). A SAR's `account` is **not** a stored column
+  (it lives only inside the hashed `args_digest`), so it is not filterable without touching the frozen
+  write path.
+
 ## Architecture (target, P4)
 - **MCP server** — Spring AI MCP server starter on WebMVC, Streamable HTTP (`spring.ai.mcp.server.protocol=STREAMABLE`); SSE is deprecated (ADR-0043 / ADR-0050).
 - **OAuth 2.1 resource server** — validates signature + `exp` + `iss` + **`aud`** (RFC 8707 resource indicators); re-derives clearance from the token.

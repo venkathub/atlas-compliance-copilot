@@ -214,6 +214,15 @@
   anonymous iframe; keeps admin strictly read-only.
 - **Consequences:** Adds a read-only `GET /v1/audit` to `mcp-tools` (SELECT-only; refuse-`<compliance`); Grafana
   embed config + matching CSP (ADR-0058). **No write / admin-action surface.**
+- **Implementation note (2026-06-26, Task 5 — `GET /v1/audit`):** the first HTTP controller in `mcp-tools`
+  (`AuditController` + `AuditQueryDao`, plain `JdbcTemplate`, no JPA). Secured by adding
+  `/v1/audit` to the existing OAuth 2.1 resource server (`ResourceServerConfig`); a per-request
+  `ClearanceRecheck.require(...)` maps `< compliance` to **403** (valid token, insufficient clearance). The
+  projection (`AuditRowView`) omits `args_digest`/`prev_hash`/`row_hash` (LLM02); `chainVerified` =
+  `AuditChainVerifier.verify().valid()` (global, whole-chain). **Spec deviation (frozen schema):** the §2.2
+  `?account=` filter is not implementable — `account` is not a column (it lives inside the hashed
+  `args_digest`); the indexed, queryable filters are **`caller`** and **`runId`**, which the endpoint exposes
+  instead. 6 Testcontainers ITs (`AuditControllerIT`): 401/403/200, pagination, filters, no-PII, SELECT-only.
 
 ### ADR-0052 — UI↔backend topology (Caddy single-origin reverse proxy)
 - **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §3 (D-P5-2), §2.1
