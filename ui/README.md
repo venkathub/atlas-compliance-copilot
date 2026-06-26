@@ -5,13 +5,25 @@ contracts. Streamed, cited answers; the human-in-the-loop agent approval surface
 collapsible execution trace; and a **read-only** admin area (eval scores, cost/latency,
 audit log). All model/markdown output is **sanitized before render** (OWASP LLM05).
 
-> **Status — P5 Task 1 (auth).** Toolchain scaffolded + wired into CI (Task 0). The
-> **in-memory** sim-IdP login + `AuthContext` are in place: a one-click identity picker
-> (`/login`), Bearer-attach + `401`→login on the `apiClient`, clearance-based tab gating,
-> and a minimal router (`/login`, `/chat`, clearance-gated `/admin`). Chat/admin bodies
-> are placeholders — the sanitized chat surface (Tasks 2–4), the additive `GET /v1/audit`
-> admin views (Task 6), the Caddy reverse proxy (Task 7), and deploy automation (Tasks
-> 8/10) follow.
+> **Status — P5 Task 2 (safe render, LLM05).** Auth (Task 1) in place, plus the
+> **render-boundary sanitizer** (`lib/sanitize.ts`: `marked` → DOMPurify allowlist,
+> link hardening, scheme allowlist) and the `Answer` + `Citation` components. The
+> **phase-blocking LLM05 XSS-fixture gate** (`tests/sanitize.test.ts`) proves
+> `<script>` / `onerror` / `javascript:` / `data:` payloads render inert. Still to
+> come: the chat query path (Task 3), the agent/HITL surface (Task 4), the additive
+> `GET /v1/audit` admin views (Task 6), the Caddy reverse proxy + CSP (Task 7), and
+> deploy automation (Tasks 8/10).
+
+## Safe rendering (OWASP LLM05)
+
+Model output is treated as **untrusted interpreter input**. Anything rendered as HTML
+goes through `sanitizeMarkdown` (markdown → DOMPurify allowlist) first; snippets/audit
+cells go through `sanitizeText`. Guarantees: no `<script>`/event handlers/`<iframe>`,
+URLs limited to http(s)/mailto/tel/relative/anchor (`javascript:`/`data:` stripped),
+external links forced to `target="_blank" rel="noopener noreferrer"`. This is the
+**client wall**; the Caddy proxy CSP (Task 7) is the independent **second wall**
+(ADR-0058). assistant-ui was evaluated and not adopted — its streaming runtime would
+force a backend change (ADR-0054 fallback to a hand-rolled `Answer`/`Citation`).
 
 ## sim-IdP contract (real, frozen Gateway)
 
@@ -25,12 +37,12 @@ POST /v1/auth/token   body { "user": "priya" }          # field is `user`, not `
 
 Seeded identities (the only accepted logins) and their clearance:
 
-| `user` (login id) | Clearance    | Who                  |
-| ----------------- | ------------ | -------------------- |
-| `priya`           | `compliance` | Priya — Compliance   |
-| `bsa-admin`       | `restricted` | BSA Officer / Admin  |
-| `analyst-bob`     | `analyst`    | Bob — Markets Analyst|
-| `guest-public`    | `public`     | Public Guest         |
+| `user` (login id) | Clearance    | Who                   |
+| ----------------- | ------------ | --------------------- |
+| `priya`           | `compliance` | Priya — Compliance    |
+| `bsa-admin`       | `restricted` | BSA Officer / Admin   |
+| `analyst-bob`     | `analyst`    | Bob — Markets Analyst |
+| `guest-public`    | `public`     | Public Guest          |
 
 Clearance ladder: `public < analyst < compliance < restricted`. There is no `/refresh`
 endpoint — a page refresh drops the in-memory token and the user re-logs-in (D-P5-6).

@@ -128,6 +128,15 @@
   should show.
 - **Consequences:** Extends **ADR-0037** to the UI/proxy layer; CSP nonces require build↔proxy coordination; no
   prior-phase change.
+- **Implementation note (2026-06-26, Task 2 — client wall):** `ui/src/lib/sanitize.ts` ships the wall (a):
+  `sanitizeMarkdown` = `marked` (GFM) → DOMPurify allowlist (`FORBID_TAGS` style/iframe/object/embed/form/input,
+  `ALLOWED_URI_REGEXP` = http(s)/mailto/tel/relative/anchor only, `afterSanitizeAttributes` hook forces
+  `target=_blank rel="noopener noreferrer"`), plus `sanitizeText` for snippets/audit cells. `Answer` uses
+  `dangerouslySetInnerHTML` **only** on the sanitized string; `Citation` renders snippets as React text nodes
+  (doubly inert). The phase-blocking XSS-fixture suite lives in `ui/tests/sanitize.test.ts` (+ answer/citation
+  DOM-inert tests). The CSP/header wall (b) lands at the Caddy proxy in Task 7. **assistant-ui (G-P5-1/ADR-0054)
+  evaluated and NOT adopted:** its runtime assumes a streaming wire protocol that would force a change to the
+  frozen synchronous contracts, so a hand-rolled `Answer`/`Citation` pair is lighter — the ADR-0054 fallback.
 
 ### ADR-0057 — Multimodal frontier-model demo (budget-gated stretch)
 - **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §3 (D-P5-7)
