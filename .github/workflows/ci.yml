@@ -59,6 +59,43 @@ jobs:
       - name: Pytest (agents — model-free; checkpointer IT uses Testcontainers/Docker)
         run: uv run --directory agents --group dev pytest -q
 
+  ui:
+    name: UI lint, typecheck, test & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          # Pinned to the repo-root .nvmrc (Node 22) — the build runs on the same
+          # toolchain the deployed static bundle is produced with.
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install (clean, lockfile-pinned)
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Format check
+        run: npm run format:check
+      - name: Unit/component tests (Vitest)
+        run: npm test
+      - name: Build (static assets)
+        run: npm run build
+      # LLM02 defense-in-depth: the public bundle must carry NO secret/env value.
+      # A real allowlist-scan lands with the security gate (Task 2/7); this is the
+      # skeleton hook so the gate exists from day one.
+      - name: Assert no obvious secret in the built bundle
+        run: |
+          if grep -rEi "signing[_-]?key|_password|_secret=|PRIVATE KEY" dist/; then
+            echo "::error::Potential secret found in built UI bundle"; exit 1
+          fi
+          echo "No obvious secret tokens in dist/."
+
   evals-gate:
     name: Eval gate (RAGAS + adversarial, cassette-replay)
     runs-on: ubuntu-latest
