@@ -5,14 +5,29 @@ contracts. Streamed, cited answers; the human-in-the-loop agent approval surface
 collapsible execution trace; and a **read-only** admin area (eval scores, cost/latency,
 audit log). All model/markdown output is **sanitized before render** (OWASP LLM05).
 
-> **Status — P5 Task 3 (RAG chat path).** Auth (1) + safe render (2) in place, plus
-> the **chat query path**: a composer + conversation list calling the frozen
-> `POST /v1/query` (`useQuery`), the cited `Answer`, **cost/cache/latency `MetaBadges`**,
-> a **client-side progressive reveal** (`useProgressiveReveal`, reduced-motion aware),
-> and the **AI-transparency** surface (session-start disclosure + per-message
-> "AI-generated" label, G-P5-4). Still to come: the agent/HITL surface (Task 4), the
-> additive `GET /v1/audit` admin views (Task 6), the Caddy reverse proxy + CSP (Task 7),
-> and deploy automation (Tasks 8/10).
+> **Status — P5 Task 4 (agent + HITL).** Auth (1) + safe render (2) + RAG chat (3) in
+> place, plus the **governed-action surface**: an "Investigate as governed action" mode
+> drives the frozen P4 agent (`useAgentRun`: `POST /v1/agent/runs` → `AWAITING_APPROVAL`
+> → GET-poll trace), an `ApprovalCard` (Approve/Reject with the **"AI-assisted draft —
+> requires human review"** stamp), a collapsible `TracePanel`, and the terminal draft-SAR
+> result. The UI only _forwards_ the human decision to `…/resume` — it never constructs a
+> write. Still to come: the additive `GET /v1/audit` admin views (Task 6), the Caddy
+> reverse proxy + CSP (Task 7), and deploy automation (Tasks 8/10).
+
+## Real agent contract (frozen Agents, :8083)
+
+```
+POST /v1/agent/runs   {query, account, period}   (Bearer required; period ^\d{4}-Q[1-4]$)
+  → {runId, status, answer, citations[], proposedAction{tool,args}, action, auditRef, trace[]}
+POST /v1/agent/runs/{id}/resume   {approved?, note?, breach?}   (forwards the human decision)
+GET  /v1/agent/runs/{id}          (poll status + trace)
+status ∈ AWAITING_APPROVAL · AWAITING_CLARIFICATION · RUNNING · COMPLETED · REJECTED · FAILED
+```
+
+Agent citations use **`n`** (distinct from `/v1/query`'s `marker`) and are adapted to the
+shared `Citation` render shape (`agentCitations.ts`). Single-use resume replays the
+terminal state (200, not 409). The HITL invariant is asserted in tests: rejecting yields
+no `draftRef`, and the UI never POSTs to a tool/MCP path.
 
 ## Real `/v1/query` contract (frozen Gateway)
 

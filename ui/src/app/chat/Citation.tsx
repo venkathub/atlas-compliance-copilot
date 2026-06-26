@@ -13,7 +13,7 @@ import { clearanceLabel } from "../auth/clearance.ts";
 export function Citation({ citation }: { citation: CitationType }) {
   const [open, setOpen] = useState(false);
   const popoverId = `citation-${citation.marker}-popover`;
-  const sourceId = citation.docId ?? citation.documentId;
+  const sourceId = citation.docId ?? citation.documentId ?? `source ${citation.marker}`;
 
   return (
     <span className="relative inline-block align-baseline">
@@ -37,10 +37,14 @@ export function Citation({ citation }: { citation: CitationType }) {
           {citation.title && (
             <span className="mt-0.5 block text-slate-600">{sanitizeText(citation.title)}</span>
           )}
-          <span className="mt-1 block text-slate-500">
-            Clearance: {clearanceLabel(citation.clearance)}
-          </span>
-          <span className="mt-2 block text-slate-700">{sanitizeText(citation.snippet)}</span>
+          {citation.clearance && (
+            <span className="mt-1 block text-slate-500">
+              Clearance: {clearanceLabel(citation.clearance)}
+            </span>
+          )}
+          {citation.snippet && (
+            <span className="mt-2 block text-slate-700">{sanitizeText(citation.snippet)}</span>
+          )}
         </span>
       )}
     </span>

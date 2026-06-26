@@ -247,6 +247,13 @@
   `docId`/`title`/`sourceUri`/`score`; telemetry is `routing{modelTier,model,escalated}` + `cache{hit}` +
   `cost{promptTokens,completionTokens,costUnits,latencyMs}` + a `redaction{applied,counts}` section — surfaced
   as `MetaBadges` (cost-as-a-feature). The agent-trace polling (c) lands with Task 4.
+- **Implementation note (2026-06-26, Task 4 — agent trace + HITL):** `useAgentRun` GET-polls
+  `/v1/agent/runs/{id}` while `RUNNING` to animate the trace (c), and forwards the human Approve/Reject to
+  `…/resume` — the UI is the *trigger*, never the *authority* (the `act_sar` write is server-side unreachable
+  until `{approved:true}`). Verified against the real frozen P4 contract (camelCase wire): agent citations use
+  **`n`** (adapted to the `marker` render shape), trace steps carry node flags (no `ms`), and single-use resume
+  replays the terminal state (**200, no 409**). `ApprovalCard` stamps the draft "AI-assisted draft — requires
+  human review" (G-P5-4); a test asserts reject → no `draftRef` and no tool/MCP POST from the UI.
 
 ### ADR-0050 — Spring AI version for P4 (bump to 1.1.x on Spring Boot 3.x; defer 2.0/Boot 4)
 - **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-10), §8 (G-P4-2)

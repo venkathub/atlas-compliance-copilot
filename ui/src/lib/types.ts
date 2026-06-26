@@ -40,14 +40,14 @@ export interface QueryRequest {
 
 export interface Citation {
   marker: number; // the [n] number
-  documentId: string; // UUID
+  documentId?: string; // UUID (optional — agent citations omit it)
   docId?: string; // human slug, e.g. "l2-aml-policy-overview"
   title?: string;
   sourceUri?: string;
   chunkId?: string;
-  clearance: Clearance;
+  clearance?: Clearance; // optional — agent citations may omit clearance
   score?: number;
-  snippet: string;
+  snippet?: string;
 }
 
 export interface Routing {
@@ -92,7 +92,30 @@ export interface QueryResponse {
 }
 
 // ── Agent run (POST /v1/agent/runs → resume, P4) ───────────────────────────
-export type AgentRunStatus = "RUNNING" | "AWAITING_APPROVAL" | "COMPLETED" | "REJECTED" | "FAILED";
+// NOTE: mirrors the REAL frozen Agents contract (camelCase wire). Agent citations use
+// `n` (distinct from the gateway's `marker` citations); trace steps carry node-specific
+// booleans/counts (no `ms`); single-use resume replays the terminal state (200, no 409).
+export type AgentRunStatus =
+  | "RUNNING"
+  | "AWAITING_APPROVAL"
+  | "AWAITING_CLARIFICATION"
+  | "COMPLETED"
+  | "REJECTED"
+  | "FAILED";
+
+export interface RunRequest {
+  query: string;
+  account: string;
+  period: string; // must match ^\d{4}-Q[1-4]$ (e.g. "2026-Q2")
+}
+
+/** Agent-run citation shape (wire): uses `n`, fields nullable. Adapted to `Citation`. */
+export interface AgentCitation {
+  n: number;
+  documentId?: string;
+  clearance?: Clearance;
+  snippet?: string;
+}
 
 export interface ProposedAction {
   tool: string; // e.g. "open_draft_sar"
@@ -100,21 +123,22 @@ export interface ProposedAction {
 }
 
 export interface TraceStep {
-  node: string; // planner | retrieve | assess | approve | act
-  ms?: number;
-  [k: string]: unknown; // node-specific fields (e.g. breach:true)
+  node: string; // planner | retrieve | assess | approve | clarify | act_sar | rejected | finalize
+  [k: string]: unknown; // node-specific fields (e.g. breach:true, approved:true, citations:6)
 }
 
 export interface AgentAction {
-  draftRef: string; // e.g. "SAR-2026-000123"
-  status: string; // e.g. "DRAFT"
+  tool?: string; // e.g. "open_draft_sar"
+  draftRef?: string; // e.g. "SAR-2026-000123"
+  status?: string; // e.g. "DRAFT"
+  auditRef?: string;
 }
 
 export interface AgentRun {
   runId: string;
   status: AgentRunStatus;
   answer?: string;
-  citations?: Citation[];
+  citations?: AgentCitation[];
   proposedAction?: ProposedAction;
   trace?: TraceStep[];
   action?: AgentAction;
@@ -122,8 +146,9 @@ export interface AgentRun {
 }
 
 export interface ResumeRequest {
-  approved: boolean;
+  approved?: boolean;
   note?: string;
+  breach?: boolean; // used for the AWAITING_CLARIFICATION pause
 }
 
 // ── Audit read (GET /v1/audit, NEW read-only) ──────────────────────────────
