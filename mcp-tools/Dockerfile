@@ -25,6 +25,8 @@ WORKDIR /app
 COPY mcp-tools/target/mcp-tools-*-exec.jar /app/app.jar
 # Distroless has no shell/curl, so the HEALTHCHECK uses the JRE + the portable probe class.
 COPY --from=healthprobe /probe/HealthCheck.class /app/HealthCheck.class
+# Run as the distroless non-root user (uid 65532) — explicit (satisfies Trivy DS-0002).
+USER 65532:65532
 EXPOSE 8082
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD ["java", "-cp", "/app", "HealthCheck", "http://127.0.0.1:8082/actuator/health"]

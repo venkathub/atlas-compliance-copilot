@@ -354,7 +354,7 @@ latency panel now **p50 + p95** · **0** lint errors (promtool + amtool) · **0*
 - **Closed the CI gate loop: block deploy on cost regression, not just hallucination.** Added a
   **cost-regression gate** (`atlas_evals.cost_gate`) that validates the committed gateway cost evidence still
   meets its reduction target, wired into the CI eval-gate job — so a merge is blocked on **quality OR cost**.
-  Flipped **Trivy** from report-only to **gating on fixable CRITICAL/HIGH** (with an auditable `.trivyignore`).
+  Flipped **Trivy** from report-only to **gating on fixable CRITICAL/HIGH** (with an auditable, dated `.trivyignore.yaml` (incl. a justified MCP-SDK CVE exception)).
   Added a **manual gated deploy workflow** (`deploy.yml`): a `gate` job (RAGAS + gateway-path + agent + cost)
   that the `deploy` job `needs`, pulling SHA-pinned multi-arch GHCR images via `compose pull/up` + `smoke.sh`,
   with a one-input **rollback** (re-run with a previous SHA) — a documented dry-run until the box exists.
@@ -403,3 +403,11 @@ referenced · README **~3 KB → ~9 KB** of accurate, current content.
 on top of the inherited gates · **5/5** containers hardened (health/non-root/limits) · **4/4** services with
 structured JSON logs + correlation · **5** Prometheus alerts + Alertmanager · CI blocks on **quality + cost** ·
 **1** gated, rollback-able deploy pipeline · **1** automated 3-min demo · a finalized README.
+
+**Pre-merge verification (local):** full `mvn -B verify` **BUILD SUCCESS** across all modules incl. the
+Testcontainers ITs (gateway 69 unit + 14 IT · rag-engine · mcp-tools 15 unit + 27 IT) — confirming the P6
+logging/tracing/correlation changes don't regress the integration suite; **Trivy** (now-blocking settings)
+**exit 0** after adding explicit `USER 65532` to the three distroless Java images and a **dated, justified
+`.trivyignore.yaml`** for the Caddy edge-proxy `USER` misconfig + the transitive MCP-SDK DNS-rebinding CVE
+(not exploitable: `/mcp` is never browser-routed — agent-only, OAuth2.1 aud-scoped). The only item that
+**cannot** be completed off-box remains the live Oracle A1 deploy (a documented dry-run, RUNBOOK §9.4).

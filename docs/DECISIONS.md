@@ -137,7 +137,7 @@
 
 ### ADR-0064 — CI/CD: cost-regression gate, Trivy CRITICAL/HIGH gating, manual gated deploy + rollback
 - **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `evals/atlas_evals/cost_gate.py`,
-  `evals/tests/test_cost_gate.py`, `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`, `.trivyignore`
+  `evals/tests/test_cost_gate.py`, `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`, `.trivyignore.yaml`
 - **Context:** The P5 CI gate blocked merges on **quality** (RAGAS faithfulness floor + 100%-pass adversarial
   ≈ hallucination) but **not on cost** — `gateway-baseline.json` recorded cost but nothing enforced it. Trivy
   was **report-only** (`exit-code: 0`). And there was no pipeline that runs the gate *before* a deploy or a
@@ -154,7 +154,7 @@
     re-runs `cost_report` live (RUNBOOK §7.4), which rewrites the evidence; a regression below target then
     fails CI.
   - **Trivy gating:** flipped `exit-code` `0 → 1` on fixable **CRITICAL/HIGH** (`ignore-unfixed: true`), with a
-    `.trivyignore` for auditable, time-boxed exceptions.
+    `.trivyignore.yaml` for auditable, time-boxed exceptions.
   - **Deploy workflow** (`deploy.yml`, manual `workflow_dispatch`): a `gate` job (RAGAS + gateway-path +
     agent + cost) that the `deploy` job `needs`, so **deploy cannot run unless every gate passes**; the deploy
     step pulls the SHA-pinned multi-arch GHCR images and runs `compose pull/up` + `smoke.sh` over SSH, and is a
@@ -166,7 +166,7 @@
   no DB migration.
 - **Consequences:** The cost gate enforces the **reduction target**, not an absolute $ feed (documented; the
   optional ceiling field covers absolute regressions). Flipping Trivy to blocking may newly-fail CI on a
-  fixable CVE — that is the intent; triage via `.trivyignore`. The live deploy stays a dry-run until the box
+  fixable CVE — that is the intent; triage via `.trivyignore.yaml`. The live deploy stays a dry-run until the box
   is provisioned.
 - **Verification:** `cost_gate` unit tests (**7**, incl. below-target / ceiling / missing-field / the
   committed baseline passing) + full **evals suite 70 passed**; `atlas_evals.gate` **PASS** and

@@ -25,6 +25,9 @@ WORKDIR /app
 COPY gateway/target/gateway-*-exec.jar /app/app.jar
 # Distroless has no shell/curl, so the HEALTHCHECK uses the JRE + the portable probe class.
 COPY --from=healthprobe /probe/HealthCheck.class /app/HealthCheck.class
+# Run as the distroless non-root user (uid 65532). The :nonroot base already drops root; this
+# makes it explicit (defense against a base change + satisfies Trivy DS-0002 static check).
+USER 65532:65532
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD ["java", "-cp", "/app", "HealthCheck", "http://127.0.0.1:8080/actuator/health"]

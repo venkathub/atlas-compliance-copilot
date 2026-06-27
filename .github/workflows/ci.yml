@@ -182,7 +182,7 @@ jobs:
       - uses: actions/checkout@v6
       # Gate on CRITICAL/HIGH vulnerabilities (P6 Task 5): a fixable CRITICAL/HIGH fails the build.
       # `ignore-unfixed` keeps it actionable (no failing on CVEs with no upstream fix yet); triage
-      # exceptions via a committed .trivyignore.
+      # accepted exceptions in the committed, dated `.trivyignore.yaml`.
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -190,6 +190,7 @@ jobs:
           scanners: vuln,misconfig,secret
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
           exit-code: "1"
           format: table
       - name: Generate SBOM (Syft)

@@ -259,7 +259,7 @@ GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`. Five jobs (= t
 | **Java build & test** | `mvn -B verify` (unit tests + Testcontainers ITs on the runner's Docker; live IT excluded) |
 | **Python lint & test** | `ruff` + `pytest` on `evals` |
 | **Secret scan (gitleaks)** | full-history secret scan |
-| **Vuln scan & SBOM** | Trivy fs scan (vuln+misconfig+secret) **gating on fixable CRITICAL/HIGH** (P6, `.trivyignore` for exceptions) + Syft CycloneDX SBOM artifact |
+| **Vuln scan & SBOM** | Trivy fs scan (vuln+misconfig+secret) **gating on fixable CRITICAL/HIGH** (P6, `.trivyignore.yaml` for exceptions) + Syft CycloneDX SBOM artifact |
 | **Multi-arch image build** | buildx amd64+arm64; pushes `ghcr.io/<repo>/rag-engine` + `…/ui` on `main` only |
 
 > **Eval + cost gate (P6).** The `evals-gate` job now also runs `python -m atlas_evals.cost_gate`, so a merge
@@ -271,7 +271,7 @@ GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`. Five jobs (= t
 
 **Branch protection (one-time, repo owner):** Settings → Branches → protect `main` → require a PR + require
 the five checks above + block force-pushes. Checks appear in the picker only after one green run.
-**Done (P6):** Trivy now blocks on fixable CRITICAL/HIGH (`exit-code 1`, exceptions via `.trivyignore`); the
+**Done (P6):** Trivy now blocks on fixable CRITICAL/HIGH (`exit-code 1`, exceptions via `.trivyignore.yaml`); the
 eval gate also runs the cost-regression gate. Still open: SHA-pin third-party actions.
 
 ## 6. Eval & observability harness — P2

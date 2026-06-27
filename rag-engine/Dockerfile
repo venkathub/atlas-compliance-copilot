@@ -31,6 +31,8 @@ COPY --from=healthprobe /probe/HealthCheck.class /app/HealthCheck.class
 # In production (behind the gateway's signed HMAC clearance assertion) this is overridden
 # to a non-local profile via the box .env (see infra/docker-compose.prod.yml).
 ENV SPRING_PROFILES_ACTIVE=local
+# Run as the distroless non-root user (uid 65532) — explicit (satisfies Trivy DS-0002).
+USER 65532:65532
 EXPOSE 8081
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD ["java", "-cp", "/app", "HealthCheck", "http://127.0.0.1:8081/actuator/health"]
