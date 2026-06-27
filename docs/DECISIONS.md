@@ -13,6 +13,7 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0063 | 2026-06-27 | Alerting: Prometheus rules (cost/error-rate/breaker/eval) + Alertmanager; latency p50/p95 panel | Accepted | P6 |
 | 0062 | 2026-06-27 | Structured JSON logging + X-Request-Id correlation across all services; gateway tracing; frontier kept off | Accepted | P6 |
 | 0061 | 2026-06-27 | Container hardening: distroless health-probe, agents multi-stage/non-root, prod-compose limits/health-ordering | Accepted | P6 |
 | 0060 | 2026-06-27 | Prod runbook: in-prod topology, env/secrets reference, $10/mo cost ceiling & frontier-off posture | Accepted | P6 |
@@ -98,6 +99,37 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0063 — Alerting: Prometheus rules + Alertmanager; latency p50/p95
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `infra/prometheus/alerts.rules.yml`,
+  `infra/prometheus/alertmanager.yml`, `infra/prometheus/prometheus.yml`, `infra/docker-compose.yml`,
+  `infra/Makefile`, `infra/grafana/dashboards/atlas-cost.json`
+- **Context:** P2–P5 shipped dashboards but **no firing alerts** — cost/error signals were only a Grafana
+  threshold band, and the cost ceiling had no automated tripwire. The owner-set ≈$10/mo cap (ADR-0060) needs a
+  warning *before* the in-app budget guard starts 402-ing, and reliability/quality regressions need to page.
+- **Options considered:** (a) Grafana-managed alerts vs (b) **Prometheus rules + Alertmanager**. Chose (b):
+  rules live in version control next to the scrape config, `promtool` lints them in CI-style, and Alertmanager
+  gives routing/inhibition/dedup that Grafana alerting doesn't match for infra signals. For paging, a real
+  integration vs a **no-op receiver**: chose the no-op default (no paid pager in a portfolio) with documented
+  Slack/email stubs — alerts are still visible in the Alertmanager + Prometheus UIs.
+- **Decision:** Five rules across cost/reliability/quality: **AtlasCostBudgetBurnHigh** (24h cost-units >80%
+  of the 100/day cap — the $10/mo tripwire), **AtlasGatewayHighErrorRate** (5xx ratio >5%/10m),
+  **AtlasModelCircuitBreakerOpen** (breaker open ≥2m — the graceful-degradation signal),
+  **AtlasServiceDown** (scrape down ≥2m), **AtlasEvalGateFailing** (`atlas_eval_gate_passed==0`). Added an
+  **Alertmanager** service to the always-on observability plane (digest-pinned, config seeded into a named
+  volume by `make seed-config`, Snap-Docker safe) with a single route + a critical fast-path + an inhibit rule.
+  Wired `rule_files` + `alerting` into prometheus.yml. Added a **p50** series alongside p95 on the gateway
+  latency panel.
+- **Rationale:** Ties the alert thresholds directly to the existing in-app guards and the cost narrative, keeps
+  everything declarative + lint-checkable, and stays free (no pager) while leaving a one-line path to real
+  paging. p50 next to p95 shows the typical-vs-tail latency story interviewers ask about.
+- **Consequences:** Alertmanager adds a small (~30 MB) always-on container. The cost rule uses an abstract
+  cost-unit→$ mapping (documented in the rule + RUNBOOK §11), not a billing feed. Alerts fire only when the
+  relevant series exist (e.g. eval gate must have pushed at least once).
+- **Verification:** `promtool check rules` (5 rules) + `promtool check config` (valid, 1 rule file) +
+  `amtool check-config` (valid: route, 1 inhibit, 1 receiver) all SUCCESS; cost dashboard JSON parses
+  (11 panels) with the p50/p95 panel; base `docker compose config` shows the alertmanager service + both
+  volumes.
 
 ### ADR-0062 — Structured JSON logging + X-Request-Id correlation across all services; gateway tracing; frontier kept off
 - **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `*/observability/RequestIdFilter.java`,

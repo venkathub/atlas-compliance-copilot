@@ -91,6 +91,12 @@ listener in the Caddyfile; the `agents` image (multi-stage, **non-root** uid 100
 > `$HOME` and run `docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile app
 > --profile proxy config`.
 
+**Alerting (P6 Task 4).** Prometheus loads `prometheus/alerts.rules.yml` and routes to a digest-pinned
+**Alertmanager** (`:9093`, config seeded into `atlas-alertmanager-config`). Five rules: cost-budget burn
+(the $10/mo tripwire), gateway 5xx rate, circuit-breaker-open, service-down, eval-gate-failing. No pager
+wired by default; add Slack/email in `prometheus/alertmanager.yml`. Lint locally with
+`promtool check rules prometheus/alerts.rules.yml` + `amtool check-config prometheus/alertmanager.yml`.
+
 ## Coming later in P0
 - Multi-arch (amd64 + arm64) image builds. *(Increment 4)*
 - GitHub Actions CI + supply-chain scanning (gitleaks / Trivy / Syft SBOM). *(Increment 4)*

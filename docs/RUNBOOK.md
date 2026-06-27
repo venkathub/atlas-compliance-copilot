@@ -278,7 +278,14 @@ make -C infra health             # postgres/redis/clickhouse health + langfuse/g
 open http://localhost:3000       # Langfuse (traces + eval datasets)
 open http://localhost:3001       # Grafana (eval-score / latency / trace-volume panels)
 open http://localhost:9090       # Prometheus (Status → Targets shows the rag-engine scrape)
+open http://localhost:9093       # Alertmanager (P6) — fired cost / error-rate / breaker / eval alerts
 ```
+**Alerting (P6 Task 4, ADR-0063).** Prometheus loads `infra/prometheus/alerts.rules.yml` (seeded by
+`make seed-config`) and routes to Alertmanager: **AtlasCostBudgetBurnHigh** (the $10/mo tripwire — 24h
+cost-units >80% of the daily cap, §11), **AtlasGatewayHighErrorRate** (5xx >5%), **AtlasModelCircuitBreakerOpen**,
+**AtlasServiceDown**, **AtlasEvalGateFailing**. No pager is wired by default (no-op receiver); add a
+Slack/email integration in `infra/prometheus/alertmanager.yml` for prod. See fired alerts at Prometheus
+`/alerts` or the Alertmanager UI (:9093).
 Langfuse is **headless-bootstrapped**: `make up` auto-creates the `atlas`/`atlas-rag`
 org+project and wires the API keys straight from `.env` (`LANGFUSE_PUBLIC_KEY` /
 `LANGFUSE_SECRET_KEY`) — no manual "create a project" step. Log into the UI with

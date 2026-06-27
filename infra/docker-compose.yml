@@ -301,6 +301,22 @@ services:
       - "${PUSHGATEWAY_PORT:-9091}:9091"
     restart: unless-stopped
 
+  # ── Alertmanager (P6 Task 4) — routes Prometheus alerts (cost / error-rate / breaker / evals) ──
+  # Config seeded into a named volume by `make seed-config` (Snap-Docker: no host bind mounts).
+  # No paid pager wired by default; alerts are visible in the Alertmanager UI + Prometheus /alerts.
+  alertmanager:
+    image: prom/alertmanager:v0.28.1@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba
+    container_name: atlas-alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    volumes:
+      - atlas-alertmanager-config:/etc/alertmanager
+      - atlas-alertmanager-data:/alertmanager
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:11.6.1@sha256:52c3e20686b860c6dc1f623811565773cf51eefa378817a4896dfc863c3c82c8
     container_name: atlas-grafana
@@ -363,6 +379,8 @@ volumes:
   atlas-minio-data:
   atlas-prometheus-data:
   atlas-grafana-data:
+  # Alertmanager dedup/silence state (P6 Task 4).
+  atlas-alertmanager-data:
   # Caddy's local CA + issued certs (the internal-TLS material) persist here.
   atlas-caddy-data:
   # Config volumes are seeded from repo files by `make up` (see infra/Makefile);
@@ -372,6 +390,10 @@ volumes:
     external: true
   atlas-grafana-config:
     name: atlas-grafana-config
+    external: true
+  # Alertmanager config, seeded from infra/prometheus/alertmanager.yml by `make seed-config`.
+  atlas-alertmanager-config:
+    name: atlas-alertmanager-config
     external: true
 
 networks:

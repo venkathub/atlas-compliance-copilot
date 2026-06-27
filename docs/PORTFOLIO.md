@@ -334,3 +334,19 @@ ruff clean; merged `docker compose config` applies `ecs`/`json` per service. Fro
 **no logging at all**) · **1** correlation id propagated across **4** hops · **3** Spring `RequestIdFilter`s +
 **1** FastAPI middleware · **+8** tests (3 Java + 5 Python) · **0** new Java logging dependencies (native ECS) ·
 gateway tracing **on** (export opt-in) · **0** log-injection vectors (allow-list validated).
+
+- **Wired end-to-end alerting on the cost + reliability + quality signals.** Added **5 Prometheus alert rules**
+  — a **cost tripwire** tied to the $10/mo ceiling (24h cost-units >80% of the daily cap), gateway **5xx
+  error-rate >5%**, **circuit-breaker-open**, **service-down**, and **eval-gate-failing** — routed through a
+  new **Alertmanager** (digest-pinned, config seeded Snap-Docker-safe into a named volume, with routing +
+  inhibition and documented Slack/email stubs). Added a **p50** latency series next to the existing p95 on the
+  cost dashboard. Everything is declarative and lint-checked.
+
+**Evidence (Task 4):** `promtool check rules` → **5 rules** OK; `promtool check config` → valid (1 rule file);
+`amtool check-config` → valid (route + 1 inhibit + 1 receiver); cost dashboard JSON parses (11 panels) with
+the p50/p95 panel; base `docker compose config` shows the `alertmanager` service + `atlas-alertmanager-config`
+/`-data` volumes. ADR-0063.
+
+**Quantified (Task 4):** **5** alert rules across **3** domains (cost / reliability / quality) · **1**
+Alertmanager (routing + inhibit + critical fast-path) · cost alert fires at **80%** of the $10/mo cap ·
+latency panel now **p50 + p95** · **0** lint errors (promtool + amtool) · **0** paid dependencies.

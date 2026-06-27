@@ -11,6 +11,16 @@ global:
   scrape_timeout: 10s
   evaluation_interval: 15s
 
+# Alerting rules (P6 Task 4) — seeded alongside this file into atlas-prometheus-config.
+rule_files:
+  - alerts.rules.yml
+
+# Route fired alerts to Alertmanager (in-compose service).
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 scrape_configs:
   # Spring Boot Actuator + Micrometer Prometheus registry on rag-engine.
   - job_name: rag-engine

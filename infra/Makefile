@@ -40,8 +40,11 @@ up:
 seed-config:
 	@docker volume create atlas-prometheus-config >/dev/null
 	@docker volume create atlas-grafana-config >/dev/null
+	@docker volume create atlas-alertmanager-config >/dev/null
 	@sed 's/$${RAG_ENGINE_PORT}/$(RAG_ENGINE_PORT)/g; s/$${GATEWAY_PORT}/$(GATEWAY_PORT)/g' prometheus/prometheus.yml \
 		| docker run --rm -i -v atlas-prometheus-config:/dest busybox sh -c 'cat > /dest/prometheus.yml'
+	@cat prometheus/alerts.rules.yml | docker run --rm -i -v atlas-prometheus-config:/dest busybox sh -c 'cat > /dest/alerts.rules.yml'
+	@cat prometheus/alertmanager.yml | docker run --rm -i -v atlas-alertmanager-config:/dest busybox sh -c 'cat > /dest/alertmanager.yml'
 	@tar -C grafana -cf - . | docker run --rm -i -v atlas-grafana-config:/dest busybox tar -C /dest -xf -
 
 down:
@@ -49,7 +52,7 @@ down:
 
 clean:
 	@cat docker-compose.yml | $(DC) down -v
-	@docker volume rm -f atlas-prometheus-config atlas-grafana-config >/dev/null 2>&1 || true
+	@docker volume rm -f atlas-prometheus-config atlas-grafana-config atlas-alertmanager-config >/dev/null 2>&1 || true
 
 health:
 	@echo "== container health =="
