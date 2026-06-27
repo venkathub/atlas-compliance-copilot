@@ -13,6 +13,7 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0065 | 2026-06-27 | 3-minute demo: docs/DEMO.md + automated e2e-demo Playwright walkthrough + deterministic seed script | Accepted | P6 |
 | 0064 | 2026-06-27 | CI/CD: cost-regression gate, Trivy CRITICAL/HIGH gating, manual gated deploy workflow + rollback | Accepted | P6 |
 | 0063 | 2026-06-27 | Alerting: Prometheus rules (cost/error-rate/breaker/eval) + Alertmanager; latency p50/p95 panel | Accepted | P6 |
 | 0062 | 2026-06-27 | Structured JSON logging + X-Request-Id correlation across all services; gateway tracing; frontier kept off | Accepted | P6 |
@@ -100,6 +101,39 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0065 — 3-minute demo: DEMO.md + automated e2e-demo walkthrough + deterministic seed
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `docs/DEMO.md`,
+  `ui/e2e-demo/forcing-story.demo.spec.ts`, `ui/playwright.demo.config.ts`, `ui/package.json`,
+  `infra/deploy/seed-demo.sh`
+- **Context:** The P5 audit found the demo assets were referenced but missing: `ui/e2e-demo/` and
+  `ui/scripts/` were **empty**, and **no single walkthrough** showed the cost dashboard + eval/trace view
+  together. The brief: a <3-min click-through (and a seeded dataset) showing RBAC RAG, an agent action via
+  MCP, the cost dashboard, and the eval/trace view.
+- **Options considered:** (a) a screen-recording only — not reproducible/verifiable; (b) extend the existing
+  `e2e` gate spec — couples the demo to the CI acceptance gate; (c) **a dedicated `e2e-demo` suite with its
+  own Playwright config** + a written `DEMO.md` + a seed script. **Chose (c)** — the demo can evolve without
+  touching the gate, and the spec *is* the documentation (every step in DEMO.md is asserted).
+- **Decision:**
+  - **`docs/DEMO.md`** — the exact timed click-through (login as Priya → RBAC cited answer → execution trace →
+    HITL approve `open_draft_sar` → audit SUCCESS → **Cost** panel → **Evals** gate snapshot), the seeded
+    dataset description, the optional negative-access kicker, and where the trace/cost also live (Langfuse /
+    Grafana / Alertmanager).
+  - **`ui/e2e-demo/forcing-story.demo.spec.ts`** + **`playwright.demo.config.ts`** (+ `npm run e2e:demo`) —
+    the automated form: production `vite preview` build with pinned mocks (reuses `e2e/fixtures.ts`), asserting
+    all four surfaces incl. the **cost dashboard + eval gate** that no prior spec covered. Deterministic and
+    GPU-free — the reliable fallback when the GPU is paused mid-presentation.
+  - **`infra/deploy/seed-demo.sh`** — idempotent: ingests the two-layer RBAC corpus via the admin endpoint,
+    runs an RBAC spot-check (priya vs guest-public), and lists the four demo users.
+- **Rationale:** A demo that is also a passing test can't rot; the seed script makes the dataset reproducible;
+  the separate config keeps the CI gate stable. Reading the committed `cost-summary.json` / `eval-summary.json`
+  lets the Cost/Evals panels show the **real** gate numbers without a live backend.
+- **Consequences:** The demo suite isn't part of the merge gate (run on demand); the live seed needs a resumed
+  GPU (ingestion computes embeddings). One comprehensive spec is shipped (the other `.demo-artifacts` stubs
+  remain optional future scenarios).
+- **Verification:** `npm run e2e:demo` → **1 passed** against the production build (cited answer, trace steps,
+  HITL approve, `SAR-2026-000123` audit SUCCESS, 100% cost panel, 2 green gate badges); UI lint/typecheck/
+  format clean; `seed-demo.sh` passes `bash -n`.
 
 ### ADR-0064 — CI/CD: cost-regression gate, Trivy CRITICAL/HIGH gating, manual gated deploy + rollback
 - **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `evals/atlas_evals/cost_gate.py`,

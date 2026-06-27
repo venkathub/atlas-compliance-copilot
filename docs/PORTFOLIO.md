@@ -367,3 +367,19 @@ real committed baseline passing) + **evals suite 70 passed**; `atlas_evals.gate`
 **Quantified (Task 5):** CI now blocks on **quality + cost** (was quality only) · Trivy **report-only →
 blocking** on CRITICAL/HIGH · **+1** gated deploy pipeline (deploy `needs` the gate) · **+7** cost-gate tests ·
 rollback = **1** workflow input (previous SHA) · **0** GPU needed (gate stays offline).
+
+- **Shipped the 3-minute demo as a passing test.** Wrote `docs/DEMO.md` — the exact timed click-through (Priya
+  login → RBAC cited answer → execution trace → HITL approve `open_draft_sar` → audit SUCCESS → **Cost** panel
+  → **Evals** gate) — and its automated form `ui/e2e-demo/forcing-story.demo.spec.ts` (a dedicated Playwright
+  config + `npm run e2e:demo`), the first walkthrough to assert the **cost dashboard + eval/trace view**
+  together. Added `infra/deploy/seed-demo.sh` to load the deterministic RBAC corpus + list the four demo users.
+  Closed the P5 gap where `ui/e2e-demo/` was empty and no single demo covered cost + evals.
+
+**Evidence (Task 6):** `npm run e2e:demo` → **1 passed** against the production `vite preview` build (cited
+answer, trace steps, HITL approve, `SAR-2026-000123` audit SUCCESS chain-verified, **100%** cost-reduction
+panel, **2** green gate badges); UI lint (0 errors) / typecheck / prettier clean; `seed-demo.sh` `bash -n` OK.
+ADR-0065.
+
+**Quantified (Task 6):** **1** automated 3-min demo asserting **4** capabilities (RBAC RAG · agent+MCP · cost
+· eval/trace) · **9** asserted steps · **<3 min** target with per-step timings · **1** deterministic seed
+script (24-doc RBAC corpus + 4 users) · **0** GPU needed for the automated run (the live fallback).

@@ -649,6 +649,10 @@ human-in-the-loop checkpoint) → see the **`SAR-…` ref + execution trace** �
 Audit** shows the new **SUCCESS** row (chain verified); **Admin ▸ Cost** shows the
 cost-reduction panel. (Deterministic UI walk-through without a GPU: `cd ui && npm run e2e`.)
 
+> **Full 3-minute demo:** `docs/DEMO.md` — the exact timed click-through (RBAC RAG → agent MCP action →
+> trace → cost → evals) with a seeded dataset (`infra/deploy/seed-demo.sh`) and an automated, GPU-free
+> form (`cd ui && npm run e2e:demo`).
+
 ---
 
 ## 10. Environment variables & secrets reference
