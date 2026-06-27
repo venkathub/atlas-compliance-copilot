@@ -34,6 +34,8 @@ services:
     # Production authz = the gateway's signed HMAC clearance assertion, so the box .env should
     # set a non-local profile. Left to the box .env here to avoid a boot-breaking blanket
     # override; tightening this into an explicit `prod` profile is tracked in P6 Task 3 (auth).
+    environment:
+      ATLAS_LOG_FORMAT: ${ATLAS_LOG_FORMAT:-ecs}   # one-line JSON (ECS) logs in prod
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,6 +52,7 @@ services:
       ATLAS_GATEWAY_RAG_ENGINE_URL: ${ATLAS_GATEWAY_RAG_ENGINE_URL:-http://rag-engine:8081}
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
+      ATLAS_LOG_FORMAT: ${ATLAS_LOG_FORMAT:-ecs}   # one-line JSON (ECS) logs in prod
     depends_on:
       redis:
         condition: service_healthy
@@ -63,6 +66,8 @@ services:
     restart: always
 
   mcp-tools:
+    environment:
+      ATLAS_LOG_FORMAT: ${ATLAS_LOG_FORMAT:-ecs}   # one-line JSON (ECS) logs in prod
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,6 +82,7 @@ services:
     environment:
       GATEWAY_BASE_URL: ${GATEWAY_BASE_URL:-http://gateway:8080}
       MCP_BASE_URL: ${MCP_BASE_URL:-http://mcp-tools:8082/mcp}
+      ATLAS_LOG_FORMAT: ${ATLAS_LOG_FORMAT:-json}   # JSON logs in prod (Python service)
     depends_on:
       postgres:
         condition: service_healthy

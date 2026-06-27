@@ -13,6 +13,7 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0062 | 2026-06-27 | Structured JSON logging + X-Request-Id correlation across all services; gateway tracing; frontier kept off | Accepted | P6 |
 | 0061 | 2026-06-27 | Container hardening: distroless health-probe, agents multi-stage/non-root, prod-compose limits/health-ordering | Accepted | P6 |
 | 0060 | 2026-06-27 | Prod runbook: in-prod topology, env/secrets reference, $10/mo cost ceiling & frontier-off posture | Accepted | P6 |
 | 0059 | 2026-06-26 | UI AI-transparency surfacing (EU AI Act / NIST AI RMF) | Accepted | P5 |
@@ -97,6 +98,51 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0062 — Structured JSON logging + X-Request-Id correlation across all services; gateway tracing; frontier kept off
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `*/observability/RequestIdFilter.java`,
+  `*/application.yml` (`logging.structured`), `gateway/config/DownstreamConfig.java`, `gateway/pom.xml`,
+  `agents/app/logging_config.py`, `agents/app/api.py`, `agents/app/gateway_client.py`
+- **Context:** The P5 audit found the biggest cross-cutting hole was **no structured logging anywhere** (all
+  three Spring services logged plain text; the Python agents service had **zero** application logging) and
+  **no correlation id in logs** — request ids existed only inside OTel spans, so a single request couldn't be
+  followed across the gateway → rag-engine → agents → mcp-tools hops in a log aggregator. The gateway also
+  emitted **no traces** (metrics only), leaving the front door invisible in Langfuse.
+- **Options considered (JSON logging on Spring):**
+  - *logstash-logback-encoder* — the classic approach, but a new dependency + a `logback-spring.xml` per
+    service. *Rejected* given a cleaner native option exists.
+  - **Spring Boot 3.5 native structured logging** (`logging.structured.format.console=ecs`) — zero new
+    dependencies, MDC auto-included, env-togglable. **Chosen.**
+  - *Python:* structlog vs **stdlib `logging` + a tiny JSON formatter**. Chose stdlib (no new dependency for a
+    service that had none) with a `contextvars`-based request id.
+- **Decision:**
+  - **Structured logs everywhere, env-toggled:** `ATLAS_LOG_FORMAT` — empty/`plain` = human-readable (dev),
+    `ecs`/`json` = one-line JSON (prod, set by the compose overlay). Spring uses native ECS; agents use a
+    stdlib JSON formatter (treats `ecs` as JSON too, so one value configures the whole stack).
+  - **Correlation id:** a `RequestIdFilter` (Spring, `HIGHEST_PRECEDENCE`) and a FastAPI middleware (agents)
+    resolve an inbound `X-Request-Id` (or mint a UUID), publish it to the MDC / a contextvar (so every log
+    line carries it), echo it on the response, and **propagate it downstream** (gateway→rag via a RestClient
+    interceptor; agents→gateway/MCP via the httpx client). rag-engine reuses the propagated id as its trace
+    id, stitching logs and spans. Inbound ids are validated against a strict allow-list — a client header is
+    untrusted input and must not inject newlines/control chars into log lines (anti log-injection).
+  - **Gateway tracing:** added `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` and the
+    `management.tracing/otlp` config (mirroring rag-engine), so the gateway emits server-request spans to
+    Langfuse. Export stays **opt-in** (`OTEL_TRACES_EXPORT_ENABLED=false`) so tests/CI never reach Langfuse.
+  - **Cloud-frontier fallback:** per the owner decision, **kept disabled** (`ATLAS_ROUTER_FRONTIER_ENABLED=false`).
+    No code change to the scaffolded TIER3 path; the documented enable procedure lives in RUNBOOK §11.3.
+- **Rationale:** Native structured logging avoids a dependency and a per-service logback file; the
+  filter/middleware pattern is uniform and unit-testable; propagating one id is what makes the JSON logs and
+  the Langfuse traces actually joinable in an incident. Keeping trace export and frontier off-by-default
+  preserves the cost story and keeps CI hermetic.
+- **Consequences:** Adding the tracing bridge means the gateway now creates spans for every request (sampled),
+  a negligible overhead with export off. `ATLAS_LOG_FORMAT` is shared across services; the agents formatter
+  intentionally accepts `ecs` so a single value works. Logs are JSON only when toggled (prod) — dev stays
+  readable.
+- **Verification:** new `RequestIdFilterTest` ×3 (mint / reuse / **anti-injection**) green; **gateway 69,
+  rag-engine 93, mcp-tools 15** unit tests pass (incl. full context-load with the tracing deps + logging
+  config); booting with `ATLAS_LOG_FORMAT=ecs` emits valid ECS JSON; agents **65 pass / 3 skipped** + 5 new
+  logging/correlation tests (formatter, middleware echo, downstream forward); ruff clean; merged
+  `docker compose config` applies `ecs`/`json` per service.
 
 ### ADR-0061 — Container hardening: distroless health-probe, agents multi-stage/non-root, prod-compose limits & health-ordering
 - **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `infra/docker/HealthCheck.java`,

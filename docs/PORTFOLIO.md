@@ -312,3 +312,25 @@ ordering. ADR-0061.
 single-stage → **multi-stage** + tag → **digest-pinned** · **1** portable probe class reused across 3 distroless
 images (0 extra runtime tools, 0 QEMU) · prod overlay: **5** services with mem limits + **log rotation** +
 **health-ordered** startup · **1** missing service (`rag-engine`) added to compose.
+
+- **Closed the biggest cross-cutting prod gap: observability-grade logging.** Added **structured JSON logging
+  to all four services** — native Spring Boot 3.5 ECS (no logstash dependency) for the three Java services and
+  a stdlib JSON logger for the Python agents service (which previously had **zero** application logging) —
+  env-toggled so dev stays human-readable. Threaded a single **`X-Request-Id` correlation id** through a Spring
+  `RequestIdFilter` + a FastAPI middleware that mint/echo/validate the id and **propagate it downstream**
+  (gateway→rag-engine, agents→gateway/MCP), with rag-engine reusing it as its trace id — so one request is now
+  followable across every hop in both logs and traces. Hardened the id against **log-injection** (strict
+  allow-list on the untrusted client header). Brought **gateway tracing** online (Micrometer→OTLP bridge) so
+  Langfuse finally covers the front door, not just rag-engine/agents.
+
+**Evidence (Task 3):** new `RequestIdFilterTest` ×3 (mint / reuse-propagated / anti-injection) green;
+**gateway 69 · rag-engine 93 · mcp-tools 15** unit tests pass incl. full Spring context-load with the new
+tracing deps + logging config; booting with `ATLAS_LOG_FORMAT=ecs` emits valid **ECS JSON**; agents **65
+passed / 3 skipped** + **5** new logging/correlation tests (formatter, middleware echo, downstream forward),
+ruff clean; merged `docker compose config` applies `ecs`/`json` per service. Frontier kept **off**
+(`ATLAS_ROUTER_FRONTIER_ENABLED=false`) per owner decision. ADR-0062.
+
+**Quantified (Task 3):** **4/4** services now emit structured JSON logs (was **0/4**; agents went from
+**no logging at all**) · **1** correlation id propagated across **4** hops · **3** Spring `RequestIdFilter`s +
+**1** FastAPI middleware · **+8** tests (3 Java + 5 Python) · **0** new Java logging dependencies (native ECS) ·
+gateway tracing **on** (export opt-in) · **0** log-injection vectors (allow-list validated).

@@ -73,6 +73,19 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- OTel tracing (P6 Task 3): Micrometer Observation -> OpenTelemetry bridge + OTLP exporter so
+             the gateway emits server-request spans to Langfuse (the trace view now covers the front
+             door, not just rag-engine/agents). Export is opt-in (OTEL_TRACES_EXPORT_ENABLED). Versions
+             managed by the Spring Boot BOM. Mirrors rag-engine (ADR-0030). -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
