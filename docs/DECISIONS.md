@@ -145,6 +145,13 @@
   `Referrer-Policy`, `HSTS`, `X-Frame-Options`, and `-Server`. Grafana embedding required
   `GF_SECURITY_ALLOW_EMBEDDING: "true"` (anonymous access stays Viewer-only). Caddyfile validated via
   `make -C infra proxy-validate`; the live-browser CSP assertion is the Task 9 E2E gate.
+- **Implementation note (2026-06-27, Task 9 — live LLM05 + a11y gate, G-P5-5):** the Playwright suite
+  (`ui/e2e/`) proves LLM05 **in a real browser**: an XSS-laden answer + citation snippet render inert — the
+  injected `<script>`/`onerror` never executes (`window.__xss` unset), no dialog fires, no console error. The
+  CI lane is **deterministic** via network mocking (`route.fulfill`), not live-model — the live GPU variant is
+  on-demand. An **axe-core** a11y smoke runs on chat + admin (no critical/serious violations). The forcing-story
+  + negative-access E2E (5 specs) is the headline P5 acceptance gate; a `<Link>` (not `<a href>`) fix keeps the
+  in-memory session alive across in-app nav (D-P5-6). Wired into CI as the `e2e` job.
 
 ### ADR-0057 — Multimodal frontier-model demo (budget-gated stretch)
 - **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §3 (D-P5-7)

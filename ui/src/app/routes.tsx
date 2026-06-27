@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Link, Navigate, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
 import { LoginPage } from "./auth/LoginPage.tsx";
 import { useAuth } from "./auth/AuthContext.tsx";
@@ -42,14 +42,16 @@ function AppShell({ children }: { children: ReactNode }) {
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
         <span className="font-semibold">Atlas</span>
         <nav className="flex items-center gap-4 text-sm">
-          <a href="/chat" className="hover:underline">
+          {/* Client-side nav (Link) so the in-memory session survives in-app navigation;
+              only a real browser refresh drops it (D-P5-6). */}
+          <Link to="/chat" className="hover:underline">
             Chat
-          </a>
+          </Link>
           {/* Admin tab renders only for compliance+ (UX gate; server re-enforces). */}
           {hasAtLeast("compliance") && (
-            <a href="/admin" className="hover:underline">
+            <Link to="/admin" className="hover:underline">
               Admin
-            </a>
+            </Link>
           )}
           <span className="text-slate-500">
             {session?.subject} · {session ? clearanceLabel(session.clearance) : ""}

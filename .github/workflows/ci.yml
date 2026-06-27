@@ -96,6 +96,36 @@ jobs:
           fi
           echo "No obvious secret tokens in dist/."
 
+  e2e:
+    name: UI E2E (Playwright forcing story + a11y)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install (clean, lockfile-pinned)
+        run: npm ci
+      - name: Install Playwright Chromium (+ OS deps)
+        run: npx playwright install --with-deps chromium
+      # Deterministic gate: backend responses are network-mocked (route.fulfill), so no
+      # GPU / live model is needed. Runs the forcing story + negative-access + LLM05-inert
+      # + axe-core a11y smoke against the production build served by `vite preview`.
+      - name: Run E2E (build + Playwright)
+        run: npm run e2e
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: ui/playwright-report/
+          if-no-files-found: ignore
+
   evals-gate:
     name: Eval gate (RAGAS + adversarial, cassette-replay)
     runs-on: ubuntu-latest

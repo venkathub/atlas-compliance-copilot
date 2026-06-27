@@ -7,7 +7,7 @@ import tseslint from "typescript-eslint";
 // ESLint flat config (ESLint 10). Lints the React + TS source; the build output and
 // deps are ignored. Kept intentionally lean for P5 Task 0 (skeleton, no app logic).
 export default tseslint.config(
-  { ignores: ["dist", "coverage", "node_modules"] },
+  { ignores: ["dist", "coverage", "node_modules", "playwright-report", "test-results"] },
   {
     files: ["**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
@@ -26,7 +26,7 @@ export default tseslint.config(
   },
   {
     // Config / Node-side files.
-    files: ["vite.config.ts", "tests/setup.ts"],
+    files: ["vite.config.ts", "tests/setup.ts", "playwright.config.ts", "e2e/**/*.ts"],
     languageOptions: {
       globals: globals.node,
     },

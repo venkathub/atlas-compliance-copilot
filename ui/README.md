@@ -156,6 +156,22 @@ These are the only UI vars in P5 Task 0; proxy/TLS/deploy vars arrive in later t
 run in the `ui` CI job (Node 22), plus a bundle scan asserting **no secret** ships in
 `dist/`. 41 Vitest tests as of Task 6.
 
+## E2E + a11y (P5 Task 9)
+
+Playwright drives the **forcing story** end-to-end against the production build
+(`vite preview`): login as Priya → governed-action question → cited answer → **Approve**
+the draft SAR (the HITL checkpoint) → `draftRef` + trace → Admin▸Audit SUCCESS row. Plus a
+**negative-access** spec (analyst → no Admin tab / no restricted content), a **live LLM05**
+check (an XSS-laden answer/citation renders inert — no dialog, no script execution), and an
+**axe-core a11y smoke** on chat + admin (no critical/serious violations). The CI lane is
+**deterministic** — backend responses are network-mocked (`route.fulfill`), so no GPU/live
+model is needed; the live GPU variant is on-demand.
+
+```bash
+npx playwright install chromium   # one-time
+npm run e2e                        # vite build && playwright test  (5 specs)
+```
+
 ## Image (P5 Task 8)
 
 `ui/Dockerfile` is a **multi-stage, multi-arch (amd64 + arm64)** image: stage 1 (Node 22)

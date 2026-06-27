@@ -15,3 +15,8 @@ coverage/
 
 # Vite cache
 .vite/
+
+# Playwright
+playwright-report/
+test-results/
+/playwright/.cache/
