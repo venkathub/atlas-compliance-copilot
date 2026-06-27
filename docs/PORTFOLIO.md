@@ -209,5 +209,64 @@ SHA-256 hash chain · **0 unapproved writes / 0 unauthorized writes / 0 orphan d
 replay-protected approval · durable resume-after-restart · 12-scenario merge gate · OWASP Agentic
 **ASI01/02/03/06/07/09/10** mapped · MCP `2025-11-25` / Streamable HTTP / RFC 8707 · deterministic (GPU-free).
 
-## P5 — UI + production deploy (pending)
-_Each populated as the phase lands, per the CLAUDE.md Definition of Done._
+## P5 — React UI, containerization & production deploy (complete · 2026-06-27)
+
+**One-liner:** Shipped the **clickable product** — a permission-aware React chat + read-only admin UI that
+makes the whole forcing story visible (cited streamed answer → human-approved draft SAR → execution trace →
+audit row), hardened at the render boundary (OWASP **LLM05** sanitizer **+** strict proxy CSP) and behind a
+single-origin **Caddy TLS reverse proxy**, packaged as a **multi-arch (arm64) image** with one-command deploy
+automation and a green **local-TLS smoke** — all P1/P3/P4 contracts **frozen**, the UI a pure consumer.
+
+**Resume bullets (draft):**
+- Built a production **React 19 + TypeScript (Vite, Tailwind v4)** SPA over the **frozen** Java/Python HTTP
+  contracts — sim-IdP login, streamed cited answers, the agent **human-in-the-loop approval** surface, an
+  execution-trace view, and a read-only admin area — as a thin **presentation client** with **no secrets, no
+  authorization logic, and no model calls in the browser** (clearance always re-enforced server-side).
+- Hardened model output as **untrusted interpreter input (OWASP LLM05)** with **defense-in-depth**: a
+  client-side **DOMPurify allowlist** (markdown→safe HTML; `javascript:`/`data:`/event-handlers stripped,
+  links forced `rel=noopener`) **plus** a strict **Caddy Content-Security-Policy** (`script-src`/`style-src
+  'self'`, **no `unsafe-inline`**, `object-src 'none'`, `frame-ancestors 'self'`) — proving an XSS-laden
+  answer/citation renders **inert** in both a jsdom unit gate and a live-browser Playwright check.
+- Added a single-origin **Caddy reverse proxy** (D-P5-2) that serves the static UI and path-routes
+  `/v1/*`→Gateway, `/v1/agent/*`→Agents, `/v1/audit`→mcp-tools under **one TLS origin** — killing CORS,
+  hiding backend topology, and emitting `X-Content-Type-Options`/`Referrer-Policy`/`HSTS`/`X-Frame-Options`.
+- Surfaced the **human-in-the-loop** safety story in the UI without weakening it: the Approve/Reject control
+  only **forwards the human decision** to the agent's `resume` endpoint — the UI **never constructs a write** —
+  proven by a "never-fabricate-write" test (reject → no `draftRef`, and the UI makes **no** tool/MCP call).
+- Extended `mcp-tools` with a **read-only, compliance-gated** `GET /v1/audit` (the first HTTP controller in the
+  module): paginated, **SELECT-only** (no new write path), backed by the OAuth 2.1 resource server (refuses
+  `< compliance` → 403) and a **global hash-chain-verified** flag, surfacing **digests/refs, not raw PII**
+  (LLM02) — 6 Testcontainers ITs.
+- Containerized the UI as a **multi-stage, multi-arch (amd64 + arm64) image** (Node build → Caddy serving the
+  bundle + Caddyfile, digest-pinned bases) and **verified the arm64 build under QEMU** for the Oracle Ampere A1
+  target; a prod compose overlay flips to in-compose upstreams + `restart: always` + real domain/ACME TLS.
+- Wrote **one-command deploy automation + a local-TLS smoke test** that asserts the proxy serves the UI over
+  TLS with the full CSP/security headers, SPA fallback, and **no secret in the served bundle** — green
+  (GPU-free) — with the **live Oracle Ampere A1 (arm64) deploy** documented as a dry-run runbook (DNS, ACME,
+  GPU via `OLLAMA_BASE_URL`) plus Hetzner & Cloudflare-Tunnel fallbacks.
+- Added **EU AI Act / NIST AI RMF transparency** as a design constraint: a session-start AI-system disclosure,
+  per-message **AI-generated** labels, and an **"AI-assisted draft — requires human review"** stamp on the SAR.
+- Made the UI **non-regressably tested**: **41 Vitest/RTL** unit/component tests + a **5-spec Playwright E2E**
+  acceptance gate (the forcing story, negative-access UX, the live LLM05-inert check, and an **axe-core a11y**
+  smoke), run **deterministically** via network mocking (no live-model variance), wired into CI.
+
+**Evidence:** `ui` green — **41 Vitest** (auth/sanitize/answer/citation/chat/agent/admin) + **5 Playwright**
+(forcing-story, negative-access, LLM05-inert, a11y chat+admin) + lint/typecheck/format/build + a no-secret
+bundle scan; **mcp-tools** `mvn verify` green incl. **`AuditControllerIT` 6/6** (401/403/200, pagination,
+filters, no-PII, SELECT-only) with the frozen P4 ITs still green; **inherited eval gates** (RAG RAGAS +
+eval-through-Gateway + agent 12/12) still **PASS**; `caddy validate` + `docker compose config` clean; the
+**arm64** multi-arch image builds under QEMU; `make -C infra deploy-smoke` → **PASS** over local TLS.
+ADR-0051–0059.
+
+**Quantified:** 9 ADRs (0051–0059) · **41 unit + 5 E2E** UI tests · **6** audit-endpoint ITs · **2** independent
+LLM05 walls (DOMPurify sanitizer + proxy CSP) · single-origin proxy (3 path routes, **0 CORS**) · **multi-arch
+amd64+arm64** image (arm64 build verified) · read-only admin (**0** mutable actions) · in-memory token (no
+`localStorage`) · **0 secrets** in the served bundle (CI-asserted) · all **P1/P3/P4 contracts frozen** (no
+regression) · OWASP **LLM02/LLM05/LLM06/LLM09** + **EU AI Act transparency** surfaced.
+
+**30-second demo:** login as **Priya** → toggle **Investigate as governed action** (Northwind / 2026-Q2) → ask
+→ see the **cited, AI-generated answer** + the proposed **draft SAR** → **Approve** (the human-in-the-loop
+checkpoint) → see the **`SAR-2026-…` ref + execution trace** → **Admin ▸ Audit** shows the new **SUCCESS** row
+(chain verified) and **Admin ▸ Cost** the cost-reduction panel. GPU-free walkthrough: `cd ui && npm run e2e`.
+**Demo recording:** _TODO — link a screen capture of the click path above (run `make -C infra deploy-up` then
+the steps, or `npm run e2e:ui`)._

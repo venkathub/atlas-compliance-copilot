@@ -13,6 +13,15 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0059 | 2026-06-26 | UI AI-transparency surfacing (EU AI Act / NIST AI RMF) | Accepted | P5 |
+| 0058 | 2026-06-26 | UI output handling: client sanitizer + proxy CSP/security headers (LLM05) | Accepted | P5 |
+| 0057 | 2026-06-26 | Multimodal frontier-model demo (budget-gated stretch) | Accepted | P5 |
+| 0056 | 2026-06-26 | Browser token storage (in-memory access token) | Accepted | P5 |
+| 0055 | 2026-06-26 | Reverse proxy + TLS; P5 deploy-gate scope (live box deferred) | Accepted | P5 |
+| 0054 | 2026-06-26 | Frontend stack (Vite + React + TS + Tailwind; assistant-ui via adapter) | Accepted | P5 |
+| 0053 | 2026-06-26 | Admin observability surfacing (read-only; secure Grafana embed) | Accepted | P5 |
+| 0052 | 2026-06-26 | UI↔backend topology (Caddy single-origin reverse proxy) | Accepted | P5 |
+| 0051 | 2026-06-26 | Streaming answer UX (client-side reveal + polled trace; SSE deferred) | Accepted | P5 |
 | 0050 | 2026-06-21 | Spring AI version for P4 (bump to 1.1.x on Spring Boot 3.x; defer 2.0/Boot 4) | Accepted | P4 |
 | 0049 | 2026-06-21 | Governed action scope, breach rule & SAR write target | Accepted | P4 |
 | 0048 | 2026-06-21 | Tamper-evident append-only hash-chained audit log | Accepted | P4 |
@@ -75,11 +84,246 @@
 > analysis), owner-confirmed 2026-06-21 before P4 implementation begins; **ADR-0042 extends ADR-0035** (agent
 > model tier), **ADR-0046 extends ADR-0003** (RFC 8707 resource-scoped tokens + replay-protected approval),
 > **ADR-0047 reuses ADR-0002** (one shared Postgres), and **ADR-0050 updates the Spring AI pin from ADR-0008**.
+> **ADR-0051–0059 are the P5 grooming decisions** (`docs/phases/P5_SPEC.md` §3 + §8 web-validated gap
+> analysis), owner-confirmed 2026-06-26 before P5 implementation begins; **ADR-0058 extends ADR-0037**
+> (server-side output handling → UI/proxy render boundary, LLM05) and **ADR-0059 extends ADR-0007** (governance
+> baseline → concrete UI AI-transparency); **ADR-0053 reuses ADR-0025** (Langfuse) + the P3 Grafana/Prometheus
+> stack, **ADR-0055 implements ADR-0006** (multi-arch deploy target), and **ADR-0056 builds on ADR-0034**
+> (in-browser handling of the verified-clearance token). All P5 decisions keep P1/P3/P4 contracts **frozen**.
 > Each remains open to revision with a new superseding ADR if a later phase surfaces evidence against it.
 
 ---
 
 ## 2. Decisions
+
+### ADR-0059 — UI AI-transparency surfacing (EU AI Act / NIST AI RMF)
+- **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §1.11, §8 (G-P5-4)
+- **Context:** Atlas's answers and the drafted SAR are AI-generated. The EU AI Act *Code of Practice on
+  Transparency of AI-Generated Content* becomes applicable **2026-08-02** (the same date as high-risk
+  obligations); NIST AI RMF calls for human-oversight + traceability. The P5 UI had no user-facing AI
+  disclosure or AI-content marking.
+- **Options considered:** (a) session-start AI-system disclosure + per-message AI-generated label + "AI-assisted
+  draft" SAR stamp; (b) nothing (rely on the backend trace only); (c) a full conformity assessment / formal
+  certification.
+- **Decision:** (a) — lightweight UI transparency: a session-start AI-system disclosure, assistant messages
+  labelled **AI-generated**, and the draft SAR stamped **"AI-assisted draft — requires human review."**
+- **Rationale:** Cheap, high-signal governance that reinforces the human-in-the-loop story and aligns with the
+  regulatory date, without over-scoping into certification.
+- **Consequences:** Treated as a **design constraint, not a certification** (extends ADR-0007). Copy/labels
+  revisited if the Code is finalised differently; **no backend change**.
+- **Implementation note (2026-06-27, where implemented):** session-start AI disclosure on `LoginPage`
+  ("you are signing in to an AI system") + a dismissible disclosure banner on `ChatPage`; every assistant
+  message carries an **AI-generated** label (`AssistantBubble` + `AgentRunView`); the proposed SAR is stamped
+  **"AI-assisted draft — requires human review"** on the `ApprovalCard`. Asserted in the unit + E2E suites.
+
+### ADR-0058 — UI output handling: client sanitizer + proxy CSP/security headers (LLM05)
+- **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §1.4/§1.10, §4.2, §8 (G-P5-2)
+- **Context:** LLM05 ("improper output handling = the new XSS"). Model output (answers, citations, rationales,
+  audit rows) is rendered as markdown/HTML in the browser. P3's ADR-0037 sanitizes **server-side**; the new
+  render boundary needs an independent control.
+- **Options considered:** (a) DOMPurify allowlist sanitizer only; (b) sanitizer **+ strict CSP/security headers
+  at the Caddy proxy** (defense-in-depth); (c) escape-only / no rich markdown.
+- **Decision:** (b) — client-side DOMPurify allowlist (no `<script>`/event-handlers/`javascript:`/`data:`, links
+  `rel=noopener` + scheme-allowlisted) **plus** a strict proxy CSP (`default-src 'self'`; `script-src`
+  nonce/`strict-dynamic`; **no** `unsafe-inline`) + `X-Content-Type-Options`/`Referrer-Policy`/HSTS +
+  `frame-ancestors` scoped for the Grafana embed.
+- **Rationale:** Two independent walls — CSP neutralises injected scripts even if a sanitizer rule is missed; a
+  merge-blocking XSS-fixture + CSP test gates it. Exactly the layered output handling a compliance copilot
+  should show.
+- **Consequences:** Extends **ADR-0037** to the UI/proxy layer; CSP nonces require build↔proxy coordination; no
+  prior-phase change.
+- **Implementation note (2026-06-26, Task 2 — client wall):** `ui/src/lib/sanitize.ts` ships the wall (a):
+  `sanitizeMarkdown` = `marked` (GFM) → DOMPurify allowlist (`FORBID_TAGS` style/iframe/object/embed/form/input,
+  `ALLOWED_URI_REGEXP` = http(s)/mailto/tel/relative/anchor only, `afterSanitizeAttributes` hook forces
+  `target=_blank rel="noopener noreferrer"`), plus `sanitizeText` for snippets/audit cells. `Answer` uses
+  `dangerouslySetInnerHTML` **only** on the sanitized string; `Citation` renders snippets as React text nodes
+  (doubly inert). The phase-blocking XSS-fixture suite lives in `ui/tests/sanitize.test.ts` (+ answer/citation
+  DOM-inert tests). The CSP/header wall (b) lands at the Caddy proxy in Task 7. **assistant-ui (G-P5-1/ADR-0054)
+  evaluated and NOT adopted:** its runtime assumes a streaming wire protocol that would force a change to the
+  frozen synchronous contracts, so a hand-rolled `Answer`/`Citation` pair is lighter — the ADR-0054 fallback.
+- **Implementation note (2026-06-27, Task 7 — proxy CSP wall (b)):** `infra/proxy/Caddyfile` emits a strict CSP
+  (`default-src 'self'`; **`script-src 'self'`** and **`style-src 'self'`** — no `unsafe-inline`/`unsafe-eval`,
+  feasible because the Vite build emits only hashed external module scripts + a linked stylesheet, CI-verified
+  no inline `<script>`/`<style>`; `object-src 'none'`; `frame-ancestors 'self'`; `frame-src 'self'
+  {$GRAFANA_ORIGIN}` for the cost embed; scheme-allowlisted `img/connect/font`) plus `X-Content-Type-Options`,
+  `Referrer-Policy`, `HSTS`, `X-Frame-Options`, and `-Server`. Grafana embedding required
+  `GF_SECURITY_ALLOW_EMBEDDING: "true"` (anonymous access stays Viewer-only). Caddyfile validated via
+  `make -C infra proxy-validate`; the live-browser CSP assertion is the Task 9 E2E gate.
+- **Implementation note (2026-06-27, Task 9 — live LLM05 + a11y gate, G-P5-5):** the Playwright suite
+  (`ui/e2e/`) proves LLM05 **in a real browser**: an XSS-laden answer + citation snippet render inert — the
+  injected `<script>`/`onerror` never executes (`window.__xss` unset), no dialog fires, no console error. The
+  CI lane is **deterministic** via network mocking (`route.fulfill`), not live-model — the live GPU variant is
+  on-demand. An **axe-core** a11y smoke runs on chat + admin (no critical/serious violations). The forcing-story
+  + negative-access E2E (5 specs) is the headline P5 acceptance gate; a `<Link>` (not `<a href>`) fix keeps the
+  in-memory session alive across in-app nav (D-P5-6). Wired into CI as the `e2e` job.
+
+### ADR-0057 — Multimodal frontier-model demo (budget-gated stretch)
+- **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §3 (D-P5-7)
+- **Context:** ROADMAP reserves a small cloud-frontier budget for a final multimodal demo, excluded from the
+  P5 time band.
+- **Options considered:** (a) out of P5 scope, optional post-ship polish; (b) in-scope P5 gate behind an env
+  flag + the frontier budget.
+- **Decision:** (a) — explicit **stretch, not a phase gate**; the phase passes on the self-hosted text stack.
+- **Rationale:** The forcing story (text RAG + governed action) is the thesis; multimodal is garnish and a
+  deadline risk.
+- **Consequences:** If built later it is env-gated and must not regress any frozen gate; captured as future work.
+- **Implementation note (2026-06-27, as built):** **NOT built** — P5 ships on the self-hosted text stack, as
+  decided. Remains the explicit Task 12 stretch (non-blocking); the phase passes without it.
+
+### ADR-0056 — Browser token storage (in-memory access token)
+- **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §3 (D-P5-6), §2.4
+- **Context:** The SPA holds the sim-IdP JWT (verified clearance, ADR-0034) to call the backends; where it is
+  stored is the SPA's core security decision.
+- **Options considered:** (a) in-memory only (re-login on refresh); (b) `localStorage` (persists, but
+  XSS-exfiltratable); (c) httpOnly cookie + BFF session.
+- **Decision:** (a) **in-memory** access token, paired with the ADR-0058 sanitizer/CSP to shrink the XSS surface.
+- **Rationale:** XSS-resistant and simplest; sim-IdP login is one click so refresh-relogin is acceptable. (c) is
+  the documented production upgrade path but needs a BFF the sim-IdP lacks.
+- **Consequences:** No persistence across refresh. UI clearance gating is **UX only** — backends re-enforce
+  (P1 RBAC, MCP OAuth re-check, refuse-`<compliance` on `/v1/audit`). Builds on **ADR-0034**; upgrade to (c) via
+  a new ADR if real auth is added.
+- **Implementation note (2026-06-26, Task 1 — resolves the §7 assumption):** the real frozen `SimIdpController`
+  contract differs from the spec §2.3 illustration — request field is **`user`** (not `subject`); the response
+  also returns **`tokenType`** + **`subject`**. The sim-IdP returns the verified **`clearance`** in the response
+  body, so the SPA needs **no client-side JWT decoding** (smaller XSS surface). Seeded identities surfaced in the
+  one-click picker (owner-confirmed: show all four): **`priya`** (compliance), **`bsa-admin`** (restricted),
+  **`analyst-bob`** (analyst), **`guest-public`** (public); clearance ladder `public < analyst < compliance <
+  restricted`. No `/refresh` endpoint and **no Gateway CORS change** (the ADR-0052 single-origin proxy makes
+  every call same-origin) — the Gateway stays frozen.
+
+### ADR-0055 — Reverse proxy + TLS; P5 deploy-gate scope (live box deferred)
+- **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §1.7, §3 (D-P5-5), §4.5, §8 (G-P5-6)
+- **Context:** P5 must containerize + deploy (ROADMAP §2 P5; targets in ADR-0006). The Oracle Ampere A1 box is
+  **not yet provisioned** (owner-confirmed), so a "deploy to Oracle" gate would be unmeetable now.
+- **Options considered:** proxy — (a) **Caddy** (auto-HTTPS + internal-TLS mode), (b) nginx + certbot,
+  (c) Cloudflare Tunnel; gate scope — automation + local-TLS proof now **vs** require a live deploy.
+- **Decision:** **Caddy (a)**. The P5 gate = **deploy automation + a local internal-TLS reverse-proxy proof + a
+  verified multi-arch (arm64) image build**. The live Oracle/Hetzner deploy (DNS + ACME TLS; Cloudflare-Tunnel
+  as a no-DNS option) is a **dry-run runbook executed post-merge** — non-blocking.
+- **Rationale:** A gate must be achievable now; the live box is a calendar dependency, not engineering. Caddy's
+  internal-TLS satisfies the gate today and its ACME mode serves the live deploy later.
+- **Consequences:** Implements **ADR-0006** (multi-arch from P0); shares the proxy component with ADR-0052.
+- **Implementation note (2026-06-27, Task 8 — multi-arch UI image + prod overlay):** `ui/Dockerfile` is
+  multi-stage — stage 1 (`node:22-bookworm-slim`, digest-pinned) runs `npm ci` + `npm run build`; stage 2
+  (`caddy:2-alpine`, digest-pinned) bakes in `infra/proxy/Caddyfile` + the built `/srv/ui`. `.dockerignore`
+  re-includes `infra/proxy/Caddyfile`. **Verified locally:** the **arm64** layer builds under QEMU
+  (`buildx --platform linux/amd64,linux/arm64`, exit 0 — the §4.5 portability gate), and the amd64 image,
+  run over local TLS, serves the UI (HTTP/2 200) with the full CSP + security headers, SPA fallback, and **no
+  secret in the bundle**. `infra/docker-compose.prod.yml` overlays the base: in-compose service-name upstreams
+  + `restart: always`; the domain/ACME/ports come from the box's env (`PROXY_SITE_ADDRESS`, `PROXY_TLS`=ACME
+  email, `PROXY_HTTPS_PORT=443`). CI builds+pushes the multi-arch `ui` image to GHCR (push to main only).
+- **Implementation note (2026-06-27, Task 10 — deploy automation + smoke):** `infra/deploy/up.sh` (one-command
+  bring-up: build the UI/proxy image + `compose --profile proxy [--profile app] up`) and `infra/deploy/smoke.sh`
+  (the local-TLS gate). **Verified locally (GPU-free):** the proxy serves the UI over `https://localhost:8443`
+  with the full CSP + security headers, SPA fallback, and **no secret in the bundle** — all hard asserts pass;
+  the login/`/v1/query` round-trip is run when the backends are up, else skipped-with-warning (the live GPU
+  lane). `RUNBOOK.md` §9 documents deploy/rollback/TLS/secrets + the **live Oracle Ampere A1 (arm64) dry-run**
+  (DNS, ACME via `PROXY_TLS` email, GPU via `OLLAMA_BASE_URL`), the **Hetzner** fallback, and the
+  **Cloudflare-Tunnel** no-DNS option. The same `smoke.sh` runs against the live box post-merge (non-blocking).
+  `RUNBOOK.md` documents live deploy/rollback; the live smoke test runs when the box exists.
+
+### ADR-0054 — Frontend stack (Vite + React + TS + Tailwind; assistant-ui via adapter)
+- **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §3 (D-P5-4), §8 (G-P5-1)
+- **Context:** CLAUDE.md mandates React. We need a lean SPA over the **frozen synchronous JSON** backends,
+  buildable on a low-spec laptop.
+- **Options considered:** (a) Vite + React + TS + Tailwind + TanStack Query + DOMPurify/`marked`; (b) Next.js
+  (SSR — pointless over JSON APIs); (c) Vite + React + plain CSS. Sub-decision (G-P5-1): adopt
+  **assistant-ui** / Vercel AI SDK?
+- **Decision:** (a). Evaluate **assistant-ui (`@assistant-ui/react`)** composable primitives behind a **custom
+  runtime adapter** over our JSON contracts; **do not** adopt the AI-SDK streaming wire protocol (it would force
+  a backend change). Fall back to framework-light primitives if the adapter is heavier than hand-rolling.
+- **Rationale:** Vite builds to static assets (fits the proxy deploy), matches `.nvmrc` Node 22, smallest
+  footprint; assistant-ui gives streaming/auto-scroll/accessibility without coupling the backend.
+- **Consequences:** **Backends stay frozen.** If assistant-ui's runtime proves leaky over our contracts, revert
+  to custom primitives — recorded if so.
+- **Implementation note (2026-06-27, as built):** Vite 8 + React 19 + TypeScript 5.9 + **Tailwind v4**
+  (CSS-first, `@tailwindcss/vite`) + TanStack Query + DOMPurify/`marked`; ESLint 10 flat config. **assistant-ui
+  evaluated and NOT adopted** (the fallback) — its runtime assumes a streaming wire protocol that would change
+  the frozen synchronous contracts, so a hand-rolled `Answer`/`Citation` pair is lighter (see ADR-0058). Builds
+  to static assets served by the Caddy proxy; 41 Vitest + 5 Playwright tests.
+
+### ADR-0053 — Admin observability surfacing (read-only; secure Grafana embed)
+- **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §1.5, §3 (D-P5-3), §8 (G-P5-3)
+- **Context:** The P5 admin area must show eval scores, cost/latency, and the audit log, reusing P2/P3
+  observability (ADR-0025 Langfuse; P3 Grafana/Prometheus).
+- **Options considered:** (a) **hybrid** — native audit table (`GET /v1/audit`) + eval scorecard from the
+  committed gate artifact + **embedded Grafana** for cost; (b) fully native panels; (c) deep-links only. Embed
+  security (G-P5-3): anonymous **vs** share-token/authenticated.
+- **Decision:** (a), **read-only**. Grafana embedded via **read-only public-dashboard share tokens** (or an
+  authenticated embed with `allow_embedding` + CSP `frame-ancestors`) — **never anonymous org access**. A native
+  Prometheus-derived cost summary is the always-on path; eval scores are **read from the committed gate
+  artifact** (never a UI-triggered eval run).
+- **Rationale:** Reuses the rich existing dashboards without reinvention; avoids leaking cost data through an
+  anonymous iframe; keeps admin strictly read-only.
+- **Consequences:** Adds a read-only `GET /v1/audit` to `mcp-tools` (SELECT-only; refuse-`<compliance`); Grafana
+  embed config + matching CSP (ADR-0058). **No write / admin-action surface.**
+- **Implementation note (2026-06-26, Task 5 — `GET /v1/audit`):** the first HTTP controller in `mcp-tools`
+  (`AuditController` + `AuditQueryDao`, plain `JdbcTemplate`, no JPA). Secured by adding
+  `/v1/audit` to the existing OAuth 2.1 resource server (`ResourceServerConfig`); a per-request
+  `ClearanceRecheck.require(...)` maps `< compliance` to **403** (valid token, insufficient clearance). The
+  projection (`AuditRowView`) omits `args_digest`/`prev_hash`/`row_hash` (LLM02); `chainVerified` =
+  `AuditChainVerifier.verify().valid()` (global, whole-chain). **Spec deviation (frozen schema):** the §2.2
+  `?account=` filter is not implementable — `account` is not a column (it lives inside the hashed
+  `args_digest`); the indexed, queryable filters are **`caller`** and **`runId`**, which the endpoint exposes
+  instead. 6 Testcontainers ITs (`AuditControllerIT`): 401/403/200, pagination, filters, no-PII, SELECT-only.
+- **Implementation note (2026-06-27, Task 6 — admin views + the committed artifact):** the spec's "committed
+  gate artifact" did **not** exist as a tracked file (`evals/report/metrics.json` is gitignored/CI-only; the
+  agent gate prints JSON to stdout only). **Owner-confirmed resolution:** snapshot the REAL gate outputs into
+  two committed, camelCase, UI-served static files — `ui/public/eval-summary.json` (RAG RAGAS+adversarial + the
+  agent gate scores) and `ui/public/cost-summary.json` (the P3 cost-reduction headline from
+  `gateway-baseline.json`) — generated by `evals/scripts/refresh_eval_summary.py` (reads existing results only;
+  **no change to eval logic/thresholds**). The UI **never recomputes** evals. The **native cost summary** is this
+  committed headline (always-on, no browser→Prometheus cross-origin scrape); the Grafana embed (uid
+  `atlas-cost-p3`, env `VITE_GRAFANA_URL`) is the live drill-down with a graceful fallback. Admin stays strictly
+  read-only. 5 UI tests (`admin.test.tsx`).
+
+### ADR-0052 — UI↔backend topology (Caddy single-origin reverse proxy)
+- **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §3 (D-P5-2), §2.1
+- **Context:** The UI must call two origins — Gateway (`/v1/auth`, `/v1/query`) and Agents (`/v1/agent/*`) — plus
+  `mcp-tools` `/v1/audit`. Both backends are frozen.
+- **Options considered:** (a) **reverse proxy as a single origin** (serves static UI + path-routes); (b) Gateway
+  as a BFF; (c) direct calls with CORS.
+- **Decision:** (a) — **Caddy** serves the static UI and path-routes `/v1/*`→Gateway, `/v1/agent/*`→Agents,
+  `/v1/audit`→mcp-tools under **one origin** + TLS.
+- **Rationale:** No CORS, one TLS endpoint/URL, mirrors prod; keeps every backend frozen (a BFF would violate
+  "Gateway frozen").
+- **Consequences:** One new infra component (shared with ADR-0055); the UI never holds a downstream secret and
+  never talks to `rag-engine`/Postgres/MCP directly.
+- **Implementation note (2026-06-27, Task 7 — `infra/proxy/Caddyfile` + compose):** Caddy routing matches in
+  order `/v1/agent/*`→agents, `/v1/audit*`→mcp-tools, `/v1/*`→gateway, else static UI with SPA fallback
+  (`try_files … /index.html`). Upstreams are **env-driven** (`GATEWAY_UPSTREAM`/`AGENTS_UPSTREAM`/`MCP_UPSTREAM`)
+  defaulting to **host-run** backends (`host.docker.internal:*`, the dev flow) and overridable to the compose
+  service names — so the same proxy serves both topologies. Added a `caddy` compose service under the `proxy`
+  profile (image built by `ui/Dockerfile`, Task 8) publishing `:8443`/`:8088`. The `/mcp` tool endpoint is
+  **not** proxied to the browser (only the agent reaches it in-network). Config validated via `make -C infra
+  proxy-validate` + `docker compose config`; live bring-up + local-TLS smoke is Task 10.
+
+### ADR-0051 — Streaming answer UX (client-side reveal + polled trace; SSE deferred)
+- **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §3 (D-P5-1), §2.4
+- **Context:** Both `/v1/query` and `/v1/agent/runs` return **complete JSON** today (no SSE). The chat should
+  feel live without changing the frozen P3/P4 backends.
+- **Options considered:** (a) client-side progressive reveal; (b) add backend SSE token streaming to the
+  Gateway; (c) poll `GET /v1/agent/runs/{id}` for node-by-node trace.
+- **Decision:** **(a) for the chat answer + (c) for the agent trace.** Backend SSE (b) is an explicit
+  **non-blocking stretch**.
+- **Rationale:** A live-feeling UI with **zero change to the frozen backends**, honouring "P5 adds no new
+  intelligence / contracts frozen." The final rendered payload stays byte-identical to today's envelope,
+  preserving grounding/citation/cost guarantees.
+- **Consequences:** If SSE (b) is later added it is additive (`Accept: text/event-stream`); the JSON path remains.
+- **Implementation note (2026-06-26, Task 3 — chat answer reveal):** `useProgressiveReveal` reveals the
+  already-complete `/v1/query` answer word-by-word (`prefers-reduced-motion` → instant) — converging on the
+  byte-identical answer. Verified against the **real** frozen `/v1/query` contract, which differs from the spec
+  §2.3 illustration (corrected in `ui/src/lib/types.ts`): citation index is **`marker`** (not `n`) and carries
+  `docId`/`title`/`sourceUri`/`score`; telemetry is `routing{modelTier,model,escalated}` + `cache{hit}` +
+  `cost{promptTokens,completionTokens,costUnits,latencyMs}` + a `redaction{applied,counts}` section — surfaced
+  as `MetaBadges` (cost-as-a-feature). The agent-trace polling (c) lands with Task 4.
+- **Implementation note (2026-06-26, Task 4 — agent trace + HITL):** `useAgentRun` GET-polls
+  `/v1/agent/runs/{id}` while `RUNNING` to animate the trace (c), and forwards the human Approve/Reject to
+  `…/resume` — the UI is the *trigger*, never the *authority* (the `act_sar` write is server-side unreachable
+  until `{approved:true}`). Verified against the real frozen P4 contract (camelCase wire): agent citations use
+  **`n`** (adapted to the `marker` render shape), trace steps carry node flags (no `ms`), and single-use resume
+  replays the terminal state (**200, no 409**). `ApprovalCard` stamps the draft "AI-assisted draft — requires
+  human review" (G-P5-4); a test asserts reject → no `draftRef` and no tool/MCP POST from the UI.
 
 ### ADR-0050 — Spring AI version for P4 (bump to 1.1.x on Spring Boot 3.x; defer 2.0/Boot 4)
 - **Date:** 2026-06-21 · **Status:** Accepted · **Phase:** P4 · **Spec:** `P4_SPEC.md` §3 (D-P4-10), §8 (G-P4-2)

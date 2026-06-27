@@ -1,0 +1,31 @@
+{
+  "generatedAt": "2026-06-27T10:40:55.665015+00:00",
+  "gitSha": "da55199",
+  "rag": {
+    "passed": true,
+    "nSamples": 22,
+    "scores": {
+      "faithfulness": 0.7059,
+      "answerRelevancy": 0.8318,
+      "contextPrecision": 0.8258,
+      "contextRecall": 0.7379,
+      "citationCorrectness": 1.0
+    },
+    "adversarialPassRate": 1.0,
+    "recordedAt": "2026-06-19T00:47:08+00:00",
+    "judgeModel": "llama3.1:8b"
+  },
+  "agent": {
+    "passed": true,
+    "scenarios": 12,
+    "taskSuccessRate": 1.0,
+    "toolSelectionRate": 1.0,
+    "argumentCorrectnessRate": 1.0,
+    "planAdherenceRate": 1.0,
+    "stepEfficiencyRate": 1.0,
+    "hitlRespected": true,
+    "authorizationRespected": true,
+    "unapprovedWrites": 0,
+    "unauthorizedWrites": 0
+  }
+}

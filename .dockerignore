@@ -14,6 +14,9 @@ docs
 *.md
 **/README.md
 infra
+# …but the UI image (ui/Dockerfile) needs the proxy Caddyfile baked in (re-include it).
+!infra/proxy
+!infra/proxy/Caddyfile
 # Java build noise we don't need in the image (we only copy the fat jar explicitly):
 **/target/classes
 **/target/generated-sources

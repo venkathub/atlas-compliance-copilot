@@ -38,6 +38,9 @@ public class ResourceServerConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/mcp/**").authenticated()
+                        // P5 Task 5: the read-only audit endpoint requires a valid Bearer token
+                        // (insufficient *clearance* is a 403 inside the controller, not a 401 here).
+                        .requestMatchers("/v1/audit", "/v1/audit/**").authenticated()
                         .anyRequest().permitAll())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.decoder(jwtDecoder)))
                 .csrf(csrf -> csrf.disable())

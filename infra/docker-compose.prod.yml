@@ -1,0 +1,35 @@
+# Atlas production overlay (P5 Task 8). Apply ON TOP of the base compose:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#     --profile app --profile proxy up -d
+#
+# Differences from the dev/base file:
+#   - the Caddy proxy fronts IN-COMPOSE backends (service-name upstreams), not host-run ones;
+#   - every app + the proxy restarts `always` (single-box resilience, no orchestrator);
+#   - the public ports, real domain, and ACME TLS come from the box's env / secret store,
+#     NOT from this file: set in the box's .env —
+#       PROXY_SITE_ADDRESS=atlas.example.com   # the real domain
+#       PROXY_TLS=ops@example.com              # ACME email → Caddy auto-provisions Let's Encrypt
+#       PROXY_HTTPS_PORT=443
+#       PROXY_HTTP_PORT=80
+#   - NO dev bind mounts are added; secrets are env/secret-store injected, never baked in.
+#
+# The live deploy to the Oracle Ampere A1 (arm64) box is a documented, dry-run runbook
+# executed post-merge once the box exists (P5 §1.7 / Task 10); this overlay is its shape.
+services:
+  caddy:
+    environment:
+      # Default to the in-compose backends in prod (overridable by the box's env).
+      GATEWAY_UPSTREAM: ${GATEWAY_UPSTREAM:-gateway:8080}
+      AGENTS_UPSTREAM: ${AGENTS_UPSTREAM:-agents:8083}
+      MCP_UPSTREAM: ${MCP_UPSTREAM:-mcp-tools:8082}
+    restart: always
+
+  gateway:
+    restart: always
+
+  agents:
+    restart: always
+
+  mcp-tools:
+    restart: always

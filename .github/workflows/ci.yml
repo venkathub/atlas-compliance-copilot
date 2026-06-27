@@ -59,6 +59,73 @@ jobs:
       - name: Pytest (agents — model-free; checkpointer IT uses Testcontainers/Docker)
         run: uv run --directory agents --group dev pytest -q
 
+  ui:
+    name: UI lint, typecheck, test & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          # Pinned to the repo-root .nvmrc (Node 22) — the build runs on the same
+          # toolchain the deployed static bundle is produced with.
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install (clean, lockfile-pinned)
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Format check
+        run: npm run format:check
+      - name: Unit/component tests (Vitest)
+        run: npm test
+      - name: Build (static assets)
+        run: npm run build
+      # LLM02 defense-in-depth: the public bundle must carry NO secret/env value.
+      # A real allowlist-scan lands with the security gate (Task 2/7); this is the
+      # skeleton hook so the gate exists from day one.
+      - name: Assert no obvious secret in the built bundle
+        run: |
+          if grep -rEi "signing[_-]?key|_password|_secret=|PRIVATE KEY" dist/; then
+            echo "::error::Potential secret found in built UI bundle"; exit 1
+          fi
+          echo "No obvious secret tokens in dist/."
+
+  e2e:
+    name: UI E2E (Playwright forcing story + a11y)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install (clean, lockfile-pinned)
+        run: npm ci
+      - name: Install Playwright Chromium (+ OS deps)
+        run: npx playwright install --with-deps chromium
+      # Deterministic gate: backend responses are network-mocked (route.fulfill), so no
+      # GPU / live model is needed. Runs the forcing story + negative-access + LLM05-inert
+      # + axe-core a11y smoke against the production build served by `vite preview`.
+      - name: Run E2E (build + Playwright)
+        run: npm run e2e
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: ui/playwright-report/
+          if-no-files-found: ignore
+
   evals-gate:
     name: Eval gate (RAGAS + adversarial, cassette-replay)
     runs-on: ubuntu-latest
@@ -168,3 +235,17 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}/rag-engine:latest
             ghcr.io/${{ github.repository }}/rag-engine:${{ github.sha }}
+      # P5 Task 8: the UI + reverse-proxy image (multi-stage builds the React app, then
+      # Caddy serves it). Built amd64+arm64 on every run (validates the Oracle Ampere A1
+      # arm64 target); pushed to GHCR only on push to main. No prebuilt artifact needed —
+      # the Node build runs inside the image.
+      - name: Build (and push on main) multi-arch UI image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ui/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ghcr.io/${{ github.repository }}/ui:latest
+            ghcr.io/${{ github.repository }}/ui:${{ github.sha }}

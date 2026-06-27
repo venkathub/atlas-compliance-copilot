@@ -480,4 +480,85 @@ ATLAS_LIVE_AGENT_PATH=1 GATEWAY_URL=http://localhost:8080 \
 make -C infra gpu-down
 ```
 
-## 9. Production deploy — *added in P5*
+## 9. Production deploy — P5
+
+P5 ships the clickable product behind a **single-origin Caddy reverse proxy** (serves the
+built React UI + path-routes `/v1/*` to the frozen backends + terminates TLS). The P5 gate
+is **deploy automation + a local internal-TLS proof + a verified multi-arch (arm64)
+image**; the **live** Oracle Ampere A1 deploy is the **dry-run runbook** in §9.4
+(owner-confirmed: the box is not yet provisioned, so the live deploy is non-blocking).
+
+### 9.1 Local-TLS deploy + smoke (the P5 gate — GPU-free)
+```bash
+# Build the UI/proxy image + bring up the proxy over Caddy internal-TLS, then smoke it.
+make -C infra deploy-up           # proxy-only: serves the built UI at https://localhost:8443
+make -C infra deploy-smoke        # asserts UI-over-TLS + CSP/headers + SPA + no-secret
+```
+The smoke (`infra/deploy/smoke.sh`) hard-asserts: the UI is served over TLS; the strict
+**CSP + security headers** are present (`script-src 'self'`, `object-src 'none'`,
+`X-Content-Type-Options`, `Referrer-Policy`, `HSTS`, `X-Frame-Options`); the **SPA
+fallback** works; and **no secret** is in the served bundle. The login/query round-trip
+runs when the backends are up (next), else skips-with-warning.
+
+```bash
+# Full stack behind the proxy (also starts the in-compose backends). Needs the built Java
+# jars and a reachable GPU (OLLAMA_BASE_URL); the login + /v1/query round-trip then passes.
+mvn -pl gateway,mcp-tools,rag-engine -am package -DskipTests
+make -C infra gpu-up               # resume the remote GPU + discover OLLAMA_BASE_URL
+make -C infra deploy-up FULL=1
+make -C infra deploy-smoke         # ✓ login round-trip + ✓ query round-trip over TLS
+make -C infra gpu-down             # GUARANTEED pause (cost discipline)
+```
+
+### 9.2 Multi-arch (arm64) image — the portability proof
+The UI image (`ui/Dockerfile`, multi-stage: Node build → Caddy) builds for **amd64 +
+arm64** (the Oracle Ampere A1 is arm64). CI builds + pushes both arches to GHCR on `main`;
+verify any image's arch coverage with:
+```bash
+docker buildx imagetools inspect ghcr.io/<owner>/<repo>/ui:latest | grep -E 'Platform|arm64'
+# local build of both arches (no push):
+docker buildx build --platform linux/amd64,linux/arm64 -f ui/Dockerfile .
+```
+
+### 9.3 TLS, secrets & rollback
+- **TLS.** `PROXY_TLS=internal` → Caddy local CA (the local proof). Live: set
+  `PROXY_SITE_ADDRESS=<domain>` + `PROXY_TLS=<acme-email>` → Caddy auto-provisions Let's
+  Encrypt (HTTP-01) and auto-renews. Certs persist in the `atlas-caddy-data` volume.
+- **Secrets.** Injected from the box's `.env` / secret store into the environment
+  (`set -a; . .env; set +a`), **never** baked into an image or the public UI bundle (the
+  smoke greps the bundle to enforce this). Rotate by editing the box `.env` + restarting.
+- **Rollback.** Images are tagged by commit SHA; roll back by pinning the previous tag:
+  ```bash
+  export ATLAS_UI_TAG=<previous-sha>          # (and the other image tags)
+  docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml \
+    --profile app --profile proxy up -d        # re-pulls the pinned tags
+  ```
+  Postgres state is untouched (named volumes); the audit chain is append-only.
+
+### 9.4 Live Oracle Ampere A1 deploy — DRY-RUN runbook (executed post-merge)
+> Non-blocking for P5 (box not yet provisioned). The **same** `smoke.sh` runs against the
+> live box once it exists. **Hetzner Cloud (arm64, CAX11)** is the documented fallback;
+> **Cloudflare Tunnel** is the no-DNS demo option.
+
+1. **Provision** Oracle Cloud *Always Free* **Ampere A1** (4 vCPU / 24 GB, arm64), Ubuntu
+   LTS. Open ingress **80 + 443** in the security list; install Docker + compose plugin.
+2. **DNS.** Point an `A` record (`atlas.<domain>`) at the box's public IP.
+3. **Clone + configure.** `git clone … && cp .env.example .env`; set the prod values:
+   `PROXY_SITE_ADDRESS=atlas.<domain>`, `PROXY_TLS=<acme-email>`, `PROXY_HTTPS_PORT=443`,
+   `PROXY_HTTP_PORT=80`, the upstreams (`gateway:8080`…), the DB/Redis/token secrets, and
+   `OLLAMA_BASE_URL` → the GPU endpoint.
+4. **Deploy.** `docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml
+   --profile app --profile proxy up -d` (pulls the multi-arch GHCR images — no build on the
+   small box). Caddy provisions the ACME cert automatically.
+5. **Smoke.** `infra/deploy/smoke.sh https://atlas.<domain>` → the full login + query
+   round-trip over real TLS, then the forcing-story click path (§9.5).
+6. **Fallbacks.** *Hetzner CAX11* — identical steps on a paid arm64 VM. *Cloudflare Tunnel*
+   — `cloudflared tunnel` to the proxy for a public HTTPS URL with **no** DNS/open ports.
+
+### 9.5 30-second demo (the forcing story)
+Login as **Priya** → toggle **Investigate as governed action** (Northwind / 2026-Q2) → ask
+→ see the **cited, AI-generated answer** + the proposed **draft SAR** → **Approve** (the
+human-in-the-loop checkpoint) → see the **`SAR-…` ref + execution trace** → **Admin ▸
+Audit** shows the new **SUCCESS** row (chain verified); **Admin ▸ Cost** shows the
+cost-reduction panel. (Deterministic UI walk-through without a GPU: `cd ui && npm run e2e`.)
+
