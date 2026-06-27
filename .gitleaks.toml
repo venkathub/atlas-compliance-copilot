@@ -1,0 +1,15 @@
+# Atlas gitleaks config (P5). Extends the default ruleset and allowlists the UI test +
+# e2e fixture directories, which contain only FAKE tokens (e.g. `jwt-priya`, used to mock
+# the sim-IdP login in Vitest/Playwright) — never real secrets. Scoped to those paths so a
+# genuine secret committed anywhere else still fails the scan.
+title = "Atlas gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "UI unit/e2e fixtures use fake mock tokens, not real secrets"
+paths = [
+  '''^ui/tests/.*''',
+  '''^ui/e2e/.*''',
+]
