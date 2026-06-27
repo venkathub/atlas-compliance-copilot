@@ -127,7 +127,7 @@ jobs:
           if-no-files-found: ignore
 
   evals-gate:
-    name: Eval gate (RAGAS + adversarial, cassette-replay)
+    name: Eval gate (RAGAS + adversarial + cost, cassette-replay)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -151,6 +151,11 @@ jobs:
       # floors (agent-baseline.json). Non-zero exit blocks merge.
       - name: Run agent eval merge gate
         run: uv run --directory agents python -m app.eval.agent_gate
+      # COST-regression gate (P6 Task 5). Validates the committed gateway cost evidence
+      # (gateway-baseline.json) still meets its reduction target — so CI blocks a merge on EITHER a
+      # quality regression (above) OR a cost regression. Offline + GPU-free.
+      - name: Run cost-regression gate
+        run: uv run --directory evals python -m atlas_evals.cost_gate
       - name: Upload eval report
         if: always()
         uses: actions/upload-artifact@v7
@@ -175,8 +180,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      # Report-only for now (exit-code 0) so an upstream CVE doesn't block P0.
-      # TODO: flip exit-code to 1 once the baseline is triaged (gate on CRITICAL/HIGH).
+      # Gate on CRITICAL/HIGH vulnerabilities (P6 Task 5): a fixable CRITICAL/HIGH fails the build.
+      # `ignore-unfixed` keeps it actionable (no failing on CVEs with no upstream fix yet); triage
+      # exceptions via a committed .trivyignore.
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -184,7 +190,7 @@ jobs:
           scanners: vuln,misconfig,secret
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: "0"
+          exit-code: "1"
           format: table
       - name: Generate SBOM (Syft)
         uses: anchore/sbom-action@v0.24.0

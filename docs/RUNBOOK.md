@@ -259,12 +259,20 @@ GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`. Five jobs (= t
 | **Java build & test** | `mvn -B verify` (unit tests + Testcontainers ITs on the runner's Docker; live IT excluded) |
 | **Python lint & test** | `ruff` + `pytest` on `evals` |
 | **Secret scan (gitleaks)** | full-history secret scan |
-| **Vuln scan & SBOM** | Trivy fs scan (vuln+misconfig+secret, **report-only for now**) + Syft CycloneDX SBOM artifact |
-| **Multi-arch image build** | buildx amd64+arm64; pushes `ghcr.io/<repo>/rag-engine` on `main` only |
+| **Vuln scan & SBOM** | Trivy fs scan (vuln+misconfig+secret) **gating on fixable CRITICAL/HIGH** (P6, `.trivyignore` for exceptions) + Syft CycloneDX SBOM artifact |
+| **Multi-arch image build** | buildx amd64+arm64; pushes `ghcr.io/<repo>/rag-engine` + `…/ui` on `main` only |
+
+> **Eval + cost gate (P6).** The `evals-gate` job now also runs `python -m atlas_evals.cost_gate`, so a merge
+> is blocked on **quality OR cost** regression (hallucination via the RAGAS faithfulness floor + 100%-pass
+> adversarial gate; cost via the recorded `gateway-baseline.json` reduction target). **Deploy** is a separate
+> manual workflow (`.github/workflows/deploy.yml`): a pre-deploy **gate** job (RAGAS + gateway-path + agent +
+> cost) that the **deploy** job `needs` — so a deploy can't run on a regressed build — then `compose pull/up`
+> of the SHA-pinned GHCR images + `smoke.sh`. **Rollback** = re-run with `image_tag=<previous-SHA>` (§9.3).
 
 **Branch protection (one-time, repo owner):** Settings → Branches → protect `main` → require a PR + require
 the five checks above + block force-pushes. Checks appear in the picker only after one green run.
-**TODO:** flip Trivy to blocking (`exit-code 1`) once the CVE baseline is triaged; consider SHA-pinning actions.
+**Done (P6):** Trivy now blocks on fixable CRITICAL/HIGH (`exit-code 1`, exceptions via `.trivyignore`); the
+eval gate also runs the cost-regression gate. Still open: SHA-pin third-party actions.
 
 ## 6. Eval & observability harness — P2
 The P2 harness lives in `/evals` (Python/RAGAS) + Langfuse/Grafana/Prometheus in `infra/docker-compose.yml`.

@@ -350,3 +350,20 @@ the p50/p95 panel; base `docker compose config` shows the `alertmanager` service
 **Quantified (Task 4):** **5** alert rules across **3** domains (cost / reliability / quality) · **1**
 Alertmanager (routing + inhibit + critical fast-path) · cost alert fires at **80%** of the $10/mo cap ·
 latency panel now **p50 + p95** · **0** lint errors (promtool + amtool) · **0** paid dependencies.
+
+- **Closed the CI gate loop: block deploy on cost regression, not just hallucination.** Added a
+  **cost-regression gate** (`atlas_evals.cost_gate`) that validates the committed gateway cost evidence still
+  meets its reduction target, wired into the CI eval-gate job — so a merge is blocked on **quality OR cost**.
+  Flipped **Trivy** from report-only to **gating on fixable CRITICAL/HIGH** (with an auditable `.trivyignore`).
+  Added a **manual gated deploy workflow** (`deploy.yml`): a `gate` job (RAGAS + gateway-path + agent + cost)
+  that the `deploy` job `needs`, pulling SHA-pinned multi-arch GHCR images via `compose pull/up` + `smoke.sh`,
+  with a one-input **rollback** (re-run with a previous SHA) — a documented dry-run until the box exists.
+
+**Evidence (Task 5):** `cost_gate` unit tests (**7** — below-target / absolute-ceiling / missing-field / the
+real committed baseline passing) + **evals suite 70 passed**; `atlas_evals.gate` **PASS** & `cost_gate`
+**PASS** offline; `ci.yml` (8 jobs) + `deploy.yml` (gate→deploy) parse; rollback path documented (RUNBOOK
+§9.3). ADR-0064.
+
+**Quantified (Task 5):** CI now blocks on **quality + cost** (was quality only) · Trivy **report-only →
+blocking** on CRITICAL/HIGH · **+1** gated deploy pipeline (deploy `needs` the gate) · **+7** cost-gate tests ·
+rollback = **1** workflow input (previous SHA) · **0** GPU needed (gate stays offline).

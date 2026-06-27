@@ -13,6 +13,7 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0064 | 2026-06-27 | CI/CD: cost-regression gate, Trivy CRITICAL/HIGH gating, manual gated deploy workflow + rollback | Accepted | P6 |
 | 0063 | 2026-06-27 | Alerting: Prometheus rules (cost/error-rate/breaker/eval) + Alertmanager; latency p50/p95 panel | Accepted | P6 |
 | 0062 | 2026-06-27 | Structured JSON logging + X-Request-Id correlation across all services; gateway tracing; frontier kept off | Accepted | P6 |
 | 0061 | 2026-06-27 | Container hardening: distroless health-probe, agents multi-stage/non-root, prod-compose limits/health-ordering | Accepted | P6 |
@@ -99,6 +100,43 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0064 — CI/CD: cost-regression gate, Trivy CRITICAL/HIGH gating, manual gated deploy + rollback
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `evals/atlas_evals/cost_gate.py`,
+  `evals/tests/test_cost_gate.py`, `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`, `.trivyignore`
+- **Context:** The P5 CI gate blocked merges on **quality** (RAGAS faithfulness floor + 100%-pass adversarial
+  ≈ hallucination) but **not on cost** — `gateway-baseline.json` recorded cost but nothing enforced it. Trivy
+  was **report-only** (`exit-code: 0`). And there was no pipeline that runs the gate *before* a deploy or a
+  documented rollback in CI. The brief: "block deploy if hallucination rate **or** cost regresses," + a
+  rollback path.
+- **Options considered (cost gate):** measure cost live in CI (needs the GPU + gateway — breaks the offline,
+  hermetic gate) vs **validate the committed cost evidence** (`gateway-baseline.json`) against its target band
+  (offline, mirrors how the RAGAS baseline is committed/replayed). **Chose the latter.**
+- **Decision:**
+  - **Cost-regression gate** (`atlas_evals.cost_gate`, pure `evaluate_cost_gate` + CLI): fails if recorded
+    `cost_reduction_pct < target_reduction_pct`, if `meets_target` is false, or (forward-compatible) if
+    `cost_on_units` exceeds an optional `max_cost_on_units` ceiling. Wired as a step in the CI `evals-gate`
+    job, so a merge is blocked on a **quality OR cost** regression. A dev who changes gateway cost behaviour
+    re-runs `cost_report` live (RUNBOOK §7.4), which rewrites the evidence; a regression below target then
+    fails CI.
+  - **Trivy gating:** flipped `exit-code` `0 → 1` on fixable **CRITICAL/HIGH** (`ignore-unfixed: true`), with a
+    `.trivyignore` for auditable, time-boxed exceptions.
+  - **Deploy workflow** (`deploy.yml`, manual `workflow_dispatch`): a `gate` job (RAGAS + gateway-path +
+    agent + cost) that the `deploy` job `needs`, so **deploy cannot run unless every gate passes**; the deploy
+    step pulls the SHA-pinned multi-arch GHCR images and runs `compose pull/up` + `smoke.sh` over SSH, and is a
+    **guarded dry-run** until the box + `DEPLOY_*` secrets exist (RUNBOOK §9.4). **Rollback** = re-run the
+    workflow with `image_tag=<previous-SHA>` (the deploy logs print the rollback recipe; named volumes keep
+    Postgres state; the audit chain is append-only — RUNBOOK §9.3).
+- **Rationale:** Keeps the gate hermetic (no GPU in CI) while still enforcing the cost story; ties build → test
+  → eval+cost gate → deploy into one reviewable manual pipeline with an explicit, low-risk rollback that needs
+  no DB migration.
+- **Consequences:** The cost gate enforces the **reduction target**, not an absolute $ feed (documented; the
+  optional ceiling field covers absolute regressions). Flipping Trivy to blocking may newly-fail CI on a
+  fixable CVE — that is the intent; triage via `.trivyignore`. The live deploy stays a dry-run until the box
+  is provisioned.
+- **Verification:** `cost_gate` unit tests (**7**, incl. below-target / ceiling / missing-field / the
+  committed baseline passing) + full **evals suite 70 passed**; `atlas_evals.gate` **PASS** and
+  `atlas_evals.cost_gate` **PASS** offline; both workflow YAMLs parse (`ci` 8 jobs, `deploy` gate→deploy).
 
 ### ADR-0063 — Alerting: Prometheus rules + Alertmanager; latency p50/p95
 - **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `infra/prometheus/alerts.rules.yml`,

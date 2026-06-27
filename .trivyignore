@@ -1,0 +1,8 @@
+# Trivy ignore file (P6 Task 5). The CI supply-chain job now GATES on fixable CRITICAL/HIGH
+# (vuln,misconfig,secret) with `ignore-unfixed: true`. Triage any accepted exception here, one per
+# line, with a justification + an owner/date so the exception is auditable and time-boxed.
+#
+# Format: a CVE id (optionally scoped), e.g.
+#   CVE-2025-XXXXX   # <why it's accepted> — <owner>, <review-by date>
+#
+# (empty = no exceptions; every fixable CRITICAL/HIGH must be fixed)
