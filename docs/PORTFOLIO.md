@@ -273,7 +273,7 @@ the steps, or `npm run e2e:ui`)._
 
 ---
 
-## P6 — Production hardening & operability (in progress · 2026-06-27)
+## P6 — Production hardening & operability (complete · 2026-06-27)
 
 - **Authored the operator runbook for production** — an **in-prod architecture diagram** (Mermaid topology of
   the single arm64 VM: Caddy → 5 services → Postgres+pgvector/Redis → Langfuse/Prometheus/Grafana, with the
@@ -383,3 +383,23 @@ ADR-0065.
 **Quantified (Task 6):** **1** automated 3-min demo asserting **4** capabilities (RBAC RAG · agent+MCP · cost
 · eval/trace) · **9** asserted steps · **<3 min** target with per-step timings · **1** deterministic seed
 script (24-doc RBAC corpus + 4 users) · **0** GPU needed for the automated run (the live fallback).
+
+- **Finalized the top-level README as the front door.** A **hero Mermaid architecture diagram** (request flow
+  + the cross-cutting evals/observability plane), a **live-demo link** (the on-demand Oracle A1 target, with
+  the GPU-free `npm run e2e:demo` as the reliable proof), a curated **"Technical decisions"** digest (8 themed
+  call-outs linking the key ADRs across RAG / cost / agents / evals / ops), and a **fresh-clone setup that
+  actually works** — replacing the stale P0-era commented Quickstart with a verified offline path (eval +
+  cost gate + UI demo, no GPU) and the live-stack path.
+
+**Evidence (Task 7):** README Mermaid balanced (2 subgraphs / 2 ends); all 7 doc links + LICENSE resolve;
+the offline setup commands are the same ones verified green this phase (`atlas_evals.gate`,
+`atlas_evals.cost_gate`, `npm run e2e:demo`); status/phase/ADR-count (65) updated from the stale P0 copy.
+
+**Quantified (Task 7):** **1** hero architecture diagram (was a markdown table) · **8** curated technical-
+decision call-outs · fresh-clone setup **P0-commented → working** · live-demo link added · **65** ADRs
+referenced · README **~3 KB → ~9 KB** of accurate, current content.
+
+**P6 net:** **6** ADRs (0060–0065) · **+15** tests (3 Java filter + 5 Python logging + 7 cost-gate) all green
+on top of the inherited gates · **5/5** containers hardened (health/non-root/limits) · **4/4** services with
+structured JSON logs + correlation · **5** Prometheus alerts + Alertmanager · CI blocks on **quality + cost** ·
+**1** gated, rollback-able deploy pipeline · **1** automated 3-min demo · a finalized README.
