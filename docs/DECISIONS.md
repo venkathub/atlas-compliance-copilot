@@ -13,6 +13,7 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0060 | 2026-06-27 | Prod runbook: in-prod topology, env/secrets reference, $10/mo cost ceiling & frontier-off posture | Accepted | P6 |
 | 0059 | 2026-06-26 | UI AI-transparency surfacing (EU AI Act / NIST AI RMF) | Accepted | P5 |
 | 0058 | 2026-06-26 | UI output handling: client sanitizer + proxy CSP/security headers (LLM05) | Accepted | P5 |
 | 0057 | 2026-06-26 | Multimodal frontier-model demo (budget-gated stretch) | Accepted | P5 |
@@ -95,6 +96,33 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0060 — Production runbook: in-prod topology, env/secrets reference, $10/mo cost ceiling & frontier-off posture
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Doc:** `RUNBOOK.md` §9.0, §10, §11
+- **Context:** Taking Atlas to production needs an operator-facing source of truth for (a) what the prod
+  topology actually is, (b) every env var + how secrets are handled on a single VM, and (c) the spend
+  envelope and the cloud-frontier fallback's posture. CLAUDE.md makes cost discipline a first-class feature.
+- **Options considered:**
+  - *Deploy target:* keep the already-scaffolded **Oracle Ampere A1 single-VM compose** vs migrate to a PaaS
+    (Fly.io / Render / HF Spaces). PaaS gives nicer CD but its free tiers can't host the full 5-service +
+    Langfuse/Grafana/Prometheus stack without dropping observability; the VM runs everything for $0.
+  - *Secrets:* external vault/secret-manager vs **box `.env` (chmod 600) injected at compose-up**. A vault is
+    overkill at one-VM scale and adds a moving part; `.env` + gitleaks + bundle-grep is proportionate.
+  - *Frontier fallback:* wire a live frontier tier now vs **ship it scaffolded-but-disabled** behind
+    `ATLAS_ROUTER_FRONTIER_ENABLED=false`.
+- **Decision:** Oracle Ampere A1 compose stays the target (faithful to ADR-0006). A **hard ≈$10/mo ceiling**
+  governs the only paid deps (GPU + frontier), enforced operationally by GPU pause discipline + the gateway
+  daily budget guard (`ATLAS_BUDGET_DAILY_CAP_UNITS`) + a Prometheus cost alert (P6 Task 4). The
+  **cloud-frontier tier ships DISABLED** (no key in repo); enabling it is a documented, eyes-open opt-in
+  (RUNBOOK §11.3). Secrets live only in the box `.env`/CI secrets; `VITE_*` are the only intentionally-public
+  values. Documented the in-prod Mermaid topology (§9.0) and a full env-var reference table (§10).
+- **Rationale:** Keeps the strongest cost-discipline narrative (frontier is the one path that can breach $10
+  fast → off-by-default makes overspend opt-in), avoids leaking a billable credential in a portfolio repo, and
+  preserves **honest fail-fast degradation** (503 + Retry-After) over silent expensive substitution when
+  Ollama is down. The VM target avoids amputating the observability story to fit a PaaS free tier.
+- **Consequences:** No automatic model fail-over when the GPU is down (by design). Secret rotation is manual
+  (edit `.env` + restart); the Vault/secret-manager upgrade is a noted future path. The cost alert + the P6
+  cost-regression CI gate are the backstops against an accidental frontier-on or cost regression.
 
 ### ADR-0059 — UI AI-transparency surfacing (EU AI Act / NIST AI RMF)
 - **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §1.11, §8 (G-P5-4)

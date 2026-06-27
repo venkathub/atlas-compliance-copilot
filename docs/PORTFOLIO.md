@@ -270,3 +270,26 @@ checkpoint) → see the **`SAR-2026-…` ref + execution trace** → **Admin ▸
 (chain verified) and **Admin ▸ Cost** the cost-reduction panel. GPU-free walkthrough: `cd ui && npm run e2e`.
 **Demo recording:** _TODO — link a screen capture of the click path above (run `make -C infra deploy-up` then
 the steps, or `npm run e2e:ui`)._
+
+---
+
+## P6 — Production hardening & operability (in progress · 2026-06-27)
+
+- **Authored the operator runbook for production** — an **in-prod architecture diagram** (Mermaid topology of
+  the single arm64 VM: Caddy → 5 services → Postgres+pgvector/Redis → Langfuse/Prometheus/Grafana, with the
+  GPU and the disabled frontier tier as the only off-box deps), a **consolidated env-var & secrets reference**
+  (≈40 variables grouped by subsystem, each flagged secret/public with source + rotation policy), and a
+  **cost-ceiling + cloud-frontier budget-fallback procedure** that turns a one-line note into an operational
+  control with a documented eyes-open enable path.
+- **Set and documented a hard ≈$10/month cost ceiling** for the only paid dependencies (rented GPU + frontier
+  API), enforced by GPU pause discipline + the gateway daily budget guard + (P6) a Prometheus cost alert — and
+  made the **cloud-frontier tier ship disabled by default** so overspend is opt-in, preserving honest
+  fail-fast `503` degradation over silent expensive model substitution.
+
+**Evidence (Task 1):** `docs/RUNBOOK.md` §9.0 (in-prod Mermaid topology + trust boundaries), §10 (env/secrets
+table + secrets-management model), §11 (cost ceiling, frontier-off rationale, enable path); ADR-0060 in
+`docs/DECISIONS.md`. Env names cross-checked against `.env.example` (no invented vars).
+
+**Quantified (Task 1):** 1 ADR (0060) · 3 new RUNBOOK sections · 1 architecture diagram · **~40** env vars
+documented with secret/public classification · **$10/mo** hard ceiling wired to budget guard + alert · frontier
+fallback **off-by-default** (0 billable keys in repo).

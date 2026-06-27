@@ -2,7 +2,10 @@
 
 > Operational guide for running Atlas locally and operating its remote dependencies.
 > Companion docs: `CLAUDE.md`, `docs/ROADMAP.md`, `docs/DECISIONS.md`.
-> Status: **bootstrap** — sections grow as phases land. Today this covers the dev host + Cloud Ollama.
+> Status: **P0–P5 complete; P6 production-hardening in progress.** Covers the dev host, Cloud Ollama,
+> the full service stack, evals/observability, the gateway, agents/MCP, production deploy, and (new in P6)
+> the in-prod architecture diagram (§9.0), the consolidated env/secrets reference (§10), and the cost
+> ceiling + cloud-frontier budget fallback (§11).
 
 ---
 
@@ -488,6 +491,75 @@ is **deploy automation + a local internal-TLS proof + a verified multi-arch (arm
 image**; the **live** Oracle Ampere A1 deploy is the **dry-run runbook** in §9.4
 (owner-confirmed: the box is not yet provisioned, so the live deploy is non-blocking).
 
+### 9.0 In-prod architecture (topology)
+
+Single **Oracle Cloud Always-Free Ampere A1** box (4 vCPU / 24 GB, **arm64**), one `docker-compose`
+project fronted by Caddy. The **GPU is the only paid, off-box dependency** and is paused except during
+demos/calibration (§2.4, §11). Everything inside the dashed box runs on the one VM.
+
+```mermaid
+flowchart TB
+    user([Browser / analyst]) -->|HTTPS 443| caddy
+
+    subgraph box["Oracle Ampere A1 — arm64 VM (docker-compose project: atlas)"]
+        direction TB
+        caddy["Caddy reverse proxy<br/>TLS (Let's Encrypt) · strict CSP · single origin"]
+
+        subgraph app["App services (profile: app)"]
+            direction LR
+            ui["React UI<br/>(static, served by Caddy)"]
+            gw["API Gateway :8080<br/>auth · cost router · cache<br/>rate-limit · budget guard · CB"]
+            rag["RAG Engine :8081<br/>RBAC retrieval · rerank<br/>injection guardrail · citations"]
+            agt["Agent Orchestrator :8083<br/>LangGraph planner-executor<br/>human-in-the-loop"]
+            mcp["MCP Tool Server :8082<br/>governed actions<br/>OAuth2.1 · append-only audit"]
+        end
+
+        subgraph data["Stateful (named volumes)"]
+            direction LR
+            pg[("Postgres + pgvector<br/>embeddings · audit chain")]
+            redis[("Redis<br/>cache · rate-limit · budget")]
+        end
+
+        subgraph obs["Observability"]
+            direction LR
+            lf["Langfuse v3<br/>(+ ClickHouse, MinIO)"]
+            prom["Prometheus<br/>+ Alertmanager"]
+            graf["Grafana<br/>cost · latency · evals"]
+        end
+    end
+
+    gpu["Remote Cloud Ollama GPU<br/>OpenAI-compatible<br/>(paused except demos — §2.4)"]
+    frontier["Cloud frontier model<br/>TIER3 — DISABLED by default<br/>budget-capped fallback (§11)"]
+
+    caddy -->|/| ui
+    caddy -->|/v1/*| gw
+    caddy -->|/v1/agent/*| agt
+    caddy -->|/v1/audit*| mcp
+    gw --> rag
+    agt -->|retrieve via gateway| gw
+    agt -->|MCP tool call| mcp
+    rag -->|embeddings + chat| gpu
+    gw -. "fallback (off)" .-> frontier
+    rag --> pg
+    gw --> redis
+    mcp --> pg
+    rag -. OTLP traces .-> lf
+    agt -. OTLP traces .-> lf
+    gw -. OTLP traces .-> lf
+    prom -.scrape /actuator/prometheus, /metrics.-> app
+    graf --> prom
+    prom -.alerts.-> graf
+
+    classDef paid fill:#fde,stroke:#b36,stroke-width:2px;
+    classDef off fill:#eee,stroke:#999,stroke-dasharray:4 3;
+    class gpu paid;
+    class frontier off;
+```
+
+**Trust boundaries.** Only Caddy (443) is internet-exposed; `/mcp` is **never** browser-routed (agent-only
+hop, RFC 8707 aud-scoped token). Backends carry a gateway-signed clearance assertion (HMAC); the MCP server
+re-checks clearance per call. Secrets live only in the box `.env` (§10) — never in an image or the UI bundle.
+
 ### 9.1 Local-TLS deploy + smoke (the P5 gate — GPU-free)
 ```bash
 # Build the UI/proxy image + bring up the proxy over Caddy internal-TLS, then smoke it.
@@ -561,4 +633,125 @@ Login as **Priya** → toggle **Investigate as governed action** (Northwind / 20
 human-in-the-loop checkpoint) → see the **`SAR-…` ref + execution trace** → **Admin ▸
 Audit** shows the new **SUCCESS** row (chain verified); **Admin ▸ Cost** shows the
 cost-reduction panel. (Deterministic UI walk-through without a GPU: `cd ui && npm run e2e`.)
+
+---
+
+## 10. Environment variables & secrets reference
+
+Atlas follows **12-factor config**: everything is env-driven, nothing is hardcoded (CLAUDE.md). The
+authoritative list with inline docs is **`.env.example`** — copy it to `.env` and fill real values.
+`.env` is git-ignored; gitleaks + the deploy smoke grep enforce "no secrets in code/bundle".
+
+**Secrets management model (single-VM, ADR-aligned):**
+- **Source of truth:** the box's `.env`, readable only by the deploy user (`chmod 600 .env`).
+- **Injection:** `set -a; . ./.env; set +a` exports them into the compose process env — **never** baked
+  into an image layer or the public UI bundle (the JS bundle only ever sees `VITE_*` public values).
+- **Rotation:** edit the box `.env`, then `docker compose ... up -d` to restart with new values. The
+  HMAC signing keys must stay paired across services (see table). No external vault is used at this
+  scale; the upgrade path (Vault / cloud secret-manager) is noted in DECISIONS.
+- **CI secrets:** `GPU_API_KEY`, `GPU_INSTANCE_ID`, and (optional) Langfuse keys live in GitHub Actions
+  repo secrets — used only by the manual calibration/deploy lanes.
+
+### 10.1 Reference table (grouped; `secret?` = must never be committed)
+
+| Variable | Service(s) | Purpose | Secret? | Source / default |
+|---|---|---|---|---|
+| `OLLAMA_BASE_URL` | rag-engine, evals | Remote Ollama GPU OpenAI-compatible endpoint | no (obscure URL) | GPU provider (§2); changes on resume |
+| `OLLAMA_CHAT_MODEL` / `OLLAMA_EMBED_MODEL` | rag-engine | Dev chat + embedding models | no | `qwen2.5:3b-instruct` / `nomic-embed-text` |
+| `EMBED_DIM` | rag-engine | pgvector dimension (must match embed model) | no | `768` |
+| `GPU_PROVIDER` / `GPU_API_KEY` / `GPU_INSTANCE_ID` | infra/gpu | Drive resume/pause of the rented GPU | **yes** (key) | provider dashboard; CI secret |
+| `GPU_IDLE_TIMEOUT_MIN` | infra/gpu | Auto-pause watchdog (cost guard) | no | `20` |
+| `POSTGRES_HOST/PORT/DB/USER` | all + infra | Postgres + pgvector connection | no | `localhost`/`5432`/`atlas`/`atlas` |
+| `POSTGRES_PASSWORD` | all + infra | Postgres password | **yes** | set per env |
+| `REDIS_HOST/PORT` | gateway | Cache / rate-limit / budget store | no | `localhost`/`6379` |
+| `REDIS_PASSWORD` | gateway | Redis auth (set in prod) | **yes** | set per env |
+| `ATLAS_MCP_DB_*` (`URL/USERNAME/PASSWORD/APP_*`) | mcp-tools | Least-privilege audit DB creds | **yes** | set per env |
+| `ATLAS_IDP_SIGNING_KEY` | gateway | Signs clearance JWTs (sim-IdP) | **yes** | must equal `ATLAS_MCP_TOKEN_SIGNING_KEY` |
+| `ATLAS_MCP_TOKEN_SIGNING_KEY` | mcp-tools | Verifies aud-scoped MCP tokens | **yes** | paired with IdP key |
+| `ATLAS_GATEWAY_INTERNAL_SECRET` | gateway, rag-engine | HMAC for the downstream clearance assertion | **yes** | shared gateway↔rag |
+| `ATLAS_IDP_ISSUER` / `ATLAS_MCP_TOKEN_ISSUER` | gateway, mcp | JWT issuer (must match across hop) | no | paired |
+| `ATLAS_IDP_RESOURCE_AUDIENCE` / `ATLAS_MCP_TOKEN_AUDIENCE` | gateway, mcp | RFC 8707 aud scoping for the MCP hop | no | paired |
+| `ATLAS_GATEWAY_RAG_ENGINE_URL` | gateway | Downstream RAG URL | no | `http://localhost:8081` |
+| `ATLAS_RATELIMIT_ENABLED` / `ATLAS_RATELIMIT_REQUESTS_PER_MIN` | gateway | Redis token-bucket rate limit | no | `true` / `60` |
+| `ATLAS_BUDGET_ENABLED` / `ATLAS_BUDGET_DAILY_CAP_UNITS` | gateway | Daily cost-unit cap → `402` (see §11) | no | `true` / `100` |
+| `ATLAS_COST_TIER1/TIER2/FRONTIER_UNITS_PER_1K` | gateway | Cost model per 1k tokens | no | `0.30` / `0.70` / `5.00` |
+| `ATLAS_ROUTER_DEFAULT_TIER` / `ATLAS_ROUTER_TIER2_MODEL` | gateway | Cost-aware routing | no | `tier1-small` / `qwen2.5:7b-instruct` |
+| `ATLAS_ROUTER_CASCADE_ENABLED` | gateway | Tier escalation on weak answer | no | `true` |
+| `ATLAS_ROUTER_FRONTIER_ENABLED` | gateway | **Cloud-frontier fallback master switch (§11)** | no | **`false`** (kept off) |
+| `ATLAS_CB_FAILURE_RATE_THRESHOLD_PCT` / `ATLAS_CB_WAIT_DURATION_MS` / `ATLAS_REQUEST_TIMEOUT_MS` | gateway | Circuit breaker + timeout (graceful degradation) | no | `50` / `10000` / `30000` |
+| `ATLAS_MAX_INPUT_TOKENS` / `ATLAS_MAX_OUTPUT_TOKENS` | gateway | Request size caps → `413` | no | per `.env.example` |
+| `ATLAS_PII_REDACTION_ENABLED` / `ATLAS_OUTPUT_SANITIZE_ENABLED` / `ATLAS_PII_NAME_DENYLIST` | gateway | PII/output guardrails | no (denylist may be sensitive) | `true` |
+| `ATLAS_CACHE_*` (`ENABLED/TTL_SECONDS/SIM_THRESHOLD/CORPUS_VERSION/REGROUND_ON_HIT`) | gateway | Semantic cache tuning | no | per `.env.example` |
+| `ATLAS_SAR_REPORTING_THRESHOLD` / `ATLAS_MCP_REQUIRED_CLEARANCE` | agents, mcp | Forcing-story threshold + write clearance | no | per `.env.example` |
+| `ATLAS_AGENT_MODEL` / `ATLAS_AGENT_MAX_STEPS` / `ATLAS_AGENT_TOOL_RETRIES` | agents | Agent loop caps (runaway guard) | no | `12` / `2` |
+| `OTEL_TRACES_EXPORT_ENABLED` | rag-engine, agents, gateway | Master switch for Langfuse trace export | no | `false` (opt-in) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` / `LANGFUSE_OTEL_AUTH_HEADER` | tracing services | OTLP target + Basic auth header | header = **yes** | derived from Langfuse keys |
+| `ATLAS_TRACE_CONTENT` | rag-engine | `metadata` vs `full` span content (redaction-gated) | no | `metadata` |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | langfuse, evals | Langfuse API keys | **yes** (secret key) | bootstrapped by `make up` |
+| `LANGFUSE_NEXTAUTH_SECRET` / `LANGFUSE_SALT` / `LANGFUSE_ENCRYPTION_KEY` | langfuse | Langfuse server secrets | **yes** | generate per env |
+| `LANGFUSE_INIT_USER_EMAIL` / `LANGFUSE_INIT_USER_PASSWORD` | langfuse | First-login admin | **yes** (pw) | set per env |
+| `CLICKHOUSE_USER/PASSWORD`, `MINIO_ROOT_USER/PASSWORD` | langfuse backing stores | ClickHouse + MinIO creds | **yes** (pw) | set per env |
+| `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` | grafana | Grafana admin login | **yes** (pw) | set per env |
+| `PUSHGATEWAY_URL` | evals | Eval-score push target | no | `http://localhost:9091` |
+| `PROXY_SITE_ADDRESS` / `PROXY_TLS` / `PROXY_HTTP_PORT` / `PROXY_HTTPS_PORT` | caddy | Domain, ACME email/`internal`, ports | no | `localhost` / `internal` |
+| `GATEWAY_UPSTREAM` / `AGENTS_UPSTREAM` / `MCP_UPSTREAM` | caddy | Proxy upstream targets | no | service names in prod |
+| `VITE_API_BASE_URL` / `VITE_GRAFANA_URL` / `VITE_GRAFANA_COST_DASHBOARD_UID` | ui (build) | **Public** UI config baked into bundle | **no — public** | safe to expose |
+
+> Rule of thumb: anything ending in `_KEY`, `_SECRET`, `_PASSWORD`, `_SIGNING_KEY`, or `_API_KEY` is a
+> secret and is set only in `.env` / CI secrets. `VITE_*` values are deliberately public (they ship in the
+> browser bundle) — never put a secret behind a `VITE_` name.
+
+---
+
+## 11. Cost ceiling & cloud-frontier budget fallback
+
+**Owner-set ceiling: ≈ US$10 / month, hard cap** covering the *only* two paid dependencies — the rented
+GPU and any cloud-frontier API calls. Cost discipline is a first-class feature (CLAUDE.md), so the design
+is "cheap by default, frontier off, alert before the cap."
+
+### 11.1 Where the ~$10/mo goes (and how it's bounded)
+| Lever | Mechanism | Default posture | Bound |
+|---|---|---|---|
+| **GPU rental** | `make -C infra gpu-up/gpu-down` + idle watchdog (`GPU_IDLE_TIMEOUT_MIN=20`) | **Paused** except demos/calibration | A few hundred ₹/mo at a disciplined pause/resume cadence (§2.4) |
+| **Frontier API** | `ATLAS_ROUTER_FRONTIER_ENABLED` | **`false`** (no live key, no calls) | $0 until explicitly enabled |
+| **In-app spend guard** | gateway `RedisBudgetGuard`, `ATLAS_BUDGET_DAILY_CAP_UNITS=100` | Enabled | Per-day cost-unit cap → `402` once exceeded |
+| **Alerting** | Prometheus cost rule (P6, §Task 4) | Fires before the monthly cap | Warns at projected-burn ≈ 80% of $10/mo |
+
+The gateway meters **cost-units** (configurable `ATLAS_COST_*_UNITS_PER_1K`: tier1 `0.30`, tier2 `0.70`,
+frontier `5.00` per 1k tokens). Units are an internal proxy for spend; the `100`/day cap and the Prometheus
+alert are what operationally enforce the dollar ceiling. Because frontier costs ~7–17× a local tier, a
+single careless frontier run is the main way to blow the budget — hence it ships **disabled**.
+
+### 11.2 The cloud-frontier fallback — design, and why it's OFF
+The router defines a third tier, **`TIER3_FRONTIER`**, intended as a quality/availability fallback (e.g.
+when local Ollama is degraded, or for final multimodal demos). It is **scaffolded but deliberately disabled**
+(`ATLAS_ROUTER_FRONTIER_ENABLED=false`, `frontierEnabled` reserved-not-wired in `RoutingProperties`). Rationale:
+- **Cost:** frontier is the one path that can breach a $10/mo cap quickly; off-by-default makes overspend opt-in.
+- **Safety:** keeping the repo key-free avoids leaking a billable credential in a portfolio repo.
+- **Honest degradation:** when Ollama is down, the current behaviour is **fail-fast `503 + Retry-After`**
+  (circuit breaker), *not* a silent expensive substitution — a deliberate, auditable choice.
+
+### 11.3 How to ENABLE the frontier fallback (when you accept the spend)
+Do this only with eyes open — it spends real money on each escalated call:
+```bash
+# 1) Pick the provider/model + supply a key (OpenAI-compatible path is the drop-in).
+#    Keep the key in .env ONLY (it is a secret; never commit it).
+ATLAS_ROUTER_FRONTIER_ENABLED=true
+ATLAS_ROUTER_TIER3_MODEL=gpt-4o-mini          # example; set to your chosen frontier model
+ATLAS_FRONTIER_API_KEY=sk-...                 # secret — .env only
+ATLAS_FRONTIER_BASE_URL=https://api.openai.com/v1
+
+# 2) Tighten the daily cap so a frontier loop cannot run away (frontier = 5.00 units/1k):
+ATLAS_BUDGET_DAILY_CAP_UNITS=30               # ~6k frontier tokens/day ≈ pennies; well under $10/mo
+
+# 3) Restart the gateway and CONFIRM the cost alert + dashboard are live before any demo:
+docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml --profile app up -d gateway
+open "http://localhost:${GRAFANA_PORT:-3001}"   # Atlas — Cost-aware Gateway → watch frontier cost-units
+```
+**After the demo, turn it back off** (`ATLAS_ROUTER_FRONTIER_ENABLED=false` + restart) and **pause the GPU**
+(`make -C infra gpu-down`). The Prometheus cost alert (§Task 4 / §4 of this runbook once landed) is the
+backstop if you forget.
+
+> Reminder: the eval/cost CI gate (P6) also blocks a merge if measured cost-units regress beyond the
+> recorded baseline — so an accidental frontier-by-default change cannot land silently.
 
