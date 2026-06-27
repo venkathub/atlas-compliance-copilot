@@ -1,9 +1,16 @@
 # P5 — React UI, Containerization & Production Deployment — SPEC
 
-> Status: **APPROVED 2026-06-26 — §3 decisions owner-confirmed and logged as ADR-0051…0059 in
-> `docs/DECISIONS.md`. Ready to begin Task 0.** Implementation follows the §5 task breakdown; P1/P3/P4 stay
-> frozen.
-> Date drafted: 2026-06-26 · Date approved: 2026-06-26.
+> Status: **COMPLETE — implemented & verified 2026-06-27** (built across 12 commits on `docs/p5-grooming`;
+> the §6 Definition of Done is checked honestly, with deviations noted inline). Full suite green: **ui 41
+> Vitest + 5 Playwright** (forcing-story + negative-access + live-LLM05 + axe-core a11y) + lint/typecheck/
+> format/build + no-secret bundle scan · **mcp-tools `mvn verify` 18u + 27IT** (incl. `AuditControllerIT` 6/6;
+> frozen P4 ITs unchanged) · inherited **RAG + eval-through-Gateway + agent 12/12** gates PASS · **local-TLS
+> deploy smoke PASS** · **multi-arch arm64** image build verified · **frozen modules (gateway/rag-engine/
+> agents) 0 changes** (git-confirmed). All §3 decisions (D-P5-1…7) + §8 refinements (G-P5-1…6) are
+> owner-confirmed and logged as **ADR-0051–0059** in `docs/DECISIONS.md`. Implementation followed the §5 task
+> breakdown (Task 0 = `/ui` scaffold); **Task 12 (SSE/multimodal stretch) intentionally skipped** (non-blocking,
+> owner-confirmed). Contract-field corrections vs §2.3 are noted inline (frozen backends win, §5/§7).
+> Date drafted: 2026-06-26 · Date approved: 2026-06-26 · Date completed: 2026-06-27.
 > **Owner-confirmed §7 resolutions (2026-06-26):** (1) **client-side progressive reveal** for the chat answer +
 > polled agent trace — backend SSE is a non-blocking stretch (D-P5-1=a+c); (2) **read-only admin**, eval scores
 > read from the committed gate artifact (D-P5-3=a); (3) **multimodal frontier demo is a budget-gated stretch,
@@ -178,6 +185,14 @@ infra/
 ```
 
 ### 2.3 Data models / schemas (UI-facing — all mirror existing backend contracts)
+
+> **Implemented-contract note (2026-06-27):** the JSON below was the pre-implementation *illustration*; the
+> **real** frozen field names (verified at Tasks 1/3/4/5) differ and the UI was aligned to them — see the §5
+> status banner and `ui/src/lib/types.ts`. Key deltas: login request field **`user`** (not `subject`);
+> `/v1/query` citation index **`marker`** (not `n`) with `routing{modelTier,model,escalated}` /
+> `cache{hit}` / `cost{promptTokens,completionTokens,costUnits,latencyMs}`; agent-run citations use **`n`**;
+> the audit row is exactly `{seq,ts,runId,tool,phase,caller,clearance,resultRef}` (no `account` filter); and
+> the eval-scores tab reads a committed **snapshot** (`ui/public/eval-summary.json`).
 
 **Login (`POST /v1/auth/token`, existing sim-IdP).**
 ```jsonc
@@ -416,6 +431,17 @@ the proxy choice still matters because it’s what the deferred live deploy will
 
 ## 5. Task breakdown (ordered, independently committable)
 
+> **Implementation status (2026-06-27): Tasks 0–11 DONE** (one commit each on `docs/p5-grooming`); **Task 12
+> SKIPPED** (non-blocking stretch, owner-confirmed). Commit SHAs: 0 `c2849c8` · 1 `f8048ab` · 2 `2efa1ab` ·
+> 3 `610ec01` · 4 `9cf9a3e` · 5 `da55199` · 6 `cee0439` · 7 `95a4a34` · 8 `18d95fb` · 9 `d9f2bf6` ·
+> 10 `15a4b1a` · 11 `69f7f2f`. **Contract corrections vs §2.3** (frozen backends win, flagged per CLAUDE.md):
+> login field is **`user`** (not `subject`) + response adds `tokenType`/`subject`; `/v1/query` citation index is
+> **`marker`** (not `n`) and routing/cache/cost are `{modelTier,model,escalated}`/`{hit}`/`{promptTokens,
+> completionTokens,costUnits,latencyMs}`; agent citations use **`n`** (adapted); the audit `?account=` filter is
+> not implementable (`account` isn't a column — it's inside the hashed `args_digest`) so **`caller`/`runId`** are
+> exposed instead; the "committed eval artifact" didn't exist as a tracked file, so a committed **snapshot**
+> (`ui/public/eval-summary.json` + `cost-summary.json`, via `evals/scripts/refresh_eval_summary.py`) was added.
+
 0. **Scaffold `/ui` module (D-P5-4):** new Vite + React + TS + Tailwind project (mirrors the repo's module
    conventions), ESLint/Prettier, `apiClient`, typed contracts mirrored from the backend envelopes; `/ui` wired
    into CI (lint + unit + build); `ui/README.md` stub; `.env.example` UI vars. **No app logic.** Acceptance =
@@ -455,38 +481,47 @@ the proxy choice still matters because it’s what the deferred live deploy will
 11. **Docs + portfolio close-out + ADRs:** `ui/README.md` final; `.env.example` UI/proxy/deploy vars;
     `docs/DECISIONS.md` (ADR-0051…); `docs/PORTFOLIO.md` **completed** + 30-sec demo path + recording.
     *(commit: `docs(p5): UI README, RUNBOOK, ADR-0051…, completed PORTFOLIO`)*
-12. **(Stretch, if time) Backend SSE + multimodal:** additive `Accept: text/event-stream` streaming
-    (D-P5-1 b) and/or env-gated multimodal frontier demo (D-P5-7 b) — **non-blocking**, must not regress any
-    frozen gate. *(commit: `feat(ui): optional backend SSE streaming + multimodal demo (env-gated)`)*
+12. **(Stretch, if time) Backend SSE + multimodal — SKIPPED (non-blocking, owner-confirmed):** additive
+    `Accept: text/event-stream` streaming (D-P5-1 b) and/or env-gated multimodal frontier demo (D-P5-7 b). Not
+    built — SSE would modify the frozen Gateway/rag-engine (breaking the "0 changes to frozen modules" property)
+    and multimodal needs the reserved frontier budget + a model path that can't be validated in this
+    environment. The phase passes without it; remains documented future work.
 
 ---
 
 ## 6. Definition of Done (P5 — generic CLAUDE.md DoD, instantiated)
 
-- [ ] **Code complete & matches this spec.** React chat+admin UI, reverse proxy, additive `GET /v1/audit`, and
-      deploy automation built; P1/P3/P4 contracts unchanged (frozen).
-- [ ] **Unit + integration tests pass.** UI unit/component (Vitest/RTL), LLM05 sanitization gate, `GET /v1/audit`
-      Java IT (Testcontainers), Playwright E2E (forcing story + negative-access), deploy smoke — all green in CI.
-- [ ] **Eval thresholds met (inherited).** P5 adds no new model logic; the **existing** P2 RAG gate and P4 agent
-      gate remain green and are recorded — a regression blocks the merge.
-- [ ] **Safe rendering (LLM05).** Output sanitized at the render boundary **+ strict CSP/security headers at the
-      proxy** (G-P5-2); XSS fixture proven inert; **no secret in the served bundle** (CI-asserted).
-- [ ] **AI transparency (EU AI Act / NIST AI RMF — G-P5-4).** Session-start AI disclosure, AI-generated message
-      labels, and the "AI-assisted draft — requires human review" SAR stamp are present (design-constraint, not
-      a certification).
-- [ ] **Module README + DECISIONS updated.** `ui/README.md` (setup/scripts/test/build/run); §3 decisions logged
-      as ADR-0051… with options + rationale.
-- [ ] **Runs clean from scratch.** Fresh clone + `.env` → one documented command brings up the full stack
-      locally **behind a TLS reverse proxy** (Caddy internal-TLS); multi-arch (arm64) image build verified. The
-      **live** Oracle ARM deploy is a documented, dry-run runbook (Hetzner fallback) **executed post-merge when
-      the box is provisioned** — non-blocking for P5.
-- [ ] **30-second demo path.** Click path: login as Priya → ask the forcing question → see cited streamed answer
-      → Approve the draft SAR → see draftRef + trace → Admin shows the audit row + cost panel.
-- [ ] **Resume-ready, quantified bullet** drafted in `docs/PORTFOLIO.md`, and **PORTFOLIO.md completed** (this is
-      the final phase) + demo recording linked.
-- [ ] **The full forcing user story is demonstrable** end-to-end on the **local TLS stack** now (ROADMAP §2 P5
-      intent), and re-runs on the **live Oracle box** via the same E2E/smoke once provisioned (deferred,
-      non-blocking).
+- [x] **Code complete & matches this spec.** React chat+admin UI (`/ui`), Caddy reverse proxy (`infra/proxy`),
+      additive `GET /v1/audit` (`mcp-tools`), multi-arch image + prod overlay, and deploy automation built;
+      **P1/P3/P4 contracts unchanged** — git-confirmed **0 changes** under `gateway/`, `rag-engine/`, `agents/`.
+- [x] **Unit + integration tests pass.** UI **41 Vitest/RTL** + the LLM05 sanitization gate; **`AuditControllerIT`
+      6/6** (Testcontainers — 401/403/200, pagination, filters, no-PII, SELECT-only); **Playwright E2E 5/5**
+      (forcing story + negative-access + live-LLM05 + a11y); **local-TLS deploy smoke PASS** — all green; new
+      `ui` + `e2e` CI jobs wired.
+- [x] **Eval thresholds met (inherited).** P5 adds no new model logic; the **RAG gate**, **eval-through-Gateway**,
+      and **agent gate 12/12** all **PASS** (re-run 2026-06-27) — no new thresholds; a regression would block.
+- [x] **Safe rendering (LLM05).** Two walls: client DOMPurify allowlist **+** strict proxy **CSP** (`script-src`/
+      `style-src 'self'`, no `unsafe-inline`, `object-src 'none'`, scheme-allowlisted, `frame-ancestors`) +
+      `X-Content-Type-Options`/`Referrer-Policy`/`HSTS`/`X-Frame-Options`; XSS fixture proven inert in **jsdom +
+      a live browser**; **no secret in the served bundle** (smoke + CI grep). *(CSP uses `script-src 'self'`
+      rather than a nonce — feasible because the Vite build emits only hashed external scripts, no inline.)*
+- [x] **AI transparency (EU AI Act / NIST AI RMF — G-P5-4).** Session-start AI disclosure (login + chat banner),
+      per-message **AI-generated** labels, and the **"AI-assisted draft — requires human review"** SAR stamp on
+      the ApprovalCard — asserted in unit + E2E (ADR-0059).
+- [x] **Module README + DECISIONS updated.** `ui/README.md`, `infra/proxy/README.md`, `infra/deploy/README.md`;
+      §3 decisions + §8 refinements logged as **ADR-0051…0059** with options + rationale + as-built notes.
+- [x] **Runs clean from scratch.** `make -C infra deploy-up` builds the UI/proxy image + brings the stack up
+      **behind Caddy internal-TLS**; `make -C infra deploy-smoke` → **PASS**; **multi-arch (arm64) image build
+      verified** (buildx under QEMU). The **live** Oracle Ampere A1 deploy is a documented dry-run runbook
+      (RUNBOOK §9; Hetzner + Cloudflare-Tunnel fallbacks) **executed post-merge** — non-blocking for P5.
+- [x] **30-second demo path.** RUNBOOK §9.5 + PORTFOLIO: login Priya → governed-action question → cited streamed
+      answer → Approve draft SAR → `SAR-…` ref + trace → Admin ▸ Audit SUCCESS row (chain verified) + Cost panel.
+      Proven deterministically by the Playwright forcing-story spec.
+- [x] **Resume-ready, quantified bullet** drafted in `docs/PORTFOLIO.md`, and **PORTFOLIO.md completed** (final
+      phase). *(Demo **recording** is a clearly-marked TODO placeholder — needs a human screen capture.)*
+- [x] **The full forcing user story is demonstrable** end-to-end on the **local TLS stack** now (Playwright
+      forcing-story + local-TLS smoke), and re-runs on the **live Oracle box** via the same E2E/smoke once
+      provisioned (deferred, non-blocking).
 
 ---
 
@@ -504,12 +539,15 @@ the proxy choice still matters because it’s what the deferred live deploy will
 4. ~~**Multimodal demo (D-P5-7):**~~ → **Resolved:** **budget-gated stretch**, not a gate; phase passes on the
    self-hosted text stack.
 
-**Assumption (state-and-proceed, per CLAUDE.md):** the login screen exposes the existing seeded sim-IdP
-identities — **`priya` (compliance)**, an **`analyst`**, and a **`public`** user — so the forcing-story and
-negative-access UX are each one click. If the seeded identity set differs, flag it at Task 1 and I’ll adjust.
+**Assumption (state-and-proceed, per CLAUDE.md):** ~~the login screen exposes the existing seeded sim-IdP
+identities — `priya` (compliance), an `analyst`, and a `public` user.~~ → **Resolved at Task 1:** the real
+frozen sim-IdP directory differs — the four seeded subjects are **`priya`** (compliance), **`bsa-admin`**
+(restricted), **`analyst-bob`** (analyst), **`guest-public`** (public), and the clearance ladder is
+`public < analyst < compliance < restricted`. The login picker surfaces **all four** (owner-confirmed); the
+forcing story uses `priya` and the negative-access UX uses `analyst-bob`. Logged in ADR-0056.
 
-**On your approval of §3, I will log D-P5-1…7 (+ the §8 refinements) as ADR-0051… in `docs/DECISIONS.md` and
-begin Task 0. No application code is written before then.**
+**~~On your approval of §3, I will log D-P5-1…7 … and begin Task 0.~~** → Done: ADR-0051…0059 logged;
+**Tasks 0–11 implemented & verified** (see the §0 status header). The spec is closed.
 
 ---
 
