@@ -111,6 +111,10 @@
   regulatory date, without over-scoping into certification.
 - **Consequences:** Treated as a **design constraint, not a certification** (extends ADR-0007). Copy/labels
   revisited if the Code is finalised differently; **no backend change**.
+- **Implementation note (2026-06-27, where implemented):** session-start AI disclosure on `LoginPage`
+  ("you are signing in to an AI system") + a dismissible disclosure banner on `ChatPage`; every assistant
+  message carries an **AI-generated** label (`AssistantBubble` + `AgentRunView`); the proposed SAR is stamped
+  **"AI-assisted draft — requires human review"** on the `ApprovalCard`. Asserted in the unit + E2E suites.
 
 ### ADR-0058 — UI output handling: client sanitizer + proxy CSP/security headers (LLM05)
 - **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §1.4/§1.10, §4.2, §8 (G-P5-2)
@@ -163,6 +167,8 @@
 - **Rationale:** The forcing story (text RAG + governed action) is the thesis; multimodal is garnish and a
   deadline risk.
 - **Consequences:** If built later it is env-gated and must not regress any frozen gate; captured as future work.
+- **Implementation note (2026-06-27, as built):** **NOT built** — P5 ships on the self-hosted text stack, as
+  decided. Remains the explicit Task 12 stretch (non-blocking); the phase passes without it.
 
 ### ADR-0056 — Browser token storage (in-memory access token)
 - **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §3 (D-P5-6), §2.4
@@ -230,6 +236,11 @@
   footprint; assistant-ui gives streaming/auto-scroll/accessibility without coupling the backend.
 - **Consequences:** **Backends stay frozen.** If assistant-ui's runtime proves leaky over our contracts, revert
   to custom primitives — recorded if so.
+- **Implementation note (2026-06-27, as built):** Vite 8 + React 19 + TypeScript 5.9 + **Tailwind v4**
+  (CSS-first, `@tailwindcss/vite`) + TanStack Query + DOMPurify/`marked`; ESLint 10 flat config. **assistant-ui
+  evaluated and NOT adopted** (the fallback) — its runtime assumes a streaming wire protocol that would change
+  the frozen synchronous contracts, so a hand-rolled `Answer`/`Citation` pair is lighter (see ADR-0058). Builds
+  to static assets served by the Caddy proxy; 41 Vitest + 5 Playwright tests.
 
 ### ADR-0053 — Admin observability surfacing (read-only; secure Grafana embed)
 - **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §1.5, §3 (D-P5-3), §8 (G-P5-3)

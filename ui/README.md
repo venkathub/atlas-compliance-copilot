@@ -5,12 +5,11 @@ contracts. Streamed, cited answers; the human-in-the-loop agent approval surface
 collapsible execution trace; and a **read-only** admin area (eval scores, cost/latency,
 audit log). All model/markdown output is **sanitized before render** (OWASP LLM05).
 
-> **Status — P5 Task 6 (read-only admin).** Auth (1) + safe render (2) + RAG chat (3) +
-> agent/HITL (4) + the `GET /v1/audit` endpoint (5) in place, plus the **read-only admin
-> area** (`/admin`, compliance-gated): **Evals** (committed `eval-summary.json` snapshot),
-> **Cost** (committed `cost-summary.json` headline + env-driven Grafana embed), and
-> **Audit** (paginated `GET /v1/audit` + chain-verify badge). Still to come: the Caddy
-> reverse proxy + CSP (Task 7), and deploy automation (Tasks 8/10).
+> **Status — P5 complete.** Auth (1) · safe render / LLM05 (2) · RAG chat + progressive
+> reveal (3) · agent run + HITL approval (4) · `GET /v1/audit` (5) · read-only admin (6) ·
+> Caddy single-origin proxy + CSP (7) · multi-arch image + prod overlay (8) · Playwright
+> E2E + a11y (9) · one-command deploy + local-TLS smoke (10). **41 Vitest + 5 Playwright**
+> green; backends frozen. See the sections below and `docs/RUNBOOK.md` §9 for deploy.
 
 ## Admin (read-only) — eval/cost snapshot artifacts
 
