@@ -190,6 +190,15 @@
 - **Rationale:** A gate must be achievable now; the live box is a calendar dependency, not engineering. Caddy's
   internal-TLS satisfies the gate today and its ACME mode serves the live deploy later.
 - **Consequences:** Implements **ADR-0006** (multi-arch from P0); shares the proxy component with ADR-0052.
+- **Implementation note (2026-06-27, Task 8 — multi-arch UI image + prod overlay):** `ui/Dockerfile` is
+  multi-stage — stage 1 (`node:22-bookworm-slim`, digest-pinned) runs `npm ci` + `npm run build`; stage 2
+  (`caddy:2-alpine`, digest-pinned) bakes in `infra/proxy/Caddyfile` + the built `/srv/ui`. `.dockerignore`
+  re-includes `infra/proxy/Caddyfile`. **Verified locally:** the **arm64** layer builds under QEMU
+  (`buildx --platform linux/amd64,linux/arm64`, exit 0 — the §4.5 portability gate), and the amd64 image,
+  run over local TLS, serves the UI (HTTP/2 200) with the full CSP + security headers, SPA fallback, and **no
+  secret in the bundle**. `infra/docker-compose.prod.yml` overlays the base: in-compose service-name upstreams
+  + `restart: always`; the domain/ACME/ports come from the box's env (`PROXY_SITE_ADDRESS`, `PROXY_TLS`=ACME
+  email, `PROXY_HTTPS_PORT=443`). CI builds+pushes the multi-arch `ui` image to GHCR (push to main only).
   `RUNBOOK.md` documents live deploy/rollback; the live smoke test runs when the box exists.
 
 ### ADR-0054 — Frontend stack (Vite + React + TS + Tailwind; assistant-ui via adapter)

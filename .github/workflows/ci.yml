@@ -205,3 +205,17 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}/rag-engine:latest
             ghcr.io/${{ github.repository }}/rag-engine:${{ github.sha }}
+      # P5 Task 8: the UI + reverse-proxy image (multi-stage builds the React app, then
+      # Caddy serves it). Built amd64+arm64 on every run (validates the Oracle Ampere A1
+      # arm64 target); pushed to GHCR only on push to main. No prebuilt artifact needed —
+      # the Node build runs inside the image.
+      - name: Build (and push on main) multi-arch UI image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ui/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ghcr.io/${{ github.repository }}/ui:latest
+            ghcr.io/${{ github.repository }}/ui:${{ github.sha }}

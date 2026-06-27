@@ -154,4 +154,21 @@ These are the only UI vars in P5 Task 0; proxy/TLS/deploy vars arrive in later t
 
 `npm run lint && npm run typecheck && npm run format:check && npm test && npm run build`
 run in the `ui` CI job (Node 22), plus a bundle scan asserting **no secret** ships in
-`dist/`. Results are green as of Task 0 (1 smoke test).
+`dist/`. 41 Vitest tests as of Task 6.
+
+## Image (P5 Task 8)
+
+`ui/Dockerfile` is a **multi-stage, multi-arch (amd64 + arm64)** image: stage 1 (Node 22)
+builds the static UI; stage 2 (Caddy) serves it and reverse-proxies `/v1/*` to the
+backends with the baked-in `infra/proxy/Caddyfile` (CSP + routing). Build context is the
+repo **root** (the Caddyfile lives in `infra/proxy/`):
+
+```bash
+docker build -f ui/Dockerfile -t atlas/ui:latest .          # local (amd64)
+docker buildx build --platform linux/amd64,linux/arm64 -f ui/Dockerfile .   # multi-arch (arm64 = Oracle A1)
+```
+
+No secret is baked in — the bundle is public; TLS/upstreams/domain are env-injected at
+runtime. Bring it up behind TLS with `make -C infra proxy-up`; the prod overlay
+(`infra/docker-compose.prod.yml`) flips to in-compose upstreams + `restart: always` + a
+real domain/ACME. The one-command deploy + local-TLS smoke test is P5 Task 10.
