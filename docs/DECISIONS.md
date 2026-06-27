@@ -137,6 +137,14 @@
   DOM-inert tests). The CSP/header wall (b) lands at the Caddy proxy in Task 7. **assistant-ui (G-P5-1/ADR-0054)
   evaluated and NOT adopted:** its runtime assumes a streaming wire protocol that would force a change to the
   frozen synchronous contracts, so a hand-rolled `Answer`/`Citation` pair is lighter — the ADR-0054 fallback.
+- **Implementation note (2026-06-27, Task 7 — proxy CSP wall (b)):** `infra/proxy/Caddyfile` emits a strict CSP
+  (`default-src 'self'`; **`script-src 'self'`** and **`style-src 'self'`** — no `unsafe-inline`/`unsafe-eval`,
+  feasible because the Vite build emits only hashed external module scripts + a linked stylesheet, CI-verified
+  no inline `<script>`/`<style>`; `object-src 'none'`; `frame-ancestors 'self'`; `frame-src 'self'
+  {$GRAFANA_ORIGIN}` for the cost embed; scheme-allowlisted `img/connect/font`) plus `X-Content-Type-Options`,
+  `Referrer-Policy`, `HSTS`, `X-Frame-Options`, and `-Server`. Grafana embedding required
+  `GF_SECURITY_ALLOW_EMBEDDING: "true"` (anonymous access stays Viewer-only). Caddyfile validated via
+  `make -C infra proxy-validate`; the live-browser CSP assertion is the Task 9 E2E gate.
 
 ### ADR-0057 — Multimodal frontier-model demo (budget-gated stretch)
 - **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §3 (D-P5-7)
@@ -246,6 +254,14 @@
   "Gateway frozen").
 - **Consequences:** One new infra component (shared with ADR-0055); the UI never holds a downstream secret and
   never talks to `rag-engine`/Postgres/MCP directly.
+- **Implementation note (2026-06-27, Task 7 — `infra/proxy/Caddyfile` + compose):** Caddy routing matches in
+  order `/v1/agent/*`→agents, `/v1/audit*`→mcp-tools, `/v1/*`→gateway, else static UI with SPA fallback
+  (`try_files … /index.html`). Upstreams are **env-driven** (`GATEWAY_UPSTREAM`/`AGENTS_UPSTREAM`/`MCP_UPSTREAM`)
+  defaulting to **host-run** backends (`host.docker.internal:*`, the dev flow) and overridable to the compose
+  service names — so the same proxy serves both topologies. Added a `caddy` compose service under the `proxy`
+  profile (image built by `ui/Dockerfile`, Task 8) publishing `:8443`/`:8088`. The `/mcp` tool endpoint is
+  **not** proxied to the browser (only the agent reaches it in-network). Config validated via `make -C infra
+  proxy-validate` + `docker compose config`; live bring-up + local-TLS smoke is Task 10.
 
 ### ADR-0051 — Streaming answer UX (client-side reveal + polled trace; SSE deferred)
 - **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §3 (D-P5-1), §2.4

@@ -270,12 +270,47 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # P5 Task 7 (G-P5-3): allow the cost dashboard to be iframed by the Atlas UI behind
+      # the Caddy proxy. Without this Grafana sends X-Frame-Options:deny and the embed is
+      # blocked. Anonymous access stays *Viewer* only (read-only) — never an editor/admin org.
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
     # Datasource + dashboard provisioning seeded into a named volume by `make up`.
     volumes:
       - atlas-grafana-config:/etc/grafana/provisioning
       - atlas-grafana-data:/var/lib/grafana
     ports:
       - "${GRAFANA_PORT:-3001}:3000"
+    restart: unless-stopped
+
+  # ── Reverse proxy + static UI (P5 Task 7 — D-P5-2/5) ──────────────────────────────
+  # Single origin: serves the built React UI and path-routes /v1/* to the backends,
+  # terminating TLS (internal/self-signed by default). The image (multi-stage: build UI →
+  # Caddy serving dist + Caddyfile) is produced by ui/Dockerfile (P5 Task 8). Under the
+  # `proxy` profile so `make up` (infra only) is unaffected; bring up explicitly for the
+  # full-stack / local-TLS proof (Task 10). Upstreams default to host-run backends
+  # (host.docker.internal); override to gateway:8080 / agents:8083 / mcp-tools:8082 when
+  # the apps run in-compose (`--profile app --profile proxy`).
+  caddy:
+    profiles: ["proxy"]
+    build:
+      context: ..
+      dockerfile: ui/Dockerfile
+    image: atlas/ui:0.1.0-SNAPSHOT
+    container_name: atlas-proxy
+    environment:
+      PROXY_SITE_ADDRESS: ${PROXY_SITE_ADDRESS:-localhost}
+      PROXY_TLS: ${PROXY_TLS:-internal}
+      GATEWAY_UPSTREAM: ${GATEWAY_UPSTREAM:-host.docker.internal:8080}
+      AGENTS_UPSTREAM: ${AGENTS_UPSTREAM:-host.docker.internal:8083}
+      MCP_UPSTREAM: ${MCP_UPSTREAM:-host.docker.internal:8082}
+      GRAFANA_ORIGIN: ${GRAFANA_ORIGIN:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${PROXY_HTTPS_PORT:-8443}:443"
+      - "${PROXY_HTTP_PORT:-8088}:80"
+    volumes:
+      - atlas-caddy-data:/data
     restart: unless-stopped
 
 volumes:
@@ -286,6 +321,8 @@ volumes:
   atlas-minio-data:
   atlas-prometheus-data:
   atlas-grafana-data:
+  # Caddy's local CA + issued certs (the internal-TLS material) persist here.
+  atlas-caddy-data:
   # Config volumes are seeded from repo files by `make up` (see infra/Makefile);
   # declared external so Compose mounts the already-seeded volume rather than a blank one.
   atlas-prometheus-config:

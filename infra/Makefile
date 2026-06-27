@@ -17,7 +17,7 @@ export
 
 DC := docker compose -p atlas -f -
 
-.PHONY: up down clean health psql redis-cli logs ps seed-config obs-health gpu-up gpu-down gpu-test
+.PHONY: up down clean health psql redis-cli logs ps seed-config obs-health gpu-up gpu-down gpu-test proxy-validate proxy-up proxy-down
 
 up:
 	@echo "Starting data stores (postgres, redis, clickhouse, minio)..."
@@ -99,3 +99,19 @@ logs:
 
 ps:
 	@cat docker-compose.yml | $(DC) ps
+
+# ── Reverse proxy (P5 Task 7) ────────────────────────────────────────────────
+# Validate the Caddyfile syntax without bringing anything up (no bind mount needed —
+# the config is piped over stdin, honoring the Snap-Docker no-/data-bind-mount rule).
+proxy-validate:
+	@cat proxy/Caddyfile | docker run --rm -i caddy:2-alpine \
+		caddy validate --adapter caddyfile --config /dev/stdin
+
+# Build + start the single-origin proxy (serves the built UI + path-routes to the
+# backends over local internal-TLS). Requires the UI image (ui/Dockerfile, P5 Task 8).
+# Backends default to host-run (host.docker.internal); the full local-TLS smoke is Task 10.
+proxy-up:
+	@cat docker-compose.yml | $(DC) --profile proxy up -d --build caddy
+
+proxy-down:
+	@cat docker-compose.yml | $(DC) --profile proxy down
