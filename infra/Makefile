@@ -17,7 +17,7 @@ export
 
 DC := docker compose -p atlas -f -
 
-.PHONY: up down clean health psql redis-cli logs ps seed-config obs-health gpu-up gpu-down gpu-test proxy-validate proxy-up proxy-down
+.PHONY: up down clean health psql redis-cli logs ps seed-config obs-health gpu-up gpu-down gpu-test proxy-validate proxy-up proxy-down deploy-up deploy-smoke
 
 up:
 	@echo "Starting data stores (postgres, redis, clickhouse, minio)..."
@@ -115,3 +115,14 @@ proxy-up:
 
 proxy-down:
 	@cat docker-compose.yml | $(DC) --profile proxy down
+
+# ── One-command deploy + local-TLS smoke (P5 Task 10) ────────────────────────
+# Build the UI/proxy image and bring the stack up behind Caddy internal-TLS.
+# `make deploy-up FULL=1` also starts the in-compose backends (needs jars + GPU).
+deploy-up:
+	@deploy/up.sh $(if $(FULL),--full,)
+
+# The local-TLS deploy smoke: UI over TLS + CSP/headers + SPA + no-secret (+ login
+# round-trip when the backends are up). Override the target with URL=.
+deploy-smoke:
+	@deploy/smoke.sh $(if $(URL),$(URL),https://localhost:$(or $(PROXY_HTTPS_PORT),8443))

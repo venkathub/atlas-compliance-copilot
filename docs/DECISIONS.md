@@ -206,6 +206,14 @@
   secret in the bundle**. `infra/docker-compose.prod.yml` overlays the base: in-compose service-name upstreams
   + `restart: always`; the domain/ACME/ports come from the box's env (`PROXY_SITE_ADDRESS`, `PROXY_TLS`=ACME
   email, `PROXY_HTTPS_PORT=443`). CI builds+pushes the multi-arch `ui` image to GHCR (push to main only).
+- **Implementation note (2026-06-27, Task 10 — deploy automation + smoke):** `infra/deploy/up.sh` (one-command
+  bring-up: build the UI/proxy image + `compose --profile proxy [--profile app] up`) and `infra/deploy/smoke.sh`
+  (the local-TLS gate). **Verified locally (GPU-free):** the proxy serves the UI over `https://localhost:8443`
+  with the full CSP + security headers, SPA fallback, and **no secret in the bundle** — all hard asserts pass;
+  the login/`/v1/query` round-trip is run when the backends are up, else skipped-with-warning (the live GPU
+  lane). `RUNBOOK.md` §9 documents deploy/rollback/TLS/secrets + the **live Oracle Ampere A1 (arm64) dry-run**
+  (DNS, ACME via `PROXY_TLS` email, GPU via `OLLAMA_BASE_URL`), the **Hetzner** fallback, and the
+  **Cloudflare-Tunnel** no-DNS option. The same `smoke.sh` runs against the live box post-merge (non-blocking).
   `RUNBOOK.md` documents live deploy/rollback; the live smoke test runs when the box exists.
 
 ### ADR-0054 — Frontend stack (Vite + React + TS + Tailwind; assistant-ui via adapter)
