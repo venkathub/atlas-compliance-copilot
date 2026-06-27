@@ -48,6 +48,45 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # ── RAG Engine (P1, Spring AI — permission-aware retrieval) ──────────────────
+  # The retrieval engine behind the gateway. Like the gateway it is usually run on the HOST
+  # in dev (`mvn spring-boot:run`) and scraped via host.docker.internal; this definition
+  # exists for image parity + full in-compose bring-up (the prod overlay uses it — see
+  # docker-compose.prod.yml). Build the `-exec` jar first: `mvn -pl rag-engine -am package`.
+  # Profile-gated ("app"), so `make up` (infra only) is unaffected.
+  rag-engine:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: rag-engine/Dockerfile
+    image: atlas/rag-engine:0.1.0-SNAPSHOT
+    container_name: atlas-rag-engine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      RAG_ENGINE_PORT: 8081
+      # local = the P1 dev clearance shim (ADR-0016 — NOT prod authz). The prod overlay drops
+      # this so the gateway's signed HMAC clearance assertion becomes the trust path.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/${POSTGRES_DB:-atlas}}
+      POSTGRES_USER: ${POSTGRES_USER:-atlas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atlas}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen2.5:3b-instruct}
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+      EMBED_DIM: ${EMBED_DIM:-768}
+      # Shared HMAC for the gateway→rag-engine internal verified-clearance assertion (ADR-0034).
+      ATLAS_GATEWAY_INTERNAL_SECRET: ${ATLAS_GATEWAY_INTERNAL_SECRET:-change-me-locally}
+      OTEL_TRACES_EXPORT_ENABLED: ${OTEL_TRACES_EXPORT_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://langfuse-web:3000/api/public/otel/v1/traces}
+      LANGFUSE_OTEL_AUTH_HEADER: ${LANGFUSE_OTEL_AUTH_HEADER:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${RAG_ENGINE_PORT:-8081}:8081"
+    restart: unless-stopped
+
   # ── API Gateway (P3, ADR-0033 — Spring Cloud Gateway WebMVC) ─────────────────
   # The single front door in front of rag-engine. Built from gateway/Dockerfile (the
   # `-exec` fat jar must be packaged first: `mvn -pl gateway -am package`). Like
@@ -70,6 +109,9 @@ services:
       GATEWAY_PORT: 8080
       # rag-engine runs on the host in dev; reach it from inside the network.
       ATLAS_GATEWAY_RAG_ENGINE_URL: ${ATLAS_GATEWAY_RAG_ENGINE_URL:-http://host.docker.internal:8081}
+      # Redis (semantic cache + rate-limit + budget counters) — the in-network store.
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

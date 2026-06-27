@@ -1,11 +1,15 @@
-# Atlas production overlay (P5 Task 8). Apply ON TOP of the base compose:
+# Atlas production overlay (P5 Task 8; hardened P6 Task 2). Apply ON TOP of the base compose:
 #
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
 #     --profile app --profile proxy up -d
 #
 # Differences from the dev/base file:
 #   - the Caddy proxy fronts IN-COMPOSE backends (service-name upstreams), not host-run ones;
-#   - every app + the proxy restarts `always` (single-box resilience, no orchestrator);
+#   - the gateway talks to the in-compose rag-engine (not a host-run one);
+#   - startup is ORDERED by health: each tier waits for its dependency to be `service_healthy`
+#     (the Dockerfile HEALTHCHECKs added in P6 Task 2 make this meaningful);
+#   - every app + the proxy restarts `always`, has a MEMORY LIMIT (single 4 vCPU / 24 GB box,
+#     no orchestrator), and rotates logs (json-file, 10m x 5) so disk can't fill;
 #   - the public ports, real domain, and ACME TLS come from the box's env / secret store,
 #     NOT from this file: set in the box's .env —
 #       PROXY_SITE_ADDRESS=atlas.example.com   # the real domain
@@ -16,20 +20,93 @@
 #
 # The live deploy to the Oracle Ampere A1 (arm64) box is a documented, dry-run runbook
 # executed post-merge once the box exists (P5 §1.7 / Task 10); this overlay is its shape.
+
+# Shared log-rotation policy (bounded disk on a single box).
+x-prod-logging: &prod-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
+  rag-engine:
+    # NOTE (authz): the base sets SPRING_PROFILES_ACTIVE=local (the P1 dev clearance shim).
+    # Production authz = the gateway's signed HMAC clearance assertion, so the box .env should
+    # set a non-local profile. Left to the box .env here to avoid a boot-breaking blanket
+    # override; tightening this into an explicit `prod` profile is tracked in P6 Task 3 (auth).
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *prod-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+    restart: always
+
+  gateway:
+    environment:
+      # In prod the gateway talks to the in-compose rag-engine, not a host-run one.
+      ATLAS_GATEWAY_RAG_ENGINE_URL: ${ATLAS_GATEWAY_RAG_ENGINE_URL:-http://rag-engine:8081}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+    depends_on:
+      redis:
+        condition: service_healthy
+      rag-engine:
+        condition: service_healthy
+    logging: *prod-logging
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    restart: always
+
+  mcp-tools:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *prod-logging
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    restart: always
+
+  agents:
+    environment:
+      GATEWAY_BASE_URL: ${GATEWAY_BASE_URL:-http://gateway:8080}
+      MCP_BASE_URL: ${MCP_BASE_URL:-http://mcp-tools:8082/mcp}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+      mcp-tools:
+        condition: service_healthy
+    logging: *prod-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    restart: always
+
   caddy:
     environment:
       # Default to the in-compose backends in prod (overridable by the box's env).
       GATEWAY_UPSTREAM: ${GATEWAY_UPSTREAM:-gateway:8080}
       AGENTS_UPSTREAM: ${AGENTS_UPSTREAM:-agents:8083}
       MCP_UPSTREAM: ${MCP_UPSTREAM:-mcp-tools:8082}
-    restart: always
-
-  gateway:
-    restart: always
-
-  agents:
-    restart: always
-
-  mcp-tools:
+    depends_on:
+      gateway:
+        condition: service_healthy
+      agents:
+        condition: service_healthy
+      mcp-tools:
+        condition: service_healthy
+    logging: *prod-logging
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     restart: always

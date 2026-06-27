@@ -13,6 +13,7 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0061 | 2026-06-27 | Container hardening: distroless health-probe, agents multi-stage/non-root, prod-compose limits/health-ordering | Accepted | P6 |
 | 0060 | 2026-06-27 | Prod runbook: in-prod topology, env/secrets reference, $10/mo cost ceiling & frontier-off posture | Accepted | P6 |
 | 0059 | 2026-06-26 | UI AI-transparency surfacing (EU AI Act / NIST AI RMF) | Accepted | P5 |
 | 0058 | 2026-06-26 | UI output handling: client sanitizer + proxy CSP/security headers (LLM05) | Accepted | P5 |
@@ -96,6 +97,48 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0061 — Container hardening: distroless health-probe, agents multi-stage/non-root, prod-compose limits & health-ordering
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `infra/docker/HealthCheck.java`,
+  `*/Dockerfile`, `infra/proxy/Caddyfile`, `infra/docker-compose.yml`, `infra/docker-compose.prod.yml`
+- **Context:** P5 left three container gaps for prod: (1) the `agents` image was the outlier — single-stage,
+  **root**, tag-pinned (not digest); (2) **no image carried a Dockerfile `HEALTHCHECK`**, so compose
+  `depends_on: service_healthy` ordering was impossible; (3) the prod overlay only rewired upstreams +
+  `restart` — no resource limits, no log rotation, no health-gated startup, and **no `rag-engine` service**
+  in compose at all. The hard constraint: the three Java images are `distroless:nonroot` — **no shell, curl,
+  or wget** — so the textbook `HEALTHCHECK CMD curl …` is impossible without abandoning distroless.
+- **Options considered (health probe for distroless):**
+  - *Switch to a `:debug` base with busybox* — gives wget but ships a shell + tools into prod (weaker
+    supply-chain posture). Rejected.
+  - *Bake curl/grpc-health-probe static binary* — extra arch-specific artifact + supply-chain surface.
+  - *JRE-based probe* — distroless already has `java`; a ~30-line `java.net.http` probe compiled to
+    **architecture-independent bytecode** runs on the existing JRE. **Chosen.** Compiled once in a
+    `--platform=$BUILDPLATFORM` stage so `javac` runs on the native build arch (no QEMU) and the portable
+    `.class` is copied into both the amd64 and arm64 runtime images — preserving the "no RUN steps in the
+    runtime layer / multi-arch for free" property.
+- **Decision:**
+  - **agents** → true multi-stage (uv builds a locked `/opt/venv`; slim runtime carries only venv + app),
+    **non-root** (uid/gid 10001), **digest-pinned** `python:3.12-slim-bookworm`, `HEALTHCHECK` via stdlib
+    `urllib` against `/healthz`, and a uv-free runtime entrypoint.
+  - **gateway / rag-engine / mcp-tools** → keep distroless+nonroot+digest; add a `$BUILDPLATFORM` probe stage
+    + `HEALTHCHECK` hitting `/actuator/health` via the shared `HealthCheck` class.
+  - **ui** → `HEALTHCHECK` via busybox `wget` against a new **host-agnostic `:9180 /healthz`** listener in the
+    Caddyfile (so the probe never depends on the public host/TLS match).
+  - **compose** → add the missing `rag-engine` service to the base (profile `app`, parity with the others);
+    prod overlay adds **memory limits**, **json-file log rotation (10m×5)**, and **health-gated `depends_on`**
+    ordering (proxy waits for app; gateway waits for rag-engine + redis; agents wait for gateway + mcp).
+- **Rationale:** Health-ordering + restart + bounded logs/memory are the table-stakes for an unattended
+  single box with no orchestrator. The JRE-bytecode probe is the one option that adds a real HTTP health
+  signal **without** weakening the distroless posture or reintroducing QEMU. Adding `rag-engine` to compose
+  closes the one service that previously had to be hand-run.
+- **Consequences:** Each Java health check spawns a short-lived JVM (~hundreds of ms) per 30s interval —
+  negligible on a 4 vCPU box, noted as the trade-off vs. a static probe binary. `.dockerignore` had to
+  re-include `infra/docker/HealthCheck.java` (it excludes `infra` wholesale). rag-engine's prod authz profile
+  is intentionally left to the box `.env` (a boot-safe choice; the explicit `prod` profile is P6 Task 3).
+- **Verification:** `agents` image built + run as **uid 10001** with `uvicorn` on the venv path and
+  `app.api` importing; BuildKit `--check` clean on the rewritten Dockerfiles; the `healthprobe` stage builds
+  and `javac` compiles against the real `.dockerignore`; merged `docker compose config` valid with limits,
+  log rotation, and `service_healthy` ordering present.
 
 ### ADR-0060 — Production runbook: in-prod topology, env/secrets reference, $10/mo cost ceiling & frontier-off posture
 - **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Doc:** `RUNBOOK.md` §9.0, §10, §11

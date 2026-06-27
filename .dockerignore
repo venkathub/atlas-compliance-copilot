@@ -17,6 +17,9 @@ infra
 # …but the UI image (ui/Dockerfile) needs the proxy Caddyfile baked in (re-include it).
 !infra/proxy
 !infra/proxy/Caddyfile
+# …and the Java images (gateway/rag-engine/mcp-tools) compile the health probe from this file.
+!infra/docker
+!infra/docker/HealthCheck.java
 # Java build noise we don't need in the image (we only copy the fat jar explicitly):
 **/target/classes
 **/target/generated-sources

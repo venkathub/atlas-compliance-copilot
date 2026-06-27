@@ -11,9 +11,21 @@
 # first:  mvn -pl mcp-tools -am package
 # The runnable Spring Boot jar is the classified `-exec` artifact (the plain jar is a thin
 # library jar; see mcp-tools/pom.xml spring-boot-maven-plugin classifier).
+
+# ── probe stage: compile the health probe ONCE (portable bytecode; native build arch) ──
+# `--platform=$BUILDPLATFORM` keeps javac on the native build arch (no QEMU); the resulting
+# .class is architecture-independent and copied into both arch runtime images.
+FROM --platform=$BUILDPLATFORM eclipse-temurin:21-jdk AS healthprobe
+COPY infra/docker/HealthCheck.java /HealthCheck.java
+RUN javac -d /probe /HealthCheck.java
+
 FROM gcr.io/distroless/java21-debian12:nonroot@sha256:7e37784d94dccbf5ccb195c73b295f5ad00cd266512dfbac12eb9c3c28f8077d
 
 WORKDIR /app
 COPY mcp-tools/target/mcp-tools-*-exec.jar /app/app.jar
+# Distroless has no shell/curl, so the HEALTHCHECK uses the JRE + the portable probe class.
+COPY --from=healthprobe /probe/HealthCheck.class /app/HealthCheck.class
 EXPOSE 8082
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD ["java", "-cp", "/app", "HealthCheck", "http://127.0.0.1:8082/actuator/health"]
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

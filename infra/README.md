@@ -69,6 +69,28 @@ Images are kept **stock** (no custom build) so the upstream **multi-arch** manif
 preserved for the Oracle Ampere A1 (arm64) prod target. Rationale recorded as an ADR
 in `docs/DECISIONS.md`.
 
+## Production hardening (P6 · ADR-0061)
+The prod overlay (`docker-compose.prod.yml`, applied on top of the base) turns the stack into
+something an **unattended single box** can run:
+- **Health-ordered startup** — `depends_on: { condition: service_healthy }`: proxy waits for the
+  app tier, gateway waits for `rag-engine` + `redis`, agents wait for `gateway` + `mcp-tools`.
+  This is meaningful because **every image now has a Dockerfile `HEALTHCHECK`**.
+- **Resource limits + log rotation** — per-service `deploy.resources.limits.memory` and
+  `json-file` logs capped at `10m × 5` so RAM/disk can't run away; `restart: always`.
+- **In-compose `rag-engine`** — added to the base (profile `app`) so the full stack runs in one
+  project (prod wires `gateway → rag-engine:8081` and drops the dev clearance shim).
+
+**Distroless health probe.** The three Java services are `distroless:nonroot` (no shell/curl), so
+their `HEALTHCHECK` runs a tiny `java.net.http` probe — `infra/docker/HealthCheck.java`, compiled
+to **architecture-independent bytecode** in a `--platform=$BUILDPLATFORM` stage and copied into
+both arch images (no QEMU, distroless preserved). The UI probe hits a host-agnostic `:9180/healthz`
+listener in the Caddyfile; the `agents` image (multi-stage, **non-root** uid 10001) probes
+`/healthz` via stdlib `urllib`.
+
+> Validate the merged overlay without a `/data` bind (snap-safe): copy the two compose files into
+> `$HOME` and run `docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile app
+> --profile proxy config`.
+
 ## Coming later in P0
 - Multi-arch (amd64 + arm64) image builds. *(Increment 4)*
 - GitHub Actions CI + supply-chain scanning (gitleaks / Trivy / Syft SBOM). *(Increment 4)*

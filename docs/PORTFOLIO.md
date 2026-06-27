@@ -293,3 +293,22 @@ table + secrets-management model), §11 (cost ceiling, frontier-off rationale, e
 **Quantified (Task 1):** 1 ADR (0060) · 3 new RUNBOOK sections · 1 architecture diagram · **~40** env vars
 documented with secret/public classification · **$10/mo** hard ceiling wired to budget guard + alert · frontier
 fallback **off-by-default** (0 billable keys in repo).
+
+- **Hardened every container for an unattended single box.** Rewrote the `agents` image to a **true multi-stage,
+  non-root (uid 10001), digest-pinned** build (was the lone single-stage/root/tag-pinned outlier); added a
+  **Dockerfile `HEALTHCHECK` to all 5 services** — solving the distroless "no shell/curl" constraint with a
+  ~30-line **JRE health probe compiled to architecture-independent bytecode** in a `$BUILDPLATFORM` stage (real
+  HTTP health *without* abandoning distroless or reintroducing QEMU), and a host-agnostic Caddy `:9180/healthz`
+  for the UI. Hardened the **prod compose overlay** with memory limits, **json-file log rotation (10m×5)**, and
+  **health-gated `depends_on` ordering**, and added the previously-missing **`rag-engine` service** to compose.
+
+**Evidence (Task 2):** `agents` image **built and run as uid 10001** with `uvicorn` on the venv path +
+`app.api` import OK; BuildKit `docker build --check` clean on the rewritten Dockerfiles; the `healthprobe`
+stage builds and `javac` compiles against the **real `.dockerignore`** (re-include verified); merged
+`docker compose -f … -f docker-compose.prod.yml config` valid with limits, log rotation, and `service_healthy`
+ordering. ADR-0061.
+
+**Quantified (Task 2):** **5/5** services with a container HEALTHCHECK · agents image **root → non-root** +
+single-stage → **multi-stage** + tag → **digest-pinned** · **1** portable probe class reused across 3 distroless
+images (0 extra runtime tools, 0 QEMU) · prod overlay: **5** services with mem limits + **log rotation** +
+**health-ordered** startup · **1** missing service (`rag-engine`) added to compose.
