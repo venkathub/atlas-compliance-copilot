@@ -5,6 +5,7 @@ import { useAuth } from "./auth/AuthContext.tsx";
 import { useClearance } from "./auth/useClearance.ts";
 import { clearanceLabel } from "./auth/clearance.ts";
 import { ChatPage } from "./chat/ChatPage.tsx";
+import { AdminPage } from "./admin/AdminPage.tsx";
 import type { Clearance } from "../lib/types.ts";
 
 /**
@@ -63,11 +64,6 @@ function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-// Admin remains a placeholder until Task 6.
-function AdminPlaceholder() {
-  return <p className="text-slate-600">Admin (read-only) — implemented in P5 Task 6.</p>;
-}
-
 export function AppRoutes() {
   return (
     <Routes>
@@ -87,7 +83,7 @@ export function AppRoutes() {
         element={
           <RequireClearance min="compliance">
             <AppShell>
-              <AdminPlaceholder />
+              <AdminPage />
             </AppShell>
           </RequireClearance>
         }

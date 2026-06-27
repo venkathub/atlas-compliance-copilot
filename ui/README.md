@@ -5,14 +5,28 @@ contracts. Streamed, cited answers; the human-in-the-loop agent approval surface
 collapsible execution trace; and a **read-only** admin area (eval scores, cost/latency,
 audit log). All model/markdown output is **sanitized before render** (OWASP LLM05).
 
-> **Status — P5 Task 4 (agent + HITL).** Auth (1) + safe render (2) + RAG chat (3) in
-> place, plus the **governed-action surface**: an "Investigate as governed action" mode
-> drives the frozen P4 agent (`useAgentRun`: `POST /v1/agent/runs` → `AWAITING_APPROVAL`
-> → GET-poll trace), an `ApprovalCard` (Approve/Reject with the **"AI-assisted draft —
-> requires human review"** stamp), a collapsible `TracePanel`, and the terminal draft-SAR
-> result. The UI only _forwards_ the human decision to `…/resume` — it never constructs a
-> write. Still to come: the additive `GET /v1/audit` admin views (Task 6), the Caddy
+> **Status — P5 Task 6 (read-only admin).** Auth (1) + safe render (2) + RAG chat (3) +
+> agent/HITL (4) + the `GET /v1/audit` endpoint (5) in place, plus the **read-only admin
+> area** (`/admin`, compliance-gated): **Evals** (committed `eval-summary.json` snapshot),
+> **Cost** (committed `cost-summary.json` headline + env-driven Grafana embed), and
+> **Audit** (paginated `GET /v1/audit` + chain-verify badge). Still to come: the Caddy
 > reverse proxy + CSP (Task 7), and deploy automation (Tasks 8/10).
+
+## Admin (read-only) — eval/cost snapshot artifacts
+
+The Evals and Cost tabs read **committed snapshot** JSON the UI serves as static assets
+(`ui/public/eval-summary.json`, `ui/public/cost-summary.json`) — the faithful realization
+of the spec's "committed gate artifact" (the raw `evals/report/metrics.json` is CI-only
+and the agent gate writes no file). Regenerate from the **real** gate outputs with:
+
+```bash
+python evals/scripts/refresh_eval_summary.py   # reads evals/report/metrics.json + runs the agent gate
+```
+
+The UI **never recomputes** evals — it renders the snapshot. The Audit tab calls the live
+`GET /v1/audit`. The Grafana cost embed is env-driven (`VITE_GRAFANA_URL` +
+`VITE_GRAFANA_COST_DASHBOARD_UID`); when unset it degrades to a hint. Admin is strictly
+**view-only** — no re-run/edit/delete actions (D-P5-3 / ADR-0053).
 
 ## Real agent contract (frozen Agents, :8083)
 

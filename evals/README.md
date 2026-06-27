@@ -75,6 +75,15 @@ scorer, writes `report/metrics.json` + `report/summary.md`. **No GPU, no RAGAS i
 First calibrated baseline (qwen2.5:3b RAG + llama3.1:8b judge, 22 tuples): faithfulness 0.80 /
 answer_relevancy 0.70 / context_recall 0.78 gating; adversarial 1.00 (0 violations).
 
+## Refresh the UI eval/cost snapshot (P5 admin artifact)
+```bash
+python evals/scripts/refresh_eval_summary.py    # writes ui/public/{eval-summary,cost-summary}.json
+```
+Snapshots the **real** gate outputs into two committed, camelCase JSON files the P5 UI Admin page
+serves and reads (D-P5-3 / ADR-0053): it reads `report/metrics.json` (run the gate first), runs the
+deterministic agent gate, and reads `data/gateway-baseline.json`. **Changes no eval logic** — it only
+normalizes existing results. Re-run + commit whenever the gates are re-recorded.
+
 ## Record cassettes (live, GPU on — calibration session)
 ```bash
 make -C infra gpu-up                      # resume + discover OLLAMA_BASE_URL (then re-source .env)

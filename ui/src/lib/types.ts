@@ -171,25 +171,56 @@ export interface AuditPage {
   rows: AuditRow[];
 }
 
-// ── Eval scores (committed gate artifact / Langfuse) ───────────────────────
+// ── Eval scores (committed snapshot artifact: ui/public/eval-summary.json) ──
+// Normalized (camelCase) snapshot of the REAL P2 RAG gate + P4 agent gate outputs,
+// produced by evals/scripts/refresh_eval_summary.py. The UI never recomputes evals.
+export interface RagGateScores {
+  faithfulness: number | null;
+  answerRelevancy: number | null;
+  contextPrecision: number | null;
+  contextRecall: number | null;
+  citationCorrectness: number | null;
+}
+
 export interface RagGate {
-  faithfulness: number;
-  answerRelevancy: number;
-  contextRecall: number;
   passed: boolean;
+  nSamples?: number;
+  scores: RagGateScores;
+  adversarialPassRate?: number | null;
+  recordedAt?: string;
+  judgeModel?: string;
 }
 
 export interface AgentGate {
-  taskSuccess: number;
-  of: number;
-  toolCallCorrectness: number;
-  hitlEnforced: boolean;
   passed: boolean;
+  scenarios?: number;
+  taskSuccessRate?: number | null;
+  toolSelectionRate?: number | null;
+  argumentCorrectnessRate?: number | null;
+  planAdherenceRate?: number | null;
+  stepEfficiencyRate?: number | null;
+  hitlRespected: boolean;
+  authorizationRespected: boolean;
+  unapprovedWrites?: number;
+  unauthorizedWrites?: number;
 }
 
-export interface EvalScores {
-  ragGate: RagGate;
-  agentGate: AgentGate;
+export interface EvalSummary {
   generatedAt: string;
-  commit: string;
+  gitSha: string;
+  rag: RagGate;
+  agent: AgentGate;
+}
+
+// ── Cost summary (committed snapshot: ui/public/cost-summary.json) ──────────
+export interface CostSummary {
+  generatedAt: string;
+  gitSha: string;
+  costReductionPct: number | null;
+  targetReductionPct: number | null;
+  meetsTarget: boolean;
+  costOffUnits: number | null;
+  costOnUnits: number | null;
+  cacheSimThreshold?: number | null;
+  recordedAt?: string;
 }

@@ -1,0 +1,11 @@
+{
+  "generatedAt": "2026-06-27T10:40:55.665015+00:00",
+  "gitSha": "da55199",
+  "costReductionPct": 100.0,
+  "targetReductionPct": 30.0,
+  "meetsTarget": true,
+  "costOffUnits": 20.1096,
+  "costOnUnits": 0.0,
+  "cacheSimThreshold": 0.95,
+  "recordedAt": "2026-06-19T01:11:54+00:00"
+}
