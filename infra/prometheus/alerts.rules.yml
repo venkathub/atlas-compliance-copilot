@@ -1,0 +1,81 @@
+# Atlas — Prometheus alerting rules (P6 Task 4, ADR-0063).
+# Seeded into the `atlas-prometheus-config` named volume by `make seed-config` (Snap-Docker safe),
+# referenced by prometheus.yml `rule_files:`. Alerts route to Alertmanager (infra/alertmanager.yml).
+#
+# Thresholds map to the owner-set ≈$10/mo ceiling + the existing in-app guards (ADR-0038/0039/0060).
+groups:
+  - name: atlas-cost
+    rules:
+      # Cost ceiling guard (≈$10/mo, RUNBOOK §11). The gateway meters cost-units; the daily budget
+      # cap is 100 units (ATLAS_BUDGET_DAILY_CAP_UNITS). Warn when the rolling-24h burn passes 80%
+      # of that cap — early warning before the in-app budget guard starts returning 402.
+      - alert: AtlasCostBudgetBurnHigh
+        expr: sum(increase(atlas_gateway_cost_units_total[24h])) > 80
+        for: 10m
+        labels:
+          severity: warning
+          area: cost
+        annotations:
+          summary: "Atlas daily cost-units burn is high (>80% of cap)"
+          description: >-
+            Gateway cost-units over the last 24h are {{ $value | printf "%.1f" }} (cap 100 ≈ $10/mo
+            ceiling). The GPU may be running or the frontier tier enabled — check RUNBOOK §11 and
+            pause the GPU (`make -C infra gpu-down`) if this is unexpected.
+
+  - name: atlas-reliability
+    rules:
+      # 5xx error-rate on the front door. Spring exposes http_server_requests_seconds_count with a
+      # status label; the scrape attaches service="gateway".
+      - alert: AtlasGatewayHighErrorRate
+        expr: |
+          sum(rate(http_server_requests_seconds_count{service="gateway",status=~"5.."}[5m]))
+            / clamp_min(sum(rate(http_server_requests_seconds_count{service="gateway"}[5m])), 0.001) > 0.05
+        for: 10m
+        labels:
+          severity: critical
+          area: reliability
+        annotations:
+          summary: "Gateway 5xx error-rate >5% (10m)"
+          description: >-
+            5xx ratio is {{ $value | humanizePercentage }} over 5m — the downstream/model path is
+            likely degraded (circuit breaker may be open; 503 + Retry-After in effect).
+
+      # Graceful-degradation signal: the rag-engine/model circuit breaker is open (ADR-0039).
+      - alert: AtlasModelCircuitBreakerOpen
+        expr: max(resilience4j_circuitbreaker_state{state="open"}) == 1
+        for: 2m
+        labels:
+          severity: warning
+          area: reliability
+        annotations:
+          summary: "Gateway circuit breaker OPEN ≥2m"
+          description: >-
+            The rag-engine/model breaker is open — Atlas is failing fast (503 + Retry-After) instead
+            of stalling on a down model endpoint. Check OLLAMA_BASE_URL / the GPU.
+
+      # A scrape target (gateway/rag-engine/agents) is down.
+      - alert: AtlasServiceDown
+        expr: up{service=~"gateway|rag-engine|agents"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          area: reliability
+        annotations:
+          summary: "Atlas service {{ $labels.service }} is down"
+          description: "Prometheus cannot scrape {{ $labels.service }} for ≥2m."
+
+  - name: atlas-quality
+    rules:
+      # The eval gate pushes atlas_eval_gate_passed (1/0) to the pushgateway. Alert if the last
+      # recorded run failed a RAGAS floor / adversarial / (P6) cost gate.
+      - alert: AtlasEvalGateFailing
+        expr: min(atlas_eval_gate_passed) == 0
+        for: 1m
+        labels:
+          severity: warning
+          area: quality
+        annotations:
+          summary: "Atlas eval gate is failing"
+          description: >-
+            atlas_eval_gate_passed=0 — the last recorded eval run breached a quality/cost gate. See
+            the Grafana "Atlas — Eval & Observability" dashboard and evals/report/summary.md.

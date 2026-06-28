@@ -17,6 +17,7 @@
     "test:watch": "vitest",
     "e2e": "vite build && playwright test",
     "e2e:ui": "playwright test --ui",
+    "e2e:demo": "vite build && playwright test --config playwright.demo.config.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

@@ -17,6 +17,15 @@
 	auto_https disable_redirects
 }
 
+# ── Container health listener (P6 Task 2) ─────────────────────────────────────
+# A dedicated, host-agnostic HTTP listener on an INTERNAL-ONLY port (never published in
+# compose) so the Docker HEALTHCHECK / orchestrator probe does not depend on the public
+# host name or TLS. Returns 200 on /healthz, 404 otherwise.
+:9180 {
+	respond /healthz "ok" 200
+	respond 404
+}
+
 {$PROXY_SITE_ADDRESS:localhost} {
 	tls {$PROXY_TLS:internal}
 

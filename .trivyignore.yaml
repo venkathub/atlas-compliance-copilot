@@ -1,0 +1,26 @@
+# Trivy ignore file (P6 — CI supply-chain gate). The `supply-chain` job gates on fixable
+# CRITICAL/HIGH (vuln,misconfig,secret) with `ignore-unfixed: true`. Every exception below is
+# path-scoped, justified, and dated so it is auditable and time-boxed.
+
+vulnerabilities:
+  # CVE-2026-35568 — DNS-rebinding in io.modelcontextprotocol.sdk:mcp-core 0.18.3 (fixed in 1.0.0).
+  # Transitive via Spring AI 1.1.8 (not directly bumpable: 0.18→1.0 is a major SDK jump that needs a
+  # Spring AI upgrade + full retest). NOT EXPLOITABLE here: DNS rebinding requires a BROWSER reaching
+  # the MCP server, but Atlas's /mcp is never browser-routed (the Caddyfile omits it) — it is agent-only,
+  # inside the network, behind OAuth2.1 RFC-8707 audience-scoped tokens. Remediate when Spring AI ships
+  # a patched MCP SDK. Owner: platform · review-by: 2026-09-30.
+  # (Ignored globally by id — it's one transitive library surfaced in several poms.)
+  - id: CVE-2026-35568
+
+secrets: []
+
+misconfigurations:
+  # DS-0002 "Specify a non-root USER in the Dockerfile".
+  # The three Java service images now run as the distroless non-root user (USER 65532) and pass.
+  # ONLY the UI image is exempt: it is the Caddy edge reverse-proxy that terminates TLS and must
+  # bind privileged ports 443 (HTTPS) + 80 (ACME HTTP-01), which require root in the official Caddy
+  # image. It is the single internet-facing surface (minimal alpine image, strict CSP, no app logic).
+  - id: AVD-DS-0002
+    paths:
+      - "ui/Dockerfile"
+    statement: "Caddy edge proxy must bind privileged 443/80 (TLS + ACME); only non-root-exempt image. Owner: platform · review-by: 2026-12-31"

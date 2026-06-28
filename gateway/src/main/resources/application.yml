@@ -1,6 +1,15 @@
 server:
   port: ${GATEWAY_PORT:8080}
 
+# Structured logging (P6 Task 3). Default = Spring's human-readable console pattern (dev). Set
+# ATLAS_LOG_FORMAT=ecs (prod / compose overlay) for one-line JSON (ECS) logs that carry the MDC
+# requestId (RequestIdFilter), ready for a log shipper. Native Spring Boot 3.5 structured logging —
+# no logstash-encoder dependency.
+logging:
+  structured:
+    format:
+      console: ${ATLAS_LOG_FORMAT:}
+
 spring:
   application:
     name: gateway
@@ -35,6 +44,20 @@ management:
     metrics:
       export:
         enabled: true
+  # OTel tracing (P6 Task 3). The gateway now emits server-request spans to Langfuse so the trace
+  # view covers the front door (not just rag-engine + agents). Export is OPT-IN via
+  # OTEL_TRACES_EXPORT_ENABLED (default false) so tests/CI never reach Langfuse; spans are still
+  # created in-process and carry the MDC requestId. Mirrors rag-engine (ADR-0030).
+  tracing:
+    sampling:
+      probability: ${OTEL_TRACES_SAMPLING_PROBABILITY:1.0}
+    export:
+      enabled: ${OTEL_TRACES_EXPORT_ENABLED:false}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:3000/api/public/otel/v1/traces}
+      headers:
+        Authorization: ${LANGFUSE_OTEL_AUTH_HEADER:}
 
 # Gateway-specific config (all env-swappable, never hardcoded — CLAUDE.md).
 atlas:

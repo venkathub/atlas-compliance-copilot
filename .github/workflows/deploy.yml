@@ -1,0 +1,93 @@
+# Atlas — manual production deploy (P6 Task 5, ADR-0064).
+#
+# Build → test → EVAL+COST GATE → deploy, with a documented rollback path. Manual only
+# (workflow_dispatch) — the live Oracle Ampere A1 box is provisioned on demand and the GPU is paused
+# between demos (cost discipline). The deploy step is a guarded dry-run until the box + secrets exist
+# (RUNBOOK §9.4); rollback is re-running this workflow with a previous image_tag (RUNBOOK §9.3).
+name: Deploy (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag (commit SHA) to deploy. Empty = current commit. Use a previous SHA to ROLL BACK."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atlas-deploy
+  cancel-in-progress: false
+
+jobs:
+  # ── The gate that blocks deploy: quality (RAGAS + adversarial + agent) AND cost regression. ──
+  gate:
+    name: Pre-deploy gate (eval + cost)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.2.0
+      - name: Eval gate (RAGAS + adversarial, cassette-replay)
+        run: uv run --directory evals python -m atlas_evals.gate
+      - name: Eval gate through the Gateway path
+        env:
+          ATLAS_EVAL_THROUGH_GATEWAY: "true"
+        run: uv run --directory evals python -m atlas_evals.gate
+      - name: Agent eval gate
+        run: uv run --directory agents python -m app.eval.agent_gate
+      - name: Cost-regression gate
+        run: uv run --directory evals python -m atlas_evals.cost_gate
+
+  # ── Deploy to the single box (pulls the pre-built multi-arch GHCR images; no build on the box). ──
+  deploy:
+    name: Deploy to Oracle Ampere A1
+    needs: [gate]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - name: Resolve image tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.image_tag }}"
+          [ -z "$TAG" ] && TAG="${{ github.sha }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "::notice::Deploying image tag $TAG"
+      - name: Deploy over SSH (compose pull + up + smoke)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          IMAGE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_HOST:-}" ]; then
+            echo "::notice::DEPLOY_HOST secret not set — the box is not provisioned yet."
+            echo "Dry-run (RUNBOOK §9.4). On the box this step runs:"
+            echo "  export ATLAS_UI_TAG=$IMAGE_TAG ATLAS_GATEWAY_TAG=$IMAGE_TAG  # (and the rest)"
+            echo "  docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml \\"
+            echo "    --profile app --profile proxy pull"
+            echo "  docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml \\"
+            echo "    --profile app --profile proxy up -d"
+            echo "  infra/deploy/smoke.sh https://\$PROXY_SITE_ADDRESS"
+            exit 0
+          fi
+          install -m 600 /dev/stdin "$HOME/atlas_key" <<< "$DEPLOY_SSH_KEY"
+          ssh -i "$HOME/atlas_key" -o StrictHostKeyChecking=accept-new "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd ~/atlas && git fetch --all && git checkout $IMAGE_TAG -- infra && \
+             export ATLAS_UI_TAG=$IMAGE_TAG ATLAS_GATEWAY_TAG=$IMAGE_TAG ATLAS_RAG_ENGINE_TAG=$IMAGE_TAG \
+                    ATLAS_MCP_TOOLS_TAG=$IMAGE_TAG ATLAS_AGENTS_TAG=$IMAGE_TAG && \
+             set -a && . ./.env && set +a && \
+             docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml \
+               --profile app --profile proxy pull && \
+             docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml \
+               --profile app --profile proxy up -d && \
+             infra/deploy/smoke.sh https://\$PROXY_SITE_ADDRESS"
+      - name: Rollback instructions (always shown)
+        if: always()
+        run: |
+          echo "::notice::ROLLBACK — re-run this workflow with image_tag=<previous-good-SHA>."
+          echo "Manual: on the box, export ATLAS_*_TAG=<previous-SHA> and re-run the compose up -d"
+          echo "(named volumes keep Postgres state; the audit chain is append-only). RUNBOOK §9.3."

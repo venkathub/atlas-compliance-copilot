@@ -1,6 +1,14 @@
 server:
   port: ${RAG_ENGINE_PORT:8081}
 
+# Structured logging (P6 Task 3). Default = human-readable console (dev). Set ATLAS_LOG_FORMAT=ecs
+# (prod / compose overlay) for one-line JSON (ECS) logs carrying the MDC requestId (RequestIdFilter).
+# Native Spring Boot 3.5 structured logging — no logstash-encoder dependency.
+logging:
+  structured:
+    format:
+      console: ${ATLAS_LOG_FORMAT:}
+
 spring:
   application:
     name: rag-engine

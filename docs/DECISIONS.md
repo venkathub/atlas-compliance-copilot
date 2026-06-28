@@ -13,6 +13,12 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0065 | 2026-06-27 | 3-minute demo: docs/DEMO.md + automated e2e-demo Playwright walkthrough + deterministic seed script | Accepted | P6 |
+| 0064 | 2026-06-27 | CI/CD: cost-regression gate, Trivy CRITICAL/HIGH gating, manual gated deploy workflow + rollback | Accepted | P6 |
+| 0063 | 2026-06-27 | Alerting: Prometheus rules (cost/error-rate/breaker/eval) + Alertmanager; latency p50/p95 panel | Accepted | P6 |
+| 0062 | 2026-06-27 | Structured JSON logging + X-Request-Id correlation across all services; gateway tracing; frontier kept off | Accepted | P6 |
+| 0061 | 2026-06-27 | Container hardening: distroless health-probe, agents multi-stage/non-root, prod-compose limits/health-ordering | Accepted | P6 |
+| 0060 | 2026-06-27 | Prod runbook: in-prod topology, env/secrets reference, $10/mo cost ceiling & frontier-off posture | Accepted | P6 |
 | 0059 | 2026-06-26 | UI AI-transparency surfacing (EU AI Act / NIST AI RMF) | Accepted | P5 |
 | 0058 | 2026-06-26 | UI output handling: client sanitizer + proxy CSP/security headers (LLM05) | Accepted | P5 |
 | 0057 | 2026-06-26 | Multimodal frontier-model demo (budget-gated stretch) | Accepted | P5 |
@@ -95,6 +101,221 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0065 — 3-minute demo: DEMO.md + automated e2e-demo walkthrough + deterministic seed
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `docs/DEMO.md`,
+  `ui/e2e-demo/forcing-story.demo.spec.ts`, `ui/playwright.demo.config.ts`, `ui/package.json`,
+  `infra/deploy/seed-demo.sh`
+- **Context:** The P5 audit found the demo assets were referenced but missing: `ui/e2e-demo/` and
+  `ui/scripts/` were **empty**, and **no single walkthrough** showed the cost dashboard + eval/trace view
+  together. The brief: a <3-min click-through (and a seeded dataset) showing RBAC RAG, an agent action via
+  MCP, the cost dashboard, and the eval/trace view.
+- **Options considered:** (a) a screen-recording only — not reproducible/verifiable; (b) extend the existing
+  `e2e` gate spec — couples the demo to the CI acceptance gate; (c) **a dedicated `e2e-demo` suite with its
+  own Playwright config** + a written `DEMO.md` + a seed script. **Chose (c)** — the demo can evolve without
+  touching the gate, and the spec *is* the documentation (every step in DEMO.md is asserted).
+- **Decision:**
+  - **`docs/DEMO.md`** — the exact timed click-through (login as Priya → RBAC cited answer → execution trace →
+    HITL approve `open_draft_sar` → audit SUCCESS → **Cost** panel → **Evals** gate snapshot), the seeded
+    dataset description, the optional negative-access kicker, and where the trace/cost also live (Langfuse /
+    Grafana / Alertmanager).
+  - **`ui/e2e-demo/forcing-story.demo.spec.ts`** + **`playwright.demo.config.ts`** (+ `npm run e2e:demo`) —
+    the automated form: production `vite preview` build with pinned mocks (reuses `e2e/fixtures.ts`), asserting
+    all four surfaces incl. the **cost dashboard + eval gate** that no prior spec covered. Deterministic and
+    GPU-free — the reliable fallback when the GPU is paused mid-presentation.
+  - **`infra/deploy/seed-demo.sh`** — idempotent: ingests the two-layer RBAC corpus via the admin endpoint,
+    runs an RBAC spot-check (priya vs guest-public), and lists the four demo users.
+- **Rationale:** A demo that is also a passing test can't rot; the seed script makes the dataset reproducible;
+  the separate config keeps the CI gate stable. Reading the committed `cost-summary.json` / `eval-summary.json`
+  lets the Cost/Evals panels show the **real** gate numbers without a live backend.
+- **Consequences:** The demo suite isn't part of the merge gate (run on demand); the live seed needs a resumed
+  GPU (ingestion computes embeddings). One comprehensive spec is shipped (the other `.demo-artifacts` stubs
+  remain optional future scenarios).
+- **Verification:** `npm run e2e:demo` → **1 passed** against the production build (cited answer, trace steps,
+  HITL approve, `SAR-2026-000123` audit SUCCESS, 100% cost panel, 2 green gate badges); UI lint/typecheck/
+  format clean; `seed-demo.sh` passes `bash -n`.
+
+### ADR-0064 — CI/CD: cost-regression gate, Trivy CRITICAL/HIGH gating, manual gated deploy + rollback
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `evals/atlas_evals/cost_gate.py`,
+  `evals/tests/test_cost_gate.py`, `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`, `.trivyignore.yaml`
+- **Context:** The P5 CI gate blocked merges on **quality** (RAGAS faithfulness floor + 100%-pass adversarial
+  ≈ hallucination) but **not on cost** — `gateway-baseline.json` recorded cost but nothing enforced it. Trivy
+  was **report-only** (`exit-code: 0`). And there was no pipeline that runs the gate *before* a deploy or a
+  documented rollback in CI. The brief: "block deploy if hallucination rate **or** cost regresses," + a
+  rollback path.
+- **Options considered (cost gate):** measure cost live in CI (needs the GPU + gateway — breaks the offline,
+  hermetic gate) vs **validate the committed cost evidence** (`gateway-baseline.json`) against its target band
+  (offline, mirrors how the RAGAS baseline is committed/replayed). **Chose the latter.**
+- **Decision:**
+  - **Cost-regression gate** (`atlas_evals.cost_gate`, pure `evaluate_cost_gate` + CLI): fails if recorded
+    `cost_reduction_pct < target_reduction_pct`, if `meets_target` is false, or (forward-compatible) if
+    `cost_on_units` exceeds an optional `max_cost_on_units` ceiling. Wired as a step in the CI `evals-gate`
+    job, so a merge is blocked on a **quality OR cost** regression. A dev who changes gateway cost behaviour
+    re-runs `cost_report` live (RUNBOOK §7.4), which rewrites the evidence; a regression below target then
+    fails CI.
+  - **Trivy gating:** flipped `exit-code` `0 → 1` on fixable **CRITICAL/HIGH** (`ignore-unfixed: true`), with a
+    `.trivyignore.yaml` for auditable, time-boxed exceptions.
+  - **Deploy workflow** (`deploy.yml`, manual `workflow_dispatch`): a `gate` job (RAGAS + gateway-path +
+    agent + cost) that the `deploy` job `needs`, so **deploy cannot run unless every gate passes**; the deploy
+    step pulls the SHA-pinned multi-arch GHCR images and runs `compose pull/up` + `smoke.sh` over SSH, and is a
+    **guarded dry-run** until the box + `DEPLOY_*` secrets exist (RUNBOOK §9.4). **Rollback** = re-run the
+    workflow with `image_tag=<previous-SHA>` (the deploy logs print the rollback recipe; named volumes keep
+    Postgres state; the audit chain is append-only — RUNBOOK §9.3).
+- **Rationale:** Keeps the gate hermetic (no GPU in CI) while still enforcing the cost story; ties build → test
+  → eval+cost gate → deploy into one reviewable manual pipeline with an explicit, low-risk rollback that needs
+  no DB migration.
+- **Consequences:** The cost gate enforces the **reduction target**, not an absolute $ feed (documented; the
+  optional ceiling field covers absolute regressions). Flipping Trivy to blocking may newly-fail CI on a
+  fixable CVE — that is the intent; triage via `.trivyignore.yaml`. The live deploy stays a dry-run until the box
+  is provisioned.
+- **Verification:** `cost_gate` unit tests (**7**, incl. below-target / ceiling / missing-field / the
+  committed baseline passing) + full **evals suite 70 passed**; `atlas_evals.gate` **PASS** and
+  `atlas_evals.cost_gate` **PASS** offline; both workflow YAMLs parse (`ci` 8 jobs, `deploy` gate→deploy).
+
+### ADR-0063 — Alerting: Prometheus rules + Alertmanager; latency p50/p95
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `infra/prometheus/alerts.rules.yml`,
+  `infra/prometheus/alertmanager.yml`, `infra/prometheus/prometheus.yml`, `infra/docker-compose.yml`,
+  `infra/Makefile`, `infra/grafana/dashboards/atlas-cost.json`
+- **Context:** P2–P5 shipped dashboards but **no firing alerts** — cost/error signals were only a Grafana
+  threshold band, and the cost ceiling had no automated tripwire. The owner-set ≈$10/mo cap (ADR-0060) needs a
+  warning *before* the in-app budget guard starts 402-ing, and reliability/quality regressions need to page.
+- **Options considered:** (a) Grafana-managed alerts vs (b) **Prometheus rules + Alertmanager**. Chose (b):
+  rules live in version control next to the scrape config, `promtool` lints them in CI-style, and Alertmanager
+  gives routing/inhibition/dedup that Grafana alerting doesn't match for infra signals. For paging, a real
+  integration vs a **no-op receiver**: chose the no-op default (no paid pager in a portfolio) with documented
+  Slack/email stubs — alerts are still visible in the Alertmanager + Prometheus UIs.
+- **Decision:** Five rules across cost/reliability/quality: **AtlasCostBudgetBurnHigh** (24h cost-units >80%
+  of the 100/day cap — the $10/mo tripwire), **AtlasGatewayHighErrorRate** (5xx ratio >5%/10m),
+  **AtlasModelCircuitBreakerOpen** (breaker open ≥2m — the graceful-degradation signal),
+  **AtlasServiceDown** (scrape down ≥2m), **AtlasEvalGateFailing** (`atlas_eval_gate_passed==0`). Added an
+  **Alertmanager** service to the always-on observability plane (digest-pinned, config seeded into a named
+  volume by `make seed-config`, Snap-Docker safe) with a single route + a critical fast-path + an inhibit rule.
+  Wired `rule_files` + `alerting` into prometheus.yml. Added a **p50** series alongside p95 on the gateway
+  latency panel.
+- **Rationale:** Ties the alert thresholds directly to the existing in-app guards and the cost narrative, keeps
+  everything declarative + lint-checkable, and stays free (no pager) while leaving a one-line path to real
+  paging. p50 next to p95 shows the typical-vs-tail latency story interviewers ask about.
+- **Consequences:** Alertmanager adds a small (~30 MB) always-on container. The cost rule uses an abstract
+  cost-unit→$ mapping (documented in the rule + RUNBOOK §11), not a billing feed. Alerts fire only when the
+  relevant series exist (e.g. eval gate must have pushed at least once).
+- **Verification:** `promtool check rules` (5 rules) + `promtool check config` (valid, 1 rule file) +
+  `amtool check-config` (valid: route, 1 inhibit, 1 receiver) all SUCCESS; cost dashboard JSON parses
+  (11 panels) with the p50/p95 panel; base `docker compose config` shows the alertmanager service + both
+  volumes.
+
+### ADR-0062 — Structured JSON logging + X-Request-Id correlation across all services; gateway tracing; frontier kept off
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `*/observability/RequestIdFilter.java`,
+  `*/application.yml` (`logging.structured`), `gateway/config/DownstreamConfig.java`, `gateway/pom.xml`,
+  `agents/app/logging_config.py`, `agents/app/api.py`, `agents/app/gateway_client.py`
+- **Context:** The P5 audit found the biggest cross-cutting hole was **no structured logging anywhere** (all
+  three Spring services logged plain text; the Python agents service had **zero** application logging) and
+  **no correlation id in logs** — request ids existed only inside OTel spans, so a single request couldn't be
+  followed across the gateway → rag-engine → agents → mcp-tools hops in a log aggregator. The gateway also
+  emitted **no traces** (metrics only), leaving the front door invisible in Langfuse.
+- **Options considered (JSON logging on Spring):**
+  - *logstash-logback-encoder* — the classic approach, but a new dependency + a `logback-spring.xml` per
+    service. *Rejected* given a cleaner native option exists.
+  - **Spring Boot 3.5 native structured logging** (`logging.structured.format.console=ecs`) — zero new
+    dependencies, MDC auto-included, env-togglable. **Chosen.**
+  - *Python:* structlog vs **stdlib `logging` + a tiny JSON formatter**. Chose stdlib (no new dependency for a
+    service that had none) with a `contextvars`-based request id.
+- **Decision:**
+  - **Structured logs everywhere, env-toggled:** `ATLAS_LOG_FORMAT` — empty/`plain` = human-readable (dev),
+    `ecs`/`json` = one-line JSON (prod, set by the compose overlay). Spring uses native ECS; agents use a
+    stdlib JSON formatter (treats `ecs` as JSON too, so one value configures the whole stack).
+  - **Correlation id:** a `RequestIdFilter` (Spring, `HIGHEST_PRECEDENCE`) and a FastAPI middleware (agents)
+    resolve an inbound `X-Request-Id` (or mint a UUID), publish it to the MDC / a contextvar (so every log
+    line carries it), echo it on the response, and **propagate it downstream** (gateway→rag via a RestClient
+    interceptor; agents→gateway/MCP via the httpx client). rag-engine reuses the propagated id as its trace
+    id, stitching logs and spans. Inbound ids are validated against a strict allow-list — a client header is
+    untrusted input and must not inject newlines/control chars into log lines (anti log-injection).
+  - **Gateway tracing:** added `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` and the
+    `management.tracing/otlp` config (mirroring rag-engine), so the gateway emits server-request spans to
+    Langfuse. Export stays **opt-in** (`OTEL_TRACES_EXPORT_ENABLED=false`) so tests/CI never reach Langfuse.
+  - **Cloud-frontier fallback:** per the owner decision, **kept disabled** (`ATLAS_ROUTER_FRONTIER_ENABLED=false`).
+    No code change to the scaffolded TIER3 path; the documented enable procedure lives in RUNBOOK §11.3.
+- **Rationale:** Native structured logging avoids a dependency and a per-service logback file; the
+  filter/middleware pattern is uniform and unit-testable; propagating one id is what makes the JSON logs and
+  the Langfuse traces actually joinable in an incident. Keeping trace export and frontier off-by-default
+  preserves the cost story and keeps CI hermetic.
+- **Consequences:** Adding the tracing bridge means the gateway now creates spans for every request (sampled),
+  a negligible overhead with export off. `ATLAS_LOG_FORMAT` is shared across services; the agents formatter
+  intentionally accepts `ecs` so a single value works. Logs are JSON only when toggled (prod) — dev stays
+  readable.
+- **Verification:** new `RequestIdFilterTest` ×3 (mint / reuse / **anti-injection**) green; **gateway 69,
+  rag-engine 93, mcp-tools 15** unit tests pass (incl. full context-load with the tracing deps + logging
+  config); booting with `ATLAS_LOG_FORMAT=ecs` emits valid ECS JSON; agents **65 pass / 3 skipped** + 5 new
+  logging/correlation tests (formatter, middleware echo, downstream forward); ruff clean; merged
+  `docker compose config` applies `ecs`/`json` per service.
+
+### ADR-0061 — Container hardening: distroless health-probe, agents multi-stage/non-root, prod-compose limits & health-ordering
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `infra/docker/HealthCheck.java`,
+  `*/Dockerfile`, `infra/proxy/Caddyfile`, `infra/docker-compose.yml`, `infra/docker-compose.prod.yml`
+- **Context:** P5 left three container gaps for prod: (1) the `agents` image was the outlier — single-stage,
+  **root**, tag-pinned (not digest); (2) **no image carried a Dockerfile `HEALTHCHECK`**, so compose
+  `depends_on: service_healthy` ordering was impossible; (3) the prod overlay only rewired upstreams +
+  `restart` — no resource limits, no log rotation, no health-gated startup, and **no `rag-engine` service**
+  in compose at all. The hard constraint: the three Java images are `distroless:nonroot` — **no shell, curl,
+  or wget** — so the textbook `HEALTHCHECK CMD curl …` is impossible without abandoning distroless.
+- **Options considered (health probe for distroless):**
+  - *Switch to a `:debug` base with busybox* — gives wget but ships a shell + tools into prod (weaker
+    supply-chain posture). Rejected.
+  - *Bake curl/grpc-health-probe static binary* — extra arch-specific artifact + supply-chain surface.
+  - *JRE-based probe* — distroless already has `java`; a ~30-line `java.net.http` probe compiled to
+    **architecture-independent bytecode** runs on the existing JRE. **Chosen.** Compiled once in a
+    `--platform=$BUILDPLATFORM` stage so `javac` runs on the native build arch (no QEMU) and the portable
+    `.class` is copied into both the amd64 and arm64 runtime images — preserving the "no RUN steps in the
+    runtime layer / multi-arch for free" property.
+- **Decision:**
+  - **agents** → true multi-stage (uv builds a locked `/opt/venv`; slim runtime carries only venv + app),
+    **non-root** (uid/gid 10001), **digest-pinned** `python:3.12-slim-bookworm`, `HEALTHCHECK` via stdlib
+    `urllib` against `/healthz`, and a uv-free runtime entrypoint.
+  - **gateway / rag-engine / mcp-tools** → keep distroless+nonroot+digest; add a `$BUILDPLATFORM` probe stage
+    + `HEALTHCHECK` hitting `/actuator/health` via the shared `HealthCheck` class.
+  - **ui** → `HEALTHCHECK` via busybox `wget` against a new **host-agnostic `:9180 /healthz`** listener in the
+    Caddyfile (so the probe never depends on the public host/TLS match).
+  - **compose** → add the missing `rag-engine` service to the base (profile `app`, parity with the others);
+    prod overlay adds **memory limits**, **json-file log rotation (10m×5)**, and **health-gated `depends_on`**
+    ordering (proxy waits for app; gateway waits for rag-engine + redis; agents wait for gateway + mcp).
+- **Rationale:** Health-ordering + restart + bounded logs/memory are the table-stakes for an unattended
+  single box with no orchestrator. The JRE-bytecode probe is the one option that adds a real HTTP health
+  signal **without** weakening the distroless posture or reintroducing QEMU. Adding `rag-engine` to compose
+  closes the one service that previously had to be hand-run.
+- **Consequences:** Each Java health check spawns a short-lived JVM (~hundreds of ms) per 30s interval —
+  negligible on a 4 vCPU box, noted as the trade-off vs. a static probe binary. `.dockerignore` had to
+  re-include `infra/docker/HealthCheck.java` (it excludes `infra` wholesale). rag-engine's prod authz profile
+  is intentionally left to the box `.env` (a boot-safe choice; the explicit `prod` profile is P6 Task 3).
+- **Verification:** `agents` image built + run as **uid 10001** with `uvicorn` on the venv path and
+  `app.api` importing; BuildKit `--check` clean on the rewritten Dockerfiles; the `healthprobe` stage builds
+  and `javac` compiles against the real `.dockerignore`; merged `docker compose config` valid with limits,
+  log rotation, and `service_healthy` ordering present.
+
+### ADR-0060 — Production runbook: in-prod topology, env/secrets reference, $10/mo cost ceiling & frontier-off posture
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Doc:** `RUNBOOK.md` §9.0, §10, §11
+- **Context:** Taking Atlas to production needs an operator-facing source of truth for (a) what the prod
+  topology actually is, (b) every env var + how secrets are handled on a single VM, and (c) the spend
+  envelope and the cloud-frontier fallback's posture. CLAUDE.md makes cost discipline a first-class feature.
+- **Options considered:**
+  - *Deploy target:* keep the already-scaffolded **Oracle Ampere A1 single-VM compose** vs migrate to a PaaS
+    (Fly.io / Render / HF Spaces). PaaS gives nicer CD but its free tiers can't host the full 5-service +
+    Langfuse/Grafana/Prometheus stack without dropping observability; the VM runs everything for $0.
+  - *Secrets:* external vault/secret-manager vs **box `.env` (chmod 600) injected at compose-up**. A vault is
+    overkill at one-VM scale and adds a moving part; `.env` + gitleaks + bundle-grep is proportionate.
+  - *Frontier fallback:* wire a live frontier tier now vs **ship it scaffolded-but-disabled** behind
+    `ATLAS_ROUTER_FRONTIER_ENABLED=false`.
+- **Decision:** Oracle Ampere A1 compose stays the target (faithful to ADR-0006). A **hard ≈$10/mo ceiling**
+  governs the only paid deps (GPU + frontier), enforced operationally by GPU pause discipline + the gateway
+  daily budget guard (`ATLAS_BUDGET_DAILY_CAP_UNITS`) + a Prometheus cost alert (P6 Task 4). The
+  **cloud-frontier tier ships DISABLED** (no key in repo); enabling it is a documented, eyes-open opt-in
+  (RUNBOOK §11.3). Secrets live only in the box `.env`/CI secrets; `VITE_*` are the only intentionally-public
+  values. Documented the in-prod Mermaid topology (§9.0) and a full env-var reference table (§10).
+- **Rationale:** Keeps the strongest cost-discipline narrative (frontier is the one path that can breach $10
+  fast → off-by-default makes overspend opt-in), avoids leaking a billable credential in a portfolio repo, and
+  preserves **honest fail-fast degradation** (503 + Retry-After) over silent expensive substitution when
+  Ollama is down. The VM target avoids amputating the observability story to fit a PaaS free tier.
+- **Consequences:** No automatic model fail-over when the GPU is down (by design). Secret rotation is manual
+  (edit `.env` + restart); the Vault/secret-manager upgrade is a noted future path. The cost alert + the P6
+  cost-regression CI gate are the backstops against an accidental frontier-on or cost regression.
 
 ### ADR-0059 — UI AI-transparency surfacing (EU AI Act / NIST AI RMF)
 - **Date:** 2026-06-26 · **Status:** Accepted · **Phase:** P5 · **Spec:** `P5_SPEC.md` §1.11, §8 (G-P5-4)

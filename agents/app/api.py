@@ -9,13 +9,19 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from prometheus_client import make_asgi_app
 
 from app.checkpointer import _with_search_path, ensure_schema, ping_db
 from app.config import Settings, get_settings
 from app.gateway_client import GatewayClient
 from app.graph import build_graph
+from app.logging_config import (
+    REQUEST_ID_HEADER,
+    configure_logging,
+    new_request_id,
+    request_id_var,
+)
 from app.mcp_client import McpClient
 from app.models import ResumeRequest, RunRequest, RunResponse
 from app.runner import GraphRunner
@@ -23,9 +29,27 @@ from app.tracing import setup_tracing
 
 app = FastAPI(title="Atlas Agent Orchestrator", version="0.1.0")
 
-# OTel tracing (opt-in export; fail-soft) + Prometheus metrics endpoint for the Grafana agent panel.
+# Structured logging (P6 Task 3) + OTel tracing (opt-in export; fail-soft) + Prometheus metrics.
+configure_logging(get_settings().log_format, get_settings().log_level)
 setup_tracing(get_settings())
 app.mount("/metrics", make_asgi_app())
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    """Establish/propagate the X-Request-Id correlation id for every request (P6 Task 3).
+
+    Reuses a well-formed inbound id (gateway/agent-propagated) else mints a UUID, binds it to the
+    log context for the duration of the request, and echoes it on the response header.
+    """
+    request_id = new_request_id(request.headers.get(REQUEST_ID_HEADER))
+    token = request_id_var.set(request_id)
+    try:
+        response = await call_next(request)
+    finally:
+        request_id_var.reset(token)
+    response.headers[REQUEST_ID_HEADER] = request_id
+    return response
 
 
 @lru_cache

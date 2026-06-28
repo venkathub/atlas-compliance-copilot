@@ -78,14 +78,19 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Gateway request latency p95 by tier",
-      "description": "atlas.gateway.request.duration — end-to-end gateway latency (cache hits are near-zero).",
+      "title": "Gateway request latency p50 / p95 by tier",
+      "description": "atlas.gateway.request.duration — end-to-end gateway latency p50 + p95 per tier (cache hits are near-zero).",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
+          "expr": "histogram_quantile(0.50, sum(rate(atlas_gateway_request_duration_seconds_bucket[5m])) by (le, tier))",
+          "legendFormat": "{{tier}} p50"
+        },
+        {
+          "refId": "B",
           "expr": "histogram_quantile(0.95, sum(rate(atlas_gateway_request_duration_seconds_bucket[5m])) by (le, tier))",
           "legendFormat": "{{tier}} p95"
         }

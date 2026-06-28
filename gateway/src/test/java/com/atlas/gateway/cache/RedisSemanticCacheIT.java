@@ -59,6 +59,29 @@ class RedisSemanticCacheIT {
         return new SemanticCache.CachedAnswer("{\"answer\":\"" + text + "\"}", "qwen2.5:3b-instruct");
     }
 
+    /**
+     * Poll the cache for a hit, tolerating RediSearch's <b>asynchronous indexing</b>: an {@code FT.SEARCH}
+     * issued immediately after an {@code HSET} (especially right after an index re-create following a
+     * flush) can momentarily return nothing until the document is indexed. This is a test-timing
+     * artifact, not product behaviour — a loaded CI runner makes the lag visible. Bounded to ~2s.
+     */
+    private Optional<SemanticCache.CacheHit> awaitPresent(String clearance, String corpus, float[] v) {
+        Optional<SemanticCache.CacheHit> hit = Optional.empty();
+        for (int i = 0; i < 40; i++) { // up to ~2s (40 × 50ms)
+            hit = cache.lookup(clearance, corpus, v);
+            if (hit.isPresent()) {
+                return hit;
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return hit;
+    }
+
     @Test
     void identicalQueryHitsWithinSameClearance() {
         float[] v = vec(1, 0, 0, 0, 0, 0, 0, 0);
@@ -115,11 +138,11 @@ class RedisSemanticCacheIT {
         // in-memory "indexReady" flag is still set. A subsequent lookup must transparently recreate it.
         float[] v = vec(1, 0, 0, 0, 0, 0, 0, 0);
         cache.put("compliance", "v1", v, answer("before flush"));
-        assertThat(cache.lookup("compliance", "v1", v)).isPresent();
+        assertThat(awaitPresent("compliance", "v1", v)).isPresent();
 
         jedis.flushAll(); // drops keys AND the FT index, simulating a Redis restart
 
         cache.put("compliance", "v1", v, answer("after flush"));
-        assertThat(cache.lookup("compliance", "v1", v)).isPresent(); // index auto-recreated, hit served
+        assertThat(awaitPresent("compliance", "v1", v)).isPresent(); // index auto-recreated, hit served
     }
 }

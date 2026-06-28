@@ -30,4 +30,8 @@ COPY infra/proxy/Caddyfile /etc/caddy/Caddyfile
 # The static bundle the Caddyfile serves from /srv/ui.
 COPY --from=build /ui/dist /srv/ui
 EXPOSE 80 443
+# Liveness: a dedicated host-agnostic :9180 /healthz listener in the Caddyfile (so the probe
+# does not depend on the public host/TLS match). caddy:alpine ships BusyBox wget.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9180/healthz"]
 # The official caddy image's ENTRYPOINT runs `caddy run --config /etc/caddy/Caddyfile`.

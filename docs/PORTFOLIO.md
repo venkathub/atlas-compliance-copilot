@@ -270,3 +270,144 @@ checkpoint) → see the **`SAR-2026-…` ref + execution trace** → **Admin ▸
 (chain verified) and **Admin ▸ Cost** the cost-reduction panel. GPU-free walkthrough: `cd ui && npm run e2e`.
 **Demo recording:** _TODO — link a screen capture of the click path above (run `make -C infra deploy-up` then
 the steps, or `npm run e2e:ui`)._
+
+---
+
+## P6 — Production hardening & operability (complete · 2026-06-27)
+
+- **Authored the operator runbook for production** — an **in-prod architecture diagram** (Mermaid topology of
+  the single arm64 VM: Caddy → 5 services → Postgres+pgvector/Redis → Langfuse/Prometheus/Grafana, with the
+  GPU and the disabled frontier tier as the only off-box deps), a **consolidated env-var & secrets reference**
+  (≈40 variables grouped by subsystem, each flagged secret/public with source + rotation policy), and a
+  **cost-ceiling + cloud-frontier budget-fallback procedure** that turns a one-line note into an operational
+  control with a documented eyes-open enable path.
+- **Set and documented a hard ≈$10/month cost ceiling** for the only paid dependencies (rented GPU + frontier
+  API), enforced by GPU pause discipline + the gateway daily budget guard + (P6) a Prometheus cost alert — and
+  made the **cloud-frontier tier ship disabled by default** so overspend is opt-in, preserving honest
+  fail-fast `503` degradation over silent expensive model substitution.
+
+**Evidence (Task 1):** `docs/RUNBOOK.md` §9.0 (in-prod Mermaid topology + trust boundaries), §10 (env/secrets
+table + secrets-management model), §11 (cost ceiling, frontier-off rationale, enable path); ADR-0060 in
+`docs/DECISIONS.md`. Env names cross-checked against `.env.example` (no invented vars).
+
+**Quantified (Task 1):** 1 ADR (0060) · 3 new RUNBOOK sections · 1 architecture diagram · **~40** env vars
+documented with secret/public classification · **$10/mo** hard ceiling wired to budget guard + alert · frontier
+fallback **off-by-default** (0 billable keys in repo).
+
+- **Hardened every container for an unattended single box.** Rewrote the `agents` image to a **true multi-stage,
+  non-root (uid 10001), digest-pinned** build (was the lone single-stage/root/tag-pinned outlier); added a
+  **Dockerfile `HEALTHCHECK` to all 5 services** — solving the distroless "no shell/curl" constraint with a
+  ~30-line **JRE health probe compiled to architecture-independent bytecode** in a `$BUILDPLATFORM` stage (real
+  HTTP health *without* abandoning distroless or reintroducing QEMU), and a host-agnostic Caddy `:9180/healthz`
+  for the UI. Hardened the **prod compose overlay** with memory limits, **json-file log rotation (10m×5)**, and
+  **health-gated `depends_on` ordering**, and added the previously-missing **`rag-engine` service** to compose.
+
+**Evidence (Task 2):** `agents` image **built and run as uid 10001** with `uvicorn` on the venv path +
+`app.api` import OK; BuildKit `docker build --check` clean on the rewritten Dockerfiles; the `healthprobe`
+stage builds and `javac` compiles against the **real `.dockerignore`** (re-include verified); merged
+`docker compose -f … -f docker-compose.prod.yml config` valid with limits, log rotation, and `service_healthy`
+ordering. ADR-0061.
+
+**Quantified (Task 2):** **5/5** services with a container HEALTHCHECK · agents image **root → non-root** +
+single-stage → **multi-stage** + tag → **digest-pinned** · **1** portable probe class reused across 3 distroless
+images (0 extra runtime tools, 0 QEMU) · prod overlay: **5** services with mem limits + **log rotation** +
+**health-ordered** startup · **1** missing service (`rag-engine`) added to compose.
+
+- **Closed the biggest cross-cutting prod gap: observability-grade logging.** Added **structured JSON logging
+  to all four services** — native Spring Boot 3.5 ECS (no logstash dependency) for the three Java services and
+  a stdlib JSON logger for the Python agents service (which previously had **zero** application logging) —
+  env-toggled so dev stays human-readable. Threaded a single **`X-Request-Id` correlation id** through a Spring
+  `RequestIdFilter` + a FastAPI middleware that mint/echo/validate the id and **propagate it downstream**
+  (gateway→rag-engine, agents→gateway/MCP), with rag-engine reusing it as its trace id — so one request is now
+  followable across every hop in both logs and traces. Hardened the id against **log-injection** (strict
+  allow-list on the untrusted client header). Brought **gateway tracing** online (Micrometer→OTLP bridge) so
+  Langfuse finally covers the front door, not just rag-engine/agents.
+
+**Evidence (Task 3):** new `RequestIdFilterTest` ×3 (mint / reuse-propagated / anti-injection) green;
+**gateway 69 · rag-engine 93 · mcp-tools 15** unit tests pass incl. full Spring context-load with the new
+tracing deps + logging config; booting with `ATLAS_LOG_FORMAT=ecs` emits valid **ECS JSON**; agents **65
+passed / 3 skipped** + **5** new logging/correlation tests (formatter, middleware echo, downstream forward),
+ruff clean; merged `docker compose config` applies `ecs`/`json` per service. Frontier kept **off**
+(`ATLAS_ROUTER_FRONTIER_ENABLED=false`) per owner decision. ADR-0062.
+
+**Quantified (Task 3):** **4/4** services now emit structured JSON logs (was **0/4**; agents went from
+**no logging at all**) · **1** correlation id propagated across **4** hops · **3** Spring `RequestIdFilter`s +
+**1** FastAPI middleware · **+8** tests (3 Java + 5 Python) · **0** new Java logging dependencies (native ECS) ·
+gateway tracing **on** (export opt-in) · **0** log-injection vectors (allow-list validated).
+
+- **Wired end-to-end alerting on the cost + reliability + quality signals.** Added **5 Prometheus alert rules**
+  — a **cost tripwire** tied to the $10/mo ceiling (24h cost-units >80% of the daily cap), gateway **5xx
+  error-rate >5%**, **circuit-breaker-open**, **service-down**, and **eval-gate-failing** — routed through a
+  new **Alertmanager** (digest-pinned, config seeded Snap-Docker-safe into a named volume, with routing +
+  inhibition and documented Slack/email stubs). Added a **p50** latency series next to the existing p95 on the
+  cost dashboard. Everything is declarative and lint-checked.
+
+**Evidence (Task 4):** `promtool check rules` → **5 rules** OK; `promtool check config` → valid (1 rule file);
+`amtool check-config` → valid (route + 1 inhibit + 1 receiver); cost dashboard JSON parses (11 panels) with
+the p50/p95 panel; base `docker compose config` shows the `alertmanager` service + `atlas-alertmanager-config`
+/`-data` volumes. ADR-0063.
+
+**Quantified (Task 4):** **5** alert rules across **3** domains (cost / reliability / quality) · **1**
+Alertmanager (routing + inhibit + critical fast-path) · cost alert fires at **80%** of the $10/mo cap ·
+latency panel now **p50 + p95** · **0** lint errors (promtool + amtool) · **0** paid dependencies.
+
+- **Closed the CI gate loop: block deploy on cost regression, not just hallucination.** Added a
+  **cost-regression gate** (`atlas_evals.cost_gate`) that validates the committed gateway cost evidence still
+  meets its reduction target, wired into the CI eval-gate job — so a merge is blocked on **quality OR cost**.
+  Flipped **Trivy** from report-only to **gating on fixable CRITICAL/HIGH** (with an auditable, dated `.trivyignore.yaml` (incl. a justified MCP-SDK CVE exception)).
+  Added a **manual gated deploy workflow** (`deploy.yml`): a `gate` job (RAGAS + gateway-path + agent + cost)
+  that the `deploy` job `needs`, pulling SHA-pinned multi-arch GHCR images via `compose pull/up` + `smoke.sh`,
+  with a one-input **rollback** (re-run with a previous SHA) — a documented dry-run until the box exists.
+
+**Evidence (Task 5):** `cost_gate` unit tests (**7** — below-target / absolute-ceiling / missing-field / the
+real committed baseline passing) + **evals suite 70 passed**; `atlas_evals.gate` **PASS** & `cost_gate`
+**PASS** offline; `ci.yml` (8 jobs) + `deploy.yml` (gate→deploy) parse; rollback path documented (RUNBOOK
+§9.3). ADR-0064.
+
+**Quantified (Task 5):** CI now blocks on **quality + cost** (was quality only) · Trivy **report-only →
+blocking** on CRITICAL/HIGH · **+1** gated deploy pipeline (deploy `needs` the gate) · **+7** cost-gate tests ·
+rollback = **1** workflow input (previous SHA) · **0** GPU needed (gate stays offline).
+
+- **Shipped the 3-minute demo as a passing test.** Wrote `docs/DEMO.md` — the exact timed click-through (Priya
+  login → RBAC cited answer → execution trace → HITL approve `open_draft_sar` → audit SUCCESS → **Cost** panel
+  → **Evals** gate) — and its automated form `ui/e2e-demo/forcing-story.demo.spec.ts` (a dedicated Playwright
+  config + `npm run e2e:demo`), the first walkthrough to assert the **cost dashboard + eval/trace view**
+  together. Added `infra/deploy/seed-demo.sh` to load the deterministic RBAC corpus + list the four demo users.
+  Closed the P5 gap where `ui/e2e-demo/` was empty and no single demo covered cost + evals.
+
+**Evidence (Task 6):** `npm run e2e:demo` → **1 passed** against the production `vite preview` build (cited
+answer, trace steps, HITL approve, `SAR-2026-000123` audit SUCCESS chain-verified, **100%** cost-reduction
+panel, **2** green gate badges); UI lint (0 errors) / typecheck / prettier clean; `seed-demo.sh` `bash -n` OK.
+ADR-0065.
+
+**Quantified (Task 6):** **1** automated 3-min demo asserting **4** capabilities (RBAC RAG · agent+MCP · cost
+· eval/trace) · **9** asserted steps · **<3 min** target with per-step timings · **1** deterministic seed
+script (24-doc RBAC corpus + 4 users) · **0** GPU needed for the automated run (the live fallback).
+
+- **Finalized the top-level README as the front door.** A **hero Mermaid architecture diagram** (request flow
+  + the cross-cutting evals/observability plane), a **live-demo link** (the on-demand Oracle A1 target, with
+  the GPU-free `npm run e2e:demo` as the reliable proof), a curated **"Technical decisions"** digest (8 themed
+  call-outs linking the key ADRs across RAG / cost / agents / evals / ops), and a **fresh-clone setup that
+  actually works** — replacing the stale P0-era commented Quickstart with a verified offline path (eval +
+  cost gate + UI demo, no GPU) and the live-stack path.
+
+**Evidence (Task 7):** README Mermaid balanced (2 subgraphs / 2 ends); all 7 doc links + LICENSE resolve;
+the offline setup commands are the same ones verified green this phase (`atlas_evals.gate`,
+`atlas_evals.cost_gate`, `npm run e2e:demo`); status/phase/ADR-count (65) updated from the stale P0 copy.
+
+**Quantified (Task 7):** **1** hero architecture diagram (was a markdown table) · **8** curated technical-
+decision call-outs · fresh-clone setup **P0-commented → working** · live-demo link added · **65** ADRs
+referenced · README **~3 KB → ~9 KB** of accurate, current content.
+
+**P6 net:** **6** ADRs (0060–0065) · **+15** tests (3 Java filter + 5 Python logging + 7 cost-gate) all green
+on top of the inherited gates · **5/5** containers hardened (health/non-root/limits) · **4/4** services with
+structured JSON logs + correlation · **5** Prometheus alerts + Alertmanager · CI blocks on **quality + cost** ·
+**1** gated, rollback-able deploy pipeline · **1** automated 3-min demo · a finalized README.
+
+**Pre-merge verification (local):** full `mvn -B verify` **BUILD SUCCESS** across all modules incl. the
+Testcontainers ITs (gateway 69 unit + 14 IT · rag-engine · mcp-tools 15 unit + 27 IT) — confirming the P6
+logging/tracing/correlation changes don't regress the integration suite; **Trivy** (now-blocking settings)
+**exit 0** after adding explicit `USER 65532` to the three distroless Java images and a **dated, justified
+`.trivyignore.yaml`** for the Caddy edge-proxy `USER` misconfig + the transitive MCP-SDK DNS-rebinding CVE
+(not exploitable: `/mcp` is never browser-routed — agent-only, OAuth2.1 aud-scoped). The only item that
+**cannot** be completed off-box remains the live Oracle A1 deploy (a documented dry-run, RUNBOOK §9.4).

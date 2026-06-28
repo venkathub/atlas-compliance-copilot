@@ -2,12 +2,14 @@ package com.atlas.ragengine.api;
 
 import com.atlas.ragengine.qa.QueryService;
 import com.atlas.ragengine.qa.ModelTierResolver;
+import com.atlas.ragengine.observability.RequestIdFilter;
 import com.atlas.ragengine.security.ClearanceLevel;
 import com.atlas.ragengine.security.ClearanceResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -45,7 +47,12 @@ public class QueryController {
         String modelOverride = modelTierResolver.resolveModel(http.getHeader(ModelTierResolver.HEADER))
                 .orElse(null);
         Integer maxOutputTokens = parseMaxOutputTokens(http.getHeader("X-Atlas-Max-Output-Tokens"));
-        String requestId = UUID.randomUUID().toString();
+        // Reuse the gateway-propagated correlation id (RequestIdFilter put it in the MDC) as the trace
+        // id so the rag-engine span stitches to the gateway request; mint one only on direct access.
+        String requestId = MDC.get(RequestIdFilter.MDC_KEY);
+        if (requestId == null || requestId.isBlank()) {
+            requestId = UUID.randomUUID().toString();
+        }
         log.info("Query [{}] at clearance '{}' (model={}): {}",
                 requestId, caller.label(), modelOverride == null ? "default" : modelOverride, request.query());
         QueryService.QaResult result = queryService.answer(

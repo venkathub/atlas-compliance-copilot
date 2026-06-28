@@ -66,6 +66,13 @@ Endpoints:
 - **Metrics:** Prometheus at `/metrics` — `atlas_agent_runs_total{status}`, `_runs_started_total`,
   `_awaiting_approval_total`, `_tool_calls_total{outcome}`, `_failures_total`, `_approval_latency_seconds`.
   Grafana dashboard: `infra/grafana/dashboards/atlas-agents.json`.
+- **Structured logging + correlation (P6, ADR-0062):** stdlib JSON logs (no extra dependency) via
+  `app/logging_config.py`, selected by `ATLAS_LOG_FORMAT` (`plain` dev / `json`|`ecs` prod) at
+  `ATLAS_LOG_LEVEL`. A FastAPI middleware establishes an `X-Request-Id` per request (reuse a well-formed
+  inbound id from the gateway, else mint a UUID — validated against a strict allow-list, anti log-injection),
+  binds it to every log line via a contextvar, echoes it on the response, and **forwards it to the
+  gateway/MCP hops** so a run stitches across services in logs and traces.
+
 
 ### Agent eval gate (task 11, merge-blocking)
 A versioned scenario set (`app/eval/scenarios.py`, 12 scenarios: forcing story, no-breach,

@@ -48,6 +48,45 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # ── RAG Engine (P1, Spring AI — permission-aware retrieval) ──────────────────
+  # The retrieval engine behind the gateway. Like the gateway it is usually run on the HOST
+  # in dev (`mvn spring-boot:run`) and scraped via host.docker.internal; this definition
+  # exists for image parity + full in-compose bring-up (the prod overlay uses it — see
+  # docker-compose.prod.yml). Build the `-exec` jar first: `mvn -pl rag-engine -am package`.
+  # Profile-gated ("app"), so `make up` (infra only) is unaffected.
+  rag-engine:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: rag-engine/Dockerfile
+    image: atlas/rag-engine:0.1.0-SNAPSHOT
+    container_name: atlas-rag-engine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      RAG_ENGINE_PORT: 8081
+      # local = the P1 dev clearance shim (ADR-0016 — NOT prod authz). The prod overlay drops
+      # this so the gateway's signed HMAC clearance assertion becomes the trust path.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/${POSTGRES_DB:-atlas}}
+      POSTGRES_USER: ${POSTGRES_USER:-atlas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atlas}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen2.5:3b-instruct}
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+      EMBED_DIM: ${EMBED_DIM:-768}
+      # Shared HMAC for the gateway→rag-engine internal verified-clearance assertion (ADR-0034).
+      ATLAS_GATEWAY_INTERNAL_SECRET: ${ATLAS_GATEWAY_INTERNAL_SECRET:-change-me-locally}
+      OTEL_TRACES_EXPORT_ENABLED: ${OTEL_TRACES_EXPORT_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://langfuse-web:3000/api/public/otel/v1/traces}
+      LANGFUSE_OTEL_AUTH_HEADER: ${LANGFUSE_OTEL_AUTH_HEADER:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${RAG_ENGINE_PORT:-8081}:8081"
+    restart: unless-stopped
+
   # ── API Gateway (P3, ADR-0033 — Spring Cloud Gateway WebMVC) ─────────────────
   # The single front door in front of rag-engine. Built from gateway/Dockerfile (the
   # `-exec` fat jar must be packaged first: `mvn -pl gateway -am package`). Like
@@ -70,6 +109,9 @@ services:
       GATEWAY_PORT: 8080
       # rag-engine runs on the host in dev; reach it from inside the network.
       ATLAS_GATEWAY_RAG_ENGINE_URL: ${ATLAS_GATEWAY_RAG_ENGINE_URL:-http://host.docker.internal:8081}
+      # Redis (semantic cache + rate-limit + budget counters) — the in-network store.
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -259,6 +301,22 @@ services:
       - "${PUSHGATEWAY_PORT:-9091}:9091"
     restart: unless-stopped
 
+  # ── Alertmanager (P6 Task 4) — routes Prometheus alerts (cost / error-rate / breaker / evals) ──
+  # Config seeded into a named volume by `make seed-config` (Snap-Docker: no host bind mounts).
+  # No paid pager wired by default; alerts are visible in the Alertmanager UI + Prometheus /alerts.
+  alertmanager:
+    image: prom/alertmanager:v0.28.1@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba
+    container_name: atlas-alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    volumes:
+      - atlas-alertmanager-config:/etc/alertmanager
+      - atlas-alertmanager-data:/alertmanager
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:11.6.1@sha256:52c3e20686b860c6dc1f623811565773cf51eefa378817a4896dfc863c3c82c8
     container_name: atlas-grafana
@@ -321,6 +379,8 @@ volumes:
   atlas-minio-data:
   atlas-prometheus-data:
   atlas-grafana-data:
+  # Alertmanager dedup/silence state (P6 Task 4).
+  atlas-alertmanager-data:
   # Caddy's local CA + issued certs (the internal-TLS material) persist here.
   atlas-caddy-data:
   # Config volumes are seeded from repo files by `make up` (see infra/Makefile);
@@ -330,6 +390,10 @@ volumes:
     external: true
   atlas-grafana-config:
     name: atlas-grafana-config
+    external: true
+  # Alertmanager config, seeded from infra/prometheus/alertmanager.yml by `make seed-config`.
+  atlas-alertmanager-config:
+    name: atlas-alertmanager-config
     external: true
 
 networks:

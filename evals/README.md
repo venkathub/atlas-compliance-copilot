@@ -46,6 +46,13 @@ are cassetted:
 
 Cassettes are (re)recorded by the periodic **live calibration** job (GPU on); the PR gate only replays.
 
+## Cost-regression gate (P6, ADR-0064)
+`python -m atlas_evals.cost_gate` validates the committed cost evidence (`data/gateway-baseline.json`,
+produced live by `atlas_evals.cost_report`, RUNBOOK §7.4) against its reduction target: it fails if
+`cost_reduction_pct < target_reduction_pct`, if `meets_target` is false, or if `cost_on_units` exceeds an
+optional `max_cost_on_units` ceiling. Wired into the CI `evals-gate` job (and the `deploy` workflow's gate),
+so a merge/deploy is blocked on **quality OR cost** regression. Offline + GPU-free, like the RAGAS gate.
+
 ## Datasets (committed, versioned — ADR-0028)
 - **`golden.jsonl` — 22 Q/A tuples:** 12 **Layer-1** seeded from authoritative **FinanceBench**
   rows (`question`/`answer` pulled from the dataset, mapped to the 12 committed snippets) +

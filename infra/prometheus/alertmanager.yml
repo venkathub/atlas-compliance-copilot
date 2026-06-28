@@ -1,0 +1,40 @@
+# Atlas — Alertmanager config (P6 Task 4, ADR-0063).
+# Seeded into the `atlas-alertmanager-config` named volume by `make seed-config` (Snap-Docker safe).
+#
+# Single-box, no paid pager: all alerts go to one no-op receiver and are visible in the Alertmanager
+# UI (:9093) + Prometheus /alerts. Wire a real Slack/email/PagerDuty integration in prod by filling
+# the commented receiver below (keep any webhook URL/token in the box .env, never committed).
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: atlas-default
+  group_by: ['alertname', 'area']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    # Page criticals more aggressively.
+    - matchers:
+        - severity = "critical"
+      receiver: atlas-default
+      repeat_interval: 1h
+
+receivers:
+  # No integration wired by default (portfolio / no paid pager). Alerts still show in the UIs.
+  # To ship somewhere, uncomment one of these and set the secret in the box .env:
+  - name: atlas-default
+    # slack_configs:
+    #   - api_url: '${ALERTMANAGER_SLACK_WEBHOOK}'
+    #     channel: '#atlas-alerts'
+    #     send_resolved: true
+    # email_configs:
+    #   - to: 'ops@example.com'
+    #     from: 'atlas-alerts@example.com'
+    #     smarthost: 'smtp.example.com:587'
+
+inhibit_rules:
+  # A firing critical for a service mutes its lower-severity warnings.
+  - source_matchers: [ severity = "critical" ]
+    target_matchers: [ severity = "warning" ]
+    equal: ['area']

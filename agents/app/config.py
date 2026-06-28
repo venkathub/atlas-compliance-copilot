@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     )
     langfuse_otel_auth_header: str = Field("", validation_alias="LANGFUSE_OTEL_AUTH_HEADER")
 
+    # --- Structured logging (P6 Task 3). `plain` (dev) | `json` (prod). Level is standard. ---
+    log_format: str = Field("plain", validation_alias="ATLAS_LOG_FORMAT")
+    log_level: str = Field("INFO", validation_alias="ATLAS_LOG_LEVEL")
+
     def db_url(self) -> str:
         """Resolve the libpq connection URL for the checkpointer (explicit URL wins over parts)."""
         if self.agent_db_url:
