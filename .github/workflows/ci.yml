@@ -127,7 +127,10 @@ jobs:
           if-no-files-found: ignore
 
   evals-gate:
-    name: Eval gate (RAGAS + adversarial + cost, cassette-replay)
+    # NOTE: this job's `name` is a REQUIRED status-check context in main's branch protection — do not
+    # rename it (the cost-regression gate is an added step below, not a rename). Renaming silently
+    # breaks the merge gate (GitHub waits for a context that never reports).
+    name: Eval gate (RAGAS + adversarial, cassette-replay)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
