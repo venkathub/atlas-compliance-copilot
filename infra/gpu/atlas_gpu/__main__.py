@@ -19,8 +19,10 @@ import sys
 import time
 from pathlib import Path
 
+from atlas_gpu.bootstrap import provision_from_scratch, write_env
 from atlas_gpu.lifecycle import Watchdog, http_health_check, run_with_gpu
 from atlas_gpu.providers import GpuProviderError, make_provider
+from atlas_gpu.provision import ProvisionConfig, ServeTarget
 
 LOCK_PATH = Path(__file__).resolve().parent.parent / ".gpu-session.lock"
 
@@ -30,20 +32,20 @@ def _idle_timeout_s(env: dict | None = None) -> float:
     return float(env.get("GPU_IDLE_TIMEOUT_MIN", "20")) * 60.0
 
 
-def _write_env(path: str, key: str, value: str) -> None:
-    """Update (or append) ``KEY=value`` in an env file, preserving other lines."""
-    p = Path(path)
-    lines = p.read_text().splitlines() if p.exists() else []
-    out, found = [], False
-    for line in lines:
-        if line.startswith(f"{key}=") and not line.lstrip().startswith("#"):
-            out.append(f"{key}={value}")
-            found = True
-        else:
-            out.append(line)
-    if not found:
-        out.append(f"{key}={value}")
-    p.write_text("\n".join(out) + "\n")
+def _arm_watchdog(no_watchdog: bool) -> None:
+    """Arm the detached deadline-pauser (second net): force-pause after the idle timeout."""
+    LOCK_PATH.write_text(f"{time.time() + _idle_timeout_s()}\n")
+    if no_watchdog:
+        return
+    subprocess.Popen(  # noqa: S603 - internal, no shell
+        [sys.executable, "-m", "atlas_gpu", "_watchdog", "--lock", str(LOCK_PATH)],
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    log_ok(
+        f"watchdog armed: GPU auto-pauses in {_idle_timeout_s() / 60:.0f} min if not torn down"
+    )
 
 
 # ── subcommands ──────────────────────────────────────────────────────────────
@@ -60,23 +62,74 @@ def cmd_up(args: argparse.Namespace) -> int:
         poll_until_ready(base_url, http_health_check, timeout_s=args.ready_timeout)
     print(base_url)
     if args.write_env:
-        _write_env(args.write_env, "OLLAMA_BASE_URL", base_url)
+        write_env(args.write_env, "OLLAMA_BASE_URL", base_url)
         # machine_id drifts on resume — persist the live id so the next session is in sync.
-        _write_env(args.write_env, "GPU_INSTANCE_ID", str(provider.instance_id))
+        write_env(args.write_env, "GPU_INSTANCE_ID", str(provider.instance_id))
         log_ok(f"wrote OLLAMA_BASE_URL + GPU_INSTANCE_ID to {args.write_env}")
-    # Arm the detached watchdog (second net): force-pause after the idle timeout.
-    LOCK_PATH.write_text(f"{time.time() + _idle_timeout_s()}\n")
-    if not args.no_watchdog:
-        subprocess.Popen(  # noqa: S603 - internal, no shell
-            [sys.executable, "-m", "atlas_gpu", "_watchdog", "--lock", str(LOCK_PATH)],
-            start_new_session=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+    _arm_watchdog(args.no_watchdog)
+    return 0
+
+
+def cmd_provision(args: argparse.Namespace) -> int:
+    """From-scratch E2E: create a GPU, install Ollama/vLLM, discover + write endpoints."""
+    try:
+        target = ServeTarget.parse(args.serve)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    provider = make_provider()
+    # CLI overrides on top of env-derived CreateSpec.
+    if args.gpu:
+        provider.create_spec.gpu_type = args.gpu
+    if args.storage:
+        provider.create_spec.storage_gb = args.storage
+    if args.name:
+        provider.create_spec.name = args.name
+
+    config = ProvisionConfig.from_env(target)
+    try:
+        result = provision_from_scratch(
+            provider,
+            config,
+            env_file=args.write_env,
+            ready_timeout_s=args.ready_timeout,
+            dry_run=args.dry_run,
         )
-        log_ok(
-            f"watchdog armed: GPU auto-pauses in {_idle_timeout_s() / 60:.0f} min "
-            "if not torn down"
-        )
+    except (GpuProviderError, TimeoutError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        # A create that partially succeeded leaves a billable instance — be loud.
+        log_ok("provisioning failed; check `atlas_gpu` / the JarvisLabs console and tear down")
+        return 1
+
+    if result.dry_run:
+        log_ok(f"[dry-run] serve target: {target.value}; startup script:")
+        print(result.script)
+        return 0
+
+    if result.ollama_base_url:
+        log_ok(f"OLLAMA_BASE_URL={result.ollama_base_url}")
+    if result.vllm_base_url:
+        log_ok(f"ATLAS_VLLM_BASE_URL={result.vllm_base_url}")
+    log_ok(f"instance {result.machine_id} provisioned and serving")
+    _arm_watchdog(args.no_watchdog)
+    return 0
+
+
+def cmd_teardown(args: argparse.Namespace) -> int:
+    """Pause (default, keeps data) or destroy the provisioned instance; cancel watchdog."""
+    LOCK_PATH.unlink(missing_ok=True)
+    provider = make_provider()
+    try:
+        if args.destroy:
+            provider.destroy()
+            log_ok("GPU instance DESTROYED; watchdog cancelled")
+        else:
+            provider.pause()
+            log_ok("GPU paused; watchdog cancelled")
+    except GpuProviderError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -171,6 +224,29 @@ def build_parser() -> argparse.ArgumentParser:
 
     down = sub.add_parser("down", help="pause + cancel watchdog")
     down.set_defaults(func=cmd_down)
+
+    prov = sub.add_parser(
+        "provision", help="from scratch: create GPU + install Ollama/vLLM + write endpoints"
+    )
+    prov.add_argument(
+        "--serve", default="ollama", help="serve target: ollama | vllm | both (default: ollama)"
+    )
+    prov.add_argument("--gpu", help="GPU type override (e.g. A100, L4); else GPU_TYPE env")
+    prov.add_argument("--storage", type=int, help="storage GB override; else GPU_STORAGE_GB env")
+    prov.add_argument("--name", help="instance name override")
+    prov.add_argument("--write-env", help="env file to update with the discovered endpoints")
+    prov.add_argument("--no-watchdog", action="store_true")
+    prov.add_argument("--dry-run", action="store_true", help="print plan + startup script only")
+    prov.add_argument(
+        "--ready-timeout", type=float, default=1800.0, help="endpoint readiness timeout (s)"
+    )
+    prov.set_defaults(func=cmd_provision)
+
+    teardown = sub.add_parser("teardown", help="pause (default) or --destroy the instance")
+    teardown.add_argument(
+        "--destroy", action="store_true", help="permanently delete the instance (not just pause)"
+    )
+    teardown.set_defaults(func=cmd_teardown)
 
     run = sub.add_parser("run", help="resume -> run -- <cmd> -> guaranteed pause")
     run.add_argument("--skip-health", action="store_true")

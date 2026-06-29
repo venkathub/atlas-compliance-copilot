@@ -1,21 +1,32 @@
-"""Atlas fail-safe GPU lifecycle helper (infra/gpu).
+"""Atlas GPU lifecycle + from-scratch provisioner (infra/gpu).
 
-Resume the Cloud Ollama GPU, health-poll it, discover the fresh ``OLLAMA_BASE_URL``,
-run work against it, then **GUARANTEE a pause** (``finally``/trap) plus an idle-timeout
-watchdog as a second net. See ADR-0029 (D-P2-9) and RUNBOOK §2.4 / §6.
+Two capabilities behind one tool (ADR-0029 lifecycle, ADR-0066 SDK migration + provisioner):
 
-The cardinal invariant: *automation that can resume the GPU must never be able to leave
-it running.* Every public entry point pauses in a ``finally`` and the watchdog pauses on
-deadline even if the parent process is killed.
+  - **Lifecycle** — resume an existing GPU, health-poll, discover the serving endpoint,
+    run work, then **GUARANTEE a pause** (``finally``/trap) plus an idle-timeout watchdog.
+  - **From-scratch provisioning** — create a GPU instance via the official ``jarvislabs``
+    SDK, install/serve Ollama and/or vLLM (OpenAI-compatible), discover + write the
+    endpoint env vars, and leave it running under the watchdog.
+
+The cardinal invariant is unchanged: *automation that can start the GPU must never be able
+to leave it running.* Every entry point pauses in a ``finally`` and the watchdog pauses on
+deadline even if the parent is killed.
 """
 
+from atlas_gpu.bootstrap import ProvisionResult, provision_from_scratch
 from atlas_gpu.lifecycle import GpuSession, Watchdog, run_with_gpu
-from atlas_gpu.providers import GpuProvider, make_provider
+from atlas_gpu.providers import GpuProvider, JarvisLabsProvider, make_provider
+from atlas_gpu.provision import ProvisionConfig, ServeTarget
 
 __all__ = [
     "GpuSession",
     "Watchdog",
     "run_with_gpu",
     "GpuProvider",
+    "JarvisLabsProvider",
     "make_provider",
+    "ProvisionConfig",
+    "ServeTarget",
+    "ProvisionResult",
+    "provision_from_scratch",
 ]

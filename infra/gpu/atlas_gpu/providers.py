@@ -1,309 +1,161 @@
-"""GPU provider drivers (JarvisLabs real API; E2E generic seam fallback).
+"""JarvisLabs GPU provider, backed by the official ``jarvislabs`` SDK (via the JlClient seam).
 
-``JarvisLabsProvider`` speaks the **actual** Jarvislabs backend API (verified against a
-live account, 2026-06-14): region-aware base URL, ``Authorization: Bearer`` auth,
-``users/fetch`` for status/endpoint, ``misc/pause?machine_id=`` to pause, and
-``templates/{framework}/resume`` with a rebuilt config payload. ``E2EProvider`` keeps the
-generic, env-configurable REST seam (its exact paths confirmed at first E2E calibration).
+Replaces the previous raw-urllib driver (ADR-0066). Implements the ``GpuProvider`` Protocol
+(``resume``/``pause``/``status``/``endpoint``) so ``lifecycle.py`` and the fail-safe watchdog
+are unchanged, and adds ``create()`` / ``destroy()`` for from-scratch provisioning.
 
-No third-party deps: HTTP is stdlib ``urllib``. An injectable ``transport`` lets tests
-drive the provider without a network.
+Endpoint discovery does not assume port→URL order: it **probes** the instance's public
+endpoints to find the Ollama/vLLM URL (see ``provision.classify_endpoints``).
 """
 
 from __future__ import annotations
 
-import ast
-import json
 import logging
 import os
-import time
-import urllib.error
-import urllib.request
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
+from atlas_gpu.provision import (
+    EndpointProbe,
+    ProvisionConfig,
+    build_startup_script,
+    classify_endpoints,
+    http_probe,
+)
+from atlas_gpu.sdk import InstanceInfo, JlClient, JlError, make_client
+
 log = logging.getLogger("atlas_gpu")
 
-
-def _is_success(v: object) -> bool:
-    """JarvisLabs returns success as bool True OR the string "True"."""
-    return v is True or (isinstance(v, str) and v.strip().lower() == "true")
-
-
-class GpuProviderError(RuntimeError):
-    """Raised when a provider API call fails (never contains the API key)."""
+# Re-exported for back-compat with existing imports/tests.
+GpuProviderError = JlError
 
 
 @runtime_checkable
 class GpuProvider(Protocol):
-    """Minimal contract every provider driver must satisfy."""
+    """Minimal lifecycle contract consumed by ``lifecycle.py`` / the watchdog."""
 
     name: str
 
-    def resume(self) -> None:
-        """Resume (start) the instance and block until it is Running. Idempotent."""
-
-    def pause(self) -> None:
-        """Pause (stop) the instance. MUST be safe to call repeatedly."""
-
-    def status(self) -> str:
-        """Return a coarse status string, e.g. 'Running' | 'Paused' | 'unknown'."""
-
-    def endpoint(self) -> str:
-        """Return the instance's current public Ollama base URL (may change on resume)."""
+    def resume(self) -> None: ...
+    def pause(self) -> None: ...
+    def status(self) -> str: ...
+    def endpoint(self) -> str: ...
 
 
-# Transport: (method, base_url, func, body, query) -> parsed JSON dict.
-Transport = Callable[[str, str, str, dict | None, dict | None], dict]
+@dataclass
+class CreateSpec:
+    """Parameters for creating a fresh instance (defaulted from env)."""
 
+    gpu_type: str = "A100"
+    num_gpus: int = 1
+    template: str = "pytorch"
+    storage_gb: int = 100
+    name: str = "atlas-serving"
+    region: str | None = None
 
-def _bearer_transport(timeout_s: float, api_key: str) -> Transport:
-    """Stdlib urllib transport with Bearer auth. The key is never logged."""
-
-    def _call(method: str, base: str, func: str, body: dict | None, query: dict | None) -> dict:
-        url = base.rstrip("/") + "/" + func.lstrip("/")
-        if query:
-            from urllib.parse import urlencode
-
-            url += "?" + urlencode(query)
-        data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(url, data=data, method=method)
-        req.add_header("Authorization", f"Bearer {api_key}")
-        req.add_header("Content-Type", "application/json")
-        try:
-            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-                raw = resp.read().decode("utf-8") or "{}"
-        except urllib.error.HTTPError as e:  # pragma: no cover - network shape
-            raise GpuProviderError(f"{method} {func} -> HTTP {e.code}") from None
-        except urllib.error.URLError as e:  # pragma: no cover - network shape
-            raise GpuProviderError(f"{method} {func} unreachable: {e.reason}") from None
-        try:
-            return json.loads(raw) if raw.strip() else {}
-        except json.JSONDecodeError:
-            return {}
-
-    return _call
-
-
-def _first_endpoint(eps: object) -> str:
-    """Normalise the JarvisLabs ``endpoints`` field (list, or stringified list) → str."""
-    if isinstance(eps, list):
-        return str(eps[0]) if eps else ""
-    if isinstance(eps, str) and eps.strip().startswith("["):
-        try:
-            parsed = ast.literal_eval(eps)
-            return str(parsed[0]) if parsed else ""
-        except (ValueError, SyntaxError):
-            return ""
-    return str(eps or "")
-
-
-def _err_msg(resp: object) -> str:
-    if isinstance(resp, dict):
-        return str(resp.get("detail") or resp.get("message") or resp.get("error") or resp)
-    return str(resp)
+    @classmethod
+    def from_env(cls, env: dict | None = None) -> CreateSpec:
+        env = os.environ if env is None else env
+        return cls(
+            gpu_type=env.get("GPU_TYPE", cls.gpu_type),
+            num_gpus=int(env.get("GPU_NUM_GPUS", cls.num_gpus)),
+            template=env.get("GPU_TEMPLATE", cls.template),
+            storage_gb=int(env.get("GPU_STORAGE_GB", cls.storage_gb)),
+            name=env.get("GPU_INSTANCE_NAME", cls.name),
+            region=env.get("GPU_REGION") or None,
+        )
 
 
 @dataclass
 class JarvisLabsProvider:
-    """Drive a Jarvislabs instance via its real backend API (default provider)."""
+    """Drive a JarvisLabs instance through the SDK seam."""
 
     name: str
-    api_key: str
-    instance_id: str
-    api_base: str = "https://backendprod.jarvislabs.net/"
-    timeout_s: float = 30.0
-    resume_ready_timeout_s: float = 300.0
-    transport: Transport | None = None
-    # sleep/now injectable for deterministic tests of the resume wait-loop.
-    _sleep: Callable[[float], None] = time.sleep
-    _now: Callable[[], float] = time.monotonic
-    _instance: dict = field(default_factory=dict, repr=False)
+    client: JlClient
+    instance_id: str = ""
+    create_spec: CreateSpec = field(default_factory=CreateSpec)
+    probe: EndpointProbe = http_probe
+    _roles: dict[str, str] = field(default_factory=dict, repr=False)
 
-    # Region → region-specific backend (pause/resume must hit the instance's region).
-    REGION_API_URLS = {
-        "india-01": "https://backendprod.jarvislabs.net/",
-        "india-noida-01": "https://backendn.jarvislabs.net/",
-        "europe-01": "https://backendeu.jarvislabs.net/",
-    }
-
-    def _http(self, method: str, base: str, func: str, *, body=None, query=None) -> dict:
-        t = self.transport or _bearer_transport(self.timeout_s, self.api_key)
-        return t(method, base, func, body, query)
-
-    def _fetch(self) -> dict:
-        """Fetch fresh instance details (prod base lists all regions).
-
-        The by-id route (``users/fetch/{id}``) 404s on the current backend, so we treat it
-        as best-effort and fall back to the list route, which is the verified path.
-        """
-        inst = None
-        try:
-            resp = self._http("GET", self.api_base, f"users/fetch/{self.instance_id}")
-            if isinstance(resp, dict) and resp.get("success"):
-                inst = resp.get("instance")
-        except GpuProviderError:
-            inst = None
-        if inst is None:  # verified path: list all instances and filter
-            resp = self._http("GET", self.api_base, "users/fetch")
-            instances = resp.get("instances", []) if isinstance(resp, dict) else []
-            for i in instances:
-                if str(i.get("machine_id")) == str(self.instance_id):
-                    inst = i
-                    break
-            # machine_id changes on resume (JarvisLabs assigns a new id). If the configured
-            # id has drifted but the account holds exactly ONE instance, adopt it so we never
-            # lose track of a running GPU (and can always pause it).
-            if inst is None and len(instances) == 1:
-                inst = instances[0]
-                adopted = str(inst.get("machine_id"))
-                log.warning(
-                    "configured instance %s not found; adopting the only instance %s",
-                    self.instance_id,
-                    adopted,
-                )
-                self.instance_id = adopted
-        if inst is None:
-            raise GpuProviderError(f"jarvislabs: instance {self.instance_id} not found")
-        self._instance = inst
-        return inst
-
-    def _region_base(self) -> str:
-        region = self._instance.get("region")
-        return self.REGION_API_URLS.get(region, self.api_base)
-
+    # ── lifecycle (GpuProvider Protocol) ──────────────────────────────────────
     def status(self) -> str:
-        return str(self._fetch().get("status", "unknown"))
+        return self.client.get_instance(self.instance_id).status
+
+    def resume(self) -> None:
+        """Resume the paused instance and block until Running (machine_id may change)."""
+        if not self.instance_id:
+            raise JlError("resume requires GPU_INSTANCE_ID (or create one first)")
+        info = self.client.get_instance(self.instance_id)
+        if info.is_running:
+            self._roles = {}
+            return
+        info = self.client.resume_instance(self.instance_id)
+        self.instance_id = info.machine_id  # CRITICAL: id can change on resume
+        self._roles = {}
+
+    def pause(self) -> None:
+        if not self.instance_id:
+            raise JlError("pause requires an instance id")
+        self.client.pause_instance(self.instance_id)
+
+    def destroy(self) -> None:
+        if not self.instance_id:
+            raise JlError("destroy requires an instance id")
+        self.client.destroy_instance(self.instance_id)
 
     def endpoint(self) -> str:
-        inst = self._instance or self._fetch()
-        url = _first_endpoint(inst.get("endpoints")) or str(inst.get("url", ""))
+        """Return the primary OpenAI-compatible base URL (Ollama preferred, else vLLM)."""
+        roles = self.discover_endpoints()
+        url = roles.get("ollama") or roles.get("vllm")
         if not url:
-            raise GpuProviderError("jarvislabs: instance has no endpoint url")
+            raise JlError(f"instance {self.instance_id} exposes no ready endpoint")
         return url
 
-    def pause(self) -> None:
-        inst = self._fetch()
-        func = "templates/vm/pause" if inst.get("framework") == "vm" else "misc/pause"
-        resp = self._http(
-            "POST", self._region_base(), func, body={}, query={"machine_id": self.instance_id}
+    def discover_endpoints(self, *, refresh: bool = False) -> dict[str, str]:
+        """Probe the instance's public endpoints → ``{"ollama": url, "vllm": url}``."""
+        if self._roles and not refresh:
+            return self._roles
+        info = self.client.get_instance(self.instance_id)
+        self._roles = classify_endpoints(info.endpoints, self.probe)
+        return self._roles
+
+    # ── from-scratch creation ─────────────────────────────────────────────────
+    def create(self, config: ProvisionConfig) -> InstanceInfo:
+        """Create a fresh instance with a startup script that serves ``config.target``."""
+        script = build_startup_script(config)
+        script_id = self.client.add_script(
+            script=script, name=f"atlas-provision-{config.target.value}"
         )
-        if not (isinstance(resp, dict) and _is_success(resp.get("success"))):
-            raise GpuProviderError(f"jarvislabs: pause failed: {_err_msg(resp)}")
-
-    def resume(self) -> None:
-        inst = self._fetch()
-        if str(inst.get("status")) == "Running":
-            return
-        framework = inst.get("framework") or "pytorch"
-        req = {
-            "machine_id": self.instance_id,
-            "hdd": inst.get("hdd"),
-            "name": inst.get("instance_name") or inst.get("name") or "",
-            "script_id": inst.get("script_id", ""),
-            "script_args": inst.get("script_args", ""),
-            "duration": _normalize_duration(inst.get("frequency")),
-            "http_ports": inst.get("http_ports") or "",
-            "gpu_type": inst.get("gpu_type"),
-            "num_gpus": inst.get("num_gpus"),
-            "is_reserved": inst.get("is_reserved", True),
-            "fs_id": inst.get("fs_id"),
-        }
-        resp = self._http("POST", self._region_base(), f"templates/{framework}/resume", body=req)
-        new_id = resp.get("machine_id") if isinstance(resp, dict) else None
-        if not new_id:
-            raise GpuProviderError(f"jarvislabs: resume failed: {_err_msg(resp)}")
-        # CRITICAL: machine_id changes on resume — adopt the new id so the rest of the
-        # session (wait/endpoint/PAUSE) targets the live machine, never a dead id.
-        self.instance_id = str(new_id)
-        self._wait_until_running()
-
-    def _wait_until_running(self) -> None:
-        deadline = self._now() + self.resume_ready_timeout_s
-        while True:
-            st = str(self._fetch().get("status"))
-            if st == "Running":
-                return
-            if st == "Failed":
-                raise GpuProviderError("jarvislabs: instance reached Failed during resume")
-            if self._now() >= deadline:
-                raise GpuProviderError("jarvislabs: timed out waiting for Running")
-            self._sleep(10.0)
+        info = self.client.create_instance(
+            gpu_type=self.create_spec.gpu_type,
+            num_gpus=self.create_spec.num_gpus,
+            template=self.create_spec.template,
+            storage=self.create_spec.storage_gb,
+            name=self.create_spec.name,
+            http_ports=config.http_ports(),
+            script_id=script_id,
+            region=self.create_spec.region,
+        )
+        self.instance_id = info.machine_id
+        self._roles = {}
+        log.info("created instance %s (%s)", info.machine_id, self.create_spec.gpu_type)
+        return info
 
 
-def _normalize_duration(raw: object) -> str:
-    mapping = {"hourly": "hour", "weekly": "week", "monthly": "month"}
-    if isinstance(raw, str):
-        return mapping.get(raw.lower(), raw)
-    return "hour"
+def make_provider(name: str | None = None, *, env: dict | None = None) -> JarvisLabsProvider:
+    """Build a JarvisLabs provider from ``GPU_*`` env vars.
 
-
-@dataclass
-class E2EProvider:
-    """Generic env-configurable REST seam (E2E Networks fallback).
-
-    Concrete paths are confirmed at first live E2E calibration (TODO); the value here is
-    the abstraction + Bearer secret handling that ``lifecycle.py`` enforces pause on top of.
-    """
-
-    name: str
-    api_base: str
-    api_key: str
-    instance_id: str
-    timeout_s: float = 30.0
-    resume_path: str = "/instances/{id}/resume"
-    pause_path: str = "/instances/{id}/pause"
-    status_path: str = "/instances/{id}"
-    status_field: str = "status"
-    endpoint_field: str = "url"
-    transport: Transport | None = None
-    _last_status: dict = field(default_factory=dict, repr=False)
-
-    def _http(self, method: str, func: str) -> dict:
-        t = self.transport or _bearer_transport(self.timeout_s, self.api_key)
-        return t(method, self.api_base, func.format(id=self.instance_id), None, None)
-
-    def resume(self) -> None:
-        self._http("POST", self.resume_path)
-
-    def pause(self) -> None:
-        self._http("POST", self.pause_path)
-
-    def status(self) -> str:
-        self._last_status = self._http("GET", self.status_path)
-        return str(self._last_status.get(self.status_field, "unknown"))
-
-    def endpoint(self) -> str:
-        if not self._last_status:
-            self.status()
-        url = self._last_status.get(self.endpoint_field, "")
-        if not url:
-            raise GpuProviderError(f"{self.name}: status response had no '{self.endpoint_field}'")
-        return str(url)
-
-
-def make_provider(name: str | None = None, *, env: dict | None = None) -> GpuProvider:
-    """Build a provider from ``GPU_*`` env vars.
-
-    ``GPU_PROVIDER`` (jarvislabs|e2e), ``GPU_API_BASE`` (optional override), ``GPU_API_KEY``,
-    ``GPU_INSTANCE_ID``. An unknown provider fails loudly so a typo never silently skips the
-    pause.
+    ``GPU_PROVIDER`` is accepted for forward-compat but only ``jarvislabs`` is supported now
+    (the generic E2E seam was removed with the SDK migration — ADR-0066). An unknown value
+    fails loudly so a typo never silently skips a pause.
     """
     env = os.environ if env is None else env
     name = (name or env.get("GPU_PROVIDER") or "jarvislabs").strip().lower()
-    api_key = env.get("GPU_API_KEY", "")
-    instance_id = env.get("GPU_INSTANCE_ID", "")
-    if name == "jarvislabs":
-        base = env.get("GPU_API_BASE", "https://backendprod.jarvislabs.net/")
-        return JarvisLabsProvider(
-            name=name, api_key=api_key, instance_id=instance_id, api_base=base
-        )
-    if name == "e2e":
-        base = env.get("GPU_API_BASE", "https://api.e2enetworks.com")
-        return E2EProvider(
-            name=name, api_base=base, api_key=api_key, instance_id=instance_id
-        )
-    raise GpuProviderError(
-        f"unknown GPU_PROVIDER '{name}' (expected one of: e2e, jarvislabs)"
+    if name != "jarvislabs":
+        raise JlError(f"unsupported GPU_PROVIDER '{name}' (only 'jarvislabs' is supported)")
+    return JarvisLabsProvider(
+        name=name,
+        client=make_client(env),
+        instance_id=env.get("GPU_INSTANCE_ID", ""),
+        create_spec=CreateSpec.from_env(env),
     )

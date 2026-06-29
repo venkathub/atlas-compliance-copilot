@@ -13,6 +13,7 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0066 | 2026-06-29 | Migrate GPU helper to official `jarvislabs` SDK + from-scratch provisioner (Ollama/vLLM) | Accepted | P3 |
 | 0065 | 2026-06-27 | 3-minute demo: docs/DEMO.md + automated e2e-demo Playwright walkthrough + deterministic seed script | Accepted | P6 |
 | 0064 | 2026-06-27 | CI/CD: cost-regression gate, Trivy CRITICAL/HIGH gating, manual gated deploy workflow + rollback | Accepted | P6 |
 | 0063 | 2026-06-27 | Alerting: Prometheus rules (cost/error-rate/breaker/eval) + Alertmanager; latency p50/p95 panel | Accepted | P6 |
@@ -101,6 +102,57 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0066 — Migrate GPU helper to official `jarvislabs` SDK + from-scratch provisioner (Ollama/vLLM)
+- **Date:** 2026-06-29 · **Status:** Accepted · **Phase:** P3 · **Supersedes parts of:** ADR-0029 ·
+  **Files:** `infra/gpu/atlas_gpu/{sdk,provision,providers,bootstrap,__main__}.py`,
+  `infra/gpu/pyproject.toml`, `infra/gpu/README.md`, `.env.example`
+- **Context:** The fail-safe lifecycle helper (ADR-0029) could only **resume/pause an instance that already
+  existed**, and spoke the *deprecated* raw JarvisLabs backend API via hand-rolled `urllib`. To benchmark
+  vLLM vs Ollama (and to make the GPU reproducible from nothing) we needed **create-from-scratch**: provision
+  an instance, install + serve the model server(s), discover the endpoints, and tear down. JarvisLabs has since
+  shipped an official `jarvislabs` package (Python SDK + `jl` CLI) built for coding agents, covering
+  create/pause/resume/destroy, startup scripts, and GPU availability.
+- **Options considered:** (a) **new SDK provisioner, keep the stdlib helper** — cleanest separation but two
+  JarvisLabs code paths; (b) **shell script wrapping the `jl` CLI** — least code, but hard to unit-test offline
+  and weaker error handling; (c) **migrate the helper onto the official SDK and add provisioning there** — one
+  unified, tested tool. **Chose (c)** (owner decision) — a single provider abstraction for the whole lifecycle,
+  testable, and rid of the deprecated raw API.
+- **Decision:**
+  - **SDK seam (`sdk.py`):** a `JlClient` Protocol over just the SDK surface used
+    (`instances.create/get/list/pause/resume/destroy`, `scripts.add/list`) + a `RealJlClient` adapter that
+    **lazy-imports** `jarvislabs.Client` and normalises `Instance` → a small `InstanceInfo`. Auth from
+    **`GPU_API_KEY`** → `Client(api_key=...)` (no dependence on `jl setup`/`JL_API_KEY`).
+  - **Provisioner (`provision.py` + `bootstrap.py`):** `--serve ollama|vllm|both` (default `ollama`); an
+    **idempotent** startup script installs/starts Ollama (`:11434`) and/or vLLM (`:8000`) bound to `0.0.0.0`
+    and pulls/loads models; `provision_from_scratch` creates → health-polls → **probes** endpoints to classify
+    Ollama (`/api/tags`) vs vLLM (`/v1/models`) → writes `OLLAMA_BASE_URL` / `ATLAS_VLLM_BASE_URL` /
+    `GPU_INSTANCE_ID`. New CLI: `provision` / `teardown` (alongside `up`/`down`/`run`).
+- **Rationale:** One SDK-backed `JarvisLabsProvider` keeps the `GpuProvider` Protocol intact, so `lifecycle.py`
+  and the guaranteed-pause watchdog are unchanged. Probing endpoints (not trusting `http_ports` order, which
+  JarvisLabs doesn't contractually map) is robust to ordering. `both` is opt-in with a VRAM warning.
+- **Consequences / tradeoffs:**
+  - **Ends the "stdlib-only, CI-safe" guarantee** of ADR-0029. **Mitigated:** the SDK is lazy-imported (the
+    pause/watchdog path never needs it), all logic sits behind `JlClient` so **41 offline tests** inject a
+    `FakeJlClient` (no SDK, no network), the dep is pinned, and `--dry-run` provisions nothing.
+  - The generic `E2EProvider` seam was **removed** (unused TODO stub) — only `jarvislabs` is supported.
+  - **Live-verified 2026-06-29** on JarvisLabs **L4** (IN2) — *all* JarvisLabs use cases Atlas
+    relies on, cost ≈ ₹30 total: **create** (Running in 7s), **status**, **pause**→Paused,
+    **resume**→Running with **machine_id drift (436272→436273) adopted**, **Watchdog**-pause,
+    **destroy**; **`provision --serve ollama`** (→ public chat `ATLAS_OK`, **Ollama on GPU**:
+    `ollama ps`→`100% GPU`, ~2.3 GB VRAM); **`provision --serve vllm`** (the **default
+    `Qwen2.5-7B-Instruct-AWQ` loads on L4**, ~20.5/24 GB `VLLM::EngineCore`, chat `ATLAS_OK`);
+    the **`teardown --destroy`** CLI path. The on-box vLLM log confirmed probe order on the real
+    proxy (`/api/tags`→404, `/v1/models`→200), validating `classify_endpoints`.
+  - The run found **three real bugs**, all fixed + regression-tested: (1) **Ollama never
+    installed headlessly** — the JarvisLabs startup shell's minimal PATH omits `/usr/local/bin`
+    *and* system `curl`, so `curl | sh` no-op'd while `set -u` (not `-e`) continued; fixed by
+    broadening PATH (`/usr/local/bin:/usr/bin:/bin:/opt/conda/bin`), retrying install until the
+    binary appears, and capturing all output to `/var/log/atlas-provision.log`. (2) **Startup
+    scripts accumulated** to the account cap → `scripts.add` rejected; now **upserted by name**.
+    (3) endpoint classification must **probe**, not trust port order. The SDK
+    `create`/`resume`+drift/`pause`/`destroy`/`status` and the `teardown` CLI were all exercised
+    live; 42 offline tests cover the logic with a `FakeJlClient`.
 
 ### ADR-0065 — 3-minute demo: DEMO.md + automated e2e-demo walkthrough + deterministic seed
 - **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `docs/DEMO.md`,
