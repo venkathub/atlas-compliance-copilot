@@ -13,6 +13,7 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0067 | 2026-06-29 | vLLM serving profile alongside Ollama; on-GPU benchmark (23.6× throughput, 24× cheaper/token) | Accepted | P3 |
 | 0066 | 2026-06-29 | Migrate GPU helper to official `jarvislabs` SDK + from-scratch provisioner (Ollama/vLLM) | Accepted | P3 |
 | 0065 | 2026-06-27 | 3-minute demo: docs/DEMO.md + automated e2e-demo Playwright walkthrough + deterministic seed script | Accepted | P6 |
 | 0064 | 2026-06-27 | CI/CD: cost-regression gate, Trivy CRITICAL/HIGH gating, manual gated deploy workflow + rollback | Accepted | P6 |
@@ -102,6 +103,44 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0067 — vLLM serving profile alongside Ollama; on-GPU benchmark (23.6× throughput)
+- **Date:** 2026-06-29 · **Status:** Accepted · **Phase:** P3 · **Builds on:** ADR-0066 (provisioner),
+  ADR-0040 (cost-units) · **Files:** `infra/bench/**`, `infra/bench/results/{ollama,vllm}-L4.json`,
+  `infra/bench/results/COMPARISON.md`, `docs/PORTFOLIO.md`
+- **Context:** Atlas serves models via Ollama (great for single-user dev) behind an OpenAI-compatible,
+  env-swappable endpoint. For a *production serving* story we wanted **vLLM** (PagedAttention + continuous
+  batching) as a selectable profile — but the value is only real with **measured evidence**, not a dependency
+  swap. ADR-0040's cost-units were *synthetic* (GPU ₹/hr ÷ an assumed throughput); we wanted them measured.
+- **Options considered:** (a) **migrate off Ollama to vLLM** — loses the cheap quantized dev path and the
+  cost story; (b) **add vLLM as a swappable serving profile + benchmark both on the same GPU** — keeps Ollama
+  for dev, adds vLLM for the production/benchmark story. **Chose (b).** The provisioner (ADR-0066) already
+  stands up either via `--serve ollama|vllm|both`.
+- **Decision:** Build a concurrency-sweep benchmark harness (`infra/bench`, ADR cross-ref in its README) and
+  run **Ollama vs vLLM on the same L4, same 7B family**, on-box against localhost (no client-network noise).
+  Throughput = output tokens / wall-clock window; cost = GPU ₹/hr ÷ measured tok/s (replaces the synthetic
+  cost-units for self-hosted serving).
+- **Result (L4, Qwen2.5-7B, both server-reported tokens, max_tokens=128):**
+
+  | Concurrency | Ollama tok/s | vLLM tok/s | Ollama e2e p99 | vLLM e2e p99 |
+  |---|---|---|---|---|
+  | 1  | 47.8 | 53.1  | 2.69 s | 2.42 s |
+  | 8  | 51.1 | 359.1 | 18.7 s | 2.51 s |
+  | 32 | 50.9 | 1207.8 | 69.2 s | 2.97 s |
+
+  Ollama throughput is **flat (~51 tok/s)** and tail latency **explodes** (it serializes concurrent requests);
+  vLLM throughput **scales with load** and p99 stays **~2.4–3 s**. Peak **23.6× throughput** (1208 vs 51 tok/s)
+  and **measured cost/1M output tokens ₹224 → ₹9.50 (≈24× cheaper)** at the same ₹41.31/hr L4.
+- **Rationale:** Same physical GPU + same model family + on-box measurement makes the comparison defensible;
+  the curve (not a single number) is the story — vLLM's batching only pays off under concurrency.
+- **Consequences / honesty:**
+  - **Quantization differs** (Ollama GGUF Q4_K_M vs vLLM AWQ 4-bit) — both 4-bit, but not bit-identical; noted
+    in the result `notes`. Token counts are **server-reported for both** (no proxy mismatch).
+  - vLLM reserves ~0.9 of VRAM (≈20.5/24 GB on L4), so `--serve both` on one GPU is impractical — they were
+    benchmarked **sequentially** on the same box. Ollama stays the cheap default for dev/CI; vLLM is the
+    production/benchmark profile.
+  - Numbers are L4/model/quant-specific; the harness + results are committed so they're reproducible.
+  - Live cost for the whole serving validation + benchmark ≈ ₹16 (instances destroyed; balance verified).
 
 ### ADR-0066 — Migrate GPU helper to official `jarvislabs` SDK + from-scratch provisioner (Ollama/vLLM)
 - **Date:** 2026-06-29 · **Status:** Accepted · **Phase:** P3 · **Supersedes parts of:** ADR-0029 ·

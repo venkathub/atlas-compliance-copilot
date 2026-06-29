@@ -6,6 +6,32 @@ Repo: <https://github.com/venkathub/atlas-compliance-copilot>
 
 ---
 
+## Production model serving — vLLM profile + on-GPU benchmark (2026-06-29)
+
+**One-liner:** Added vLLM as a swappable, production-grade serving profile alongside Ollama and **proved**
+the gain with a same-GPU benchmark — turning a synthetic cost-unit into a measured one.
+
+**Resume bullets (draft):**
+- Built a **from-scratch GPU provisioner** (JarvisLabs SDK) that creates a cloud GPU, installs and serves
+  **Ollama and/or vLLM** behind an OpenAI-compatible endpoint, probe-classifies the public endpoints, and
+  **guarantees teardown** (finally + idle watchdog) — live-validated end-to-end (create/pause/resume/destroy)
+  for **≈₹45 (~$0.55)** total, surfacing and fixing 3 real cloud-only bugs.
+- **Benchmarked vLLM vs Ollama on the same L4 GPU** (Qwen2.5-7B, on-box concurrency sweep): vLLM sustained
+  **23.6× higher throughput** (1208 vs 51 tok/s at 32 concurrent requests) with **23× lower p99 latency**
+  (3.0 s vs 69 s) thanks to **PagedAttention + continuous batching**, cutting **measured cost from ₹224 → ₹9.50
+  per 1M output tokens (~24×)**.
+- Kept **Ollama as the quantized dev/CI default** and vLLM as the production profile — a cost-aware,
+  env-swappable serving layer (no app-code change between backends), with the benchmark harness and results
+  committed for reproducibility.
+
+**Evidence:** `infra/bench/results/{ollama,vllm}-L4.json` + `COMPARISON.md` · ADR-0066/0067 · 42 + 16 offline
+tests green · live runs on JarvisLabs L4 (instances destroyed, balance verified).
+
+**Quantified:** 23.6× throughput · 23× lower p99 · ~24× cheaper/token · vLLM scales 53→1208 tok/s (c=1→32)
+while Ollama stays flat ~51 · all instances torn down (zero idle spend).
+
+---
+
 ## P0 — Foundations (complete · 2026-06-13)
 
 **One-liner:** Stood up a reproducible, secure, CI-gated polyglot monorepo and proved an env-swappable
