@@ -46,7 +46,10 @@ class GpuProvider(Protocol):
 class CreateSpec:
     """Parameters for creating a fresh instance (defaulted from env)."""
 
-    gpu_type: str = "A100"
+    # L4 (24GB, cheapest IN2 GPU) is the cost-disciplined default — it fits Ollama or a
+    # vLLM 7B-AWQ comfortably. Override (--gpu / GPU_TYPE) to A100 for `--serve both` or
+    # larger models. ADR-0066.
+    gpu_type: str = "L4"
     num_gpus: int = 1
     template: str = "pytorch"
     storage_gb: int = 100
