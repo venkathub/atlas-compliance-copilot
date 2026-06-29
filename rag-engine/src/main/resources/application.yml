@@ -90,6 +90,14 @@ atlas:
     tier2-model: ${ATLAS_ROUTER_TIER2_MODEL:qwen2.5:7b-instruct}
     frontier-model: ${ATLAS_ROUTER_FRONTIER_MODEL:}
     frontier-enabled: ${ATLAS_ROUTER_FRONTIER_ENABLED:false}
+  # Chat (generation) backend (ADR-0068). Default `ollama` = Spring AI Ollama-native client.
+  # `vllm` swaps the chat ChatModel to an OpenAI-compatible client at ATLAS_VLLM_BASE_URL (/v1);
+  # embeddings ALWAYS stay on Ollama (nomic-embed, 768-dim). Env-swappable, never hardcoded.
+  chat:
+    backend: ${ATLAS_CHAT_BACKEND:ollama}
+    vllm-base-url: ${ATLAS_VLLM_BASE_URL:}
+    vllm-model: ${ATLAS_VLLM_MODEL:Qwen/Qwen2.5-7B-Instruct-AWQ}
+    vllm-api-key: ${ATLAS_VLLM_API_KEY:not-needed}
   # Hybrid retrieval tuning (ADR-0013 RRF). All env-swappable.
   retrieval:
     dense-k: ${ATLAS_RETRIEVAL_DENSE_K:20}

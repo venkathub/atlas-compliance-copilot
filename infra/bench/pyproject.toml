@@ -1,0 +1,23 @@
+[project]
+name = "atlas-bench"
+version = "0.1.0"
+description = "Atlas serving benchmark: concurrency-sweep throughput/latency/cost harness for OpenAI-compatible LLM endpoints (Ollama vs vLLM). P3, ADR-0067."
+requires-python = ">=3.11"
+# httpx is the ONLY runtime dep, used solely by the live client (client.py). The metric
+# math, the concurrency runner and the reporters are pure-stdlib so the offline unit tests
+# (and CI) run with no GPU, no network, and no model server.
+dependencies = ["httpx>=0.27"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

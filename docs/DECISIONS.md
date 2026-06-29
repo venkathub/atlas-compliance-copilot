@@ -13,6 +13,9 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0068 | 2026-06-29 | rag-engine config-selectable chat backend (Ollama-native default · vLLM via OpenAI client; embeddings stay Ollama) | Accepted | P3 |
+| 0067 | 2026-06-29 | vLLM serving profile alongside Ollama; on-GPU benchmark (23.6× throughput, 24× cheaper/token) | Accepted | P3 |
+| 0066 | 2026-06-29 | Migrate GPU helper to official `jarvislabs` SDK + from-scratch provisioner (Ollama/vLLM) | Accepted | P3 |
 | 0065 | 2026-06-27 | 3-minute demo: docs/DEMO.md + automated e2e-demo Playwright walkthrough + deterministic seed script | Accepted | P6 |
 | 0064 | 2026-06-27 | CI/CD: cost-regression gate, Trivy CRITICAL/HIGH gating, manual gated deploy workflow + rollback | Accepted | P6 |
 | 0063 | 2026-06-27 | Alerting: Prometheus rules (cost/error-rate/breaker/eval) + Alertmanager; latency p50/p95 panel | Accepted | P6 |
@@ -101,6 +104,125 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0068 — rag-engine config-selectable chat backend (Ollama-native default; vLLM via OpenAI client)
+- **Date:** 2026-06-29 · **Status:** Accepted · **Phase:** P3 · **Corrects:** an over-broad claim in ADR-0067
+  / PORTFOLIO · **Files:** `rag-engine/pom.xml`,
+  `rag-engine/src/main/java/com/atlas/ragengine/config/{ChatBackendProperties,VllmChatConfig}.java`,
+  `rag-engine/src/main/resources/application.yml`, tests `config/VllmChatConfig{Test,LiveIT}.java`, `.env.example`
+- **Context:** ADR-0067 / the PORTFOLIO bullet implied the app was "env-swappable across OpenAI-compatible
+  backends with no app-code change." **That was wrong, and a live check proved it:** `rag-engine` uses Spring AI's
+  **`spring-ai-starter-model-ollama`** — the *native* Ollama API (`/api/chat`, `/api/embeddings`). vLLM only
+  speaks the **OpenAI `/v1`** API, so pointing `OLLAMA_BASE_URL` at vLLM does **not** work; rag-engine needs a
+  Spring AI **OpenAI** client to target vLLM. (Honesty-over-agreeableness: the inflated claim was corrected.)
+- **Constraint:** embeddings **must** stay on Ollama — the pgvector column is pinned to `nomic-embed-text`
+  (768-dim, ADR-0005). So only the **chat (generation)** `ChatModel` may move to vLLM.
+- **Options considered:** (a) migrate rag-engine entirely to the OpenAI starter (would also swap embeddings →
+  breaks the pinned 768-dim vector store); (b) add the OpenAI **starter** (auto-configures an OpenAI
+  `EmbeddingModel` too → bean collision with Ollama's); (c) **add the OpenAI *model module* (not the starter)
+  and build a `@Primary` chat `ChatModel` manually, conditional on `atlas.chat.backend=vllm`.** **Chose (c).**
+- **Decision:** `ATLAS_CHAT_BACKEND=ollama|vllm` (default `ollama`). When `vllm`, `VllmChatConfig`
+  (`@ConditionalOnProperty`) builds a `@Primary OpenAiChatModel` from `ATLAS_VLLM_BASE_URL` + `ATLAS_VLLM_MODEL`,
+  which every chat consumer (`QueryService`, `LlmReranker`, the probe, the inline-eval `ChatClient.Builder`)
+  picks up. No OpenAI `EmbeddingModel` is created → embeddings stay on Ollama. The per-request tier override
+  already uses portable `ChatOptions.model(...)`, so `X-Atlas-Model-Tier` keeps working on vLLM.
+- **Proof:**
+  - **Offline** (`VllmChatConfigTest`, 5 tests): `vllm` → `@Primary OpenAiChatModel`; `ollama`/absent → inert;
+    missing base-url fails fast. Full suite **98 tests green**; **eval REPLAY gate PASS** (default path unchanged → no RAG regression).
+  - **Live** (`VllmChatLiveIT`, `@Tag("live")`): the **real Spring-wired** `ChatModel` generated
+    `ATLAS_OK` from the vLLM-served `Qwen2.5-7B-Instruct-AWQ` (model echoed in response metadata).
+- **Consequences:** rag-engine is now genuinely multi-backend for generation (Ollama-native default, vLLM via
+  OpenAI client), embeddings unchanged. The accurate claim: *config-selectable chat backend*, **not**
+  "zero-code-change endpoint swap." Gateway still selects tiers; vLLM tier model-ids must be vLLM-served names.
+
+### ADR-0067 — vLLM serving profile alongside Ollama; on-GPU benchmark (23.6× throughput)
+- **Date:** 2026-06-29 · **Status:** Accepted · **Phase:** P3 · **Builds on:** ADR-0066 (provisioner),
+  ADR-0040 (cost-units) · **Files:** `infra/bench/**`, `infra/bench/results/{ollama,vllm}-L4.json`,
+  `infra/bench/results/COMPARISON.md`, `docs/PORTFOLIO.md`
+- **Context:** Atlas serves models via Ollama (great for single-user dev) behind an OpenAI-compatible,
+  env-swappable endpoint. For a *production serving* story we wanted **vLLM** (PagedAttention + continuous
+  batching) as a selectable profile — but the value is only real with **measured evidence**, not a dependency
+  swap. ADR-0040's cost-units were *synthetic* (GPU ₹/hr ÷ an assumed throughput); we wanted them measured.
+- **Options considered:** (a) **migrate off Ollama to vLLM** — loses the cheap quantized dev path and the
+  cost story; (b) **add vLLM as a swappable serving profile + benchmark both on the same GPU** — keeps Ollama
+  for dev, adds vLLM for the production/benchmark story. **Chose (b).** The provisioner (ADR-0066) already
+  stands up either via `--serve ollama|vllm|both`.
+- **Decision:** Build a concurrency-sweep benchmark harness (`infra/bench`, ADR cross-ref in its README) and
+  run **Ollama vs vLLM on the same L4, same 7B family**, on-box against localhost (no client-network noise).
+  Throughput = output tokens / wall-clock window; cost = GPU ₹/hr ÷ measured tok/s (replaces the synthetic
+  cost-units for self-hosted serving).
+- **Result (L4, Qwen2.5-7B, both server-reported tokens, max_tokens=128):**
+
+  | Concurrency | Ollama tok/s | vLLM tok/s | Ollama e2e p99 | vLLM e2e p99 |
+  |---|---|---|---|---|
+  | 1  | 47.8 | 53.1  | 2.69 s | 2.42 s |
+  | 8  | 51.1 | 359.1 | 18.7 s | 2.51 s |
+  | 32 | 50.9 | 1207.8 | 69.2 s | 2.97 s |
+
+  Ollama throughput is **flat (~51 tok/s)** and tail latency **explodes** (it serializes concurrent requests);
+  vLLM throughput **scales with load** and p99 stays **~2.4–3 s**. Peak **23.6× throughput** (1208 vs 51 tok/s)
+  and **measured cost/1M output tokens ₹224 → ₹9.50 (≈24× cheaper)** at the same ₹41.31/hr L4.
+- **Rationale:** Same physical GPU + same model family + on-box measurement makes the comparison defensible;
+  the curve (not a single number) is the story — vLLM's batching only pays off under concurrency.
+- **Consequences / honesty:**
+  - **Quantization differs** (Ollama GGUF Q4_K_M vs vLLM AWQ 4-bit) — both 4-bit, but not bit-identical; noted
+    in the result `notes`. Token counts are **server-reported for both** (no proxy mismatch).
+  - vLLM reserves ~0.9 of VRAM (≈20.5/24 GB on L4), so `--serve both` on one GPU is impractical — they were
+    benchmarked **sequentially** on the same box. Ollama stays the cheap default for dev/CI; vLLM is the
+    production/benchmark profile.
+  - Numbers are L4/model/quant-specific; the harness + results are committed so they're reproducible.
+  - Live cost for the whole serving validation + benchmark ≈ ₹16 (instances destroyed; balance verified).
+
+### ADR-0066 — Migrate GPU helper to official `jarvislabs` SDK + from-scratch provisioner (Ollama/vLLM)
+- **Date:** 2026-06-29 · **Status:** Accepted · **Phase:** P3 · **Supersedes parts of:** ADR-0029 ·
+  **Files:** `infra/gpu/atlas_gpu/{sdk,provision,providers,bootstrap,__main__}.py`,
+  `infra/gpu/pyproject.toml`, `infra/gpu/README.md`, `.env.example`
+- **Context:** The fail-safe lifecycle helper (ADR-0029) could only **resume/pause an instance that already
+  existed**, and spoke the *deprecated* raw JarvisLabs backend API via hand-rolled `urllib`. To benchmark
+  vLLM vs Ollama (and to make the GPU reproducible from nothing) we needed **create-from-scratch**: provision
+  an instance, install + serve the model server(s), discover the endpoints, and tear down. JarvisLabs has since
+  shipped an official `jarvislabs` package (Python SDK + `jl` CLI) built for coding agents, covering
+  create/pause/resume/destroy, startup scripts, and GPU availability.
+- **Options considered:** (a) **new SDK provisioner, keep the stdlib helper** — cleanest separation but two
+  JarvisLabs code paths; (b) **shell script wrapping the `jl` CLI** — least code, but hard to unit-test offline
+  and weaker error handling; (c) **migrate the helper onto the official SDK and add provisioning there** — one
+  unified, tested tool. **Chose (c)** (owner decision) — a single provider abstraction for the whole lifecycle,
+  testable, and rid of the deprecated raw API.
+- **Decision:**
+  - **SDK seam (`sdk.py`):** a `JlClient` Protocol over just the SDK surface used
+    (`instances.create/get/list/pause/resume/destroy`, `scripts.add/list`) + a `RealJlClient` adapter that
+    **lazy-imports** `jarvislabs.Client` and normalises `Instance` → a small `InstanceInfo`. Auth from
+    **`GPU_API_KEY`** → `Client(api_key=...)` (no dependence on `jl setup`/`JL_API_KEY`).
+  - **Provisioner (`provision.py` + `bootstrap.py`):** `--serve ollama|vllm|both` (default `ollama`); an
+    **idempotent** startup script installs/starts Ollama (`:11434`) and/or vLLM (`:8000`) bound to `0.0.0.0`
+    and pulls/loads models; `provision_from_scratch` creates → health-polls → **probes** endpoints to classify
+    Ollama (`/api/tags`) vs vLLM (`/v1/models`) → writes `OLLAMA_BASE_URL` / `ATLAS_VLLM_BASE_URL` /
+    `GPU_INSTANCE_ID`. New CLI: `provision` / `teardown` (alongside `up`/`down`/`run`).
+- **Rationale:** One SDK-backed `JarvisLabsProvider` keeps the `GpuProvider` Protocol intact, so `lifecycle.py`
+  and the guaranteed-pause watchdog are unchanged. Probing endpoints (not trusting `http_ports` order, which
+  JarvisLabs doesn't contractually map) is robust to ordering. `both` is opt-in with a VRAM warning.
+- **Consequences / tradeoffs:**
+  - **Ends the "stdlib-only, CI-safe" guarantee** of ADR-0029. **Mitigated:** the SDK is lazy-imported (the
+    pause/watchdog path never needs it), all logic sits behind `JlClient` so **41 offline tests** inject a
+    `FakeJlClient` (no SDK, no network), the dep is pinned, and `--dry-run` provisions nothing.
+  - The generic `E2EProvider` seam was **removed** (unused TODO stub) — only `jarvislabs` is supported.
+  - **Live-verified 2026-06-29** on JarvisLabs **L4** (IN2) — *all* JarvisLabs use cases Atlas
+    relies on, cost ≈ ₹30 total: **create** (Running in 7s), **status**, **pause**→Paused,
+    **resume**→Running with **machine_id drift (436272→436273) adopted**, **Watchdog**-pause,
+    **destroy**; **`provision --serve ollama`** (→ public chat `ATLAS_OK`, **Ollama on GPU**:
+    `ollama ps`→`100% GPU`, ~2.3 GB VRAM); **`provision --serve vllm`** (the **default
+    `Qwen2.5-7B-Instruct-AWQ` loads on L4**, ~20.5/24 GB `VLLM::EngineCore`, chat `ATLAS_OK`);
+    the **`teardown --destroy`** CLI path. The on-box vLLM log confirmed probe order on the real
+    proxy (`/api/tags`→404, `/v1/models`→200), validating `classify_endpoints`.
+  - The run found **three real bugs**, all fixed + regression-tested: (1) **Ollama never
+    installed headlessly** — the JarvisLabs startup shell's minimal PATH omits `/usr/local/bin`
+    *and* system `curl`, so `curl | sh` no-op'd while `set -u` (not `-e`) continued; fixed by
+    broadening PATH (`/usr/local/bin:/usr/bin:/bin:/opt/conda/bin`), retrying install until the
+    binary appears, and capturing all output to `/var/log/atlas-provision.log`. (2) **Startup
+    scripts accumulated** to the account cap → `scripts.add` rejected; now **upserted by name**.
+    (3) endpoint classification must **probe**, not trust port order. The SDK
+    `create`/`resume`+drift/`pause`/`destroy`/`status` and the `teardown` CLI were all exercised
+    live; 42 offline tests cover the logic with a `FakeJlClient`.
 
 ### ADR-0065 — 3-minute demo: DEMO.md + automated e2e-demo walkthrough + deterministic seed
 - **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `docs/DEMO.md`,

@@ -1,11 +1,13 @@
 [project]
 name = "atlas-gpu"
 version = "0.1.0"
-description = "Atlas fail-safe GPU lifecycle helper (resume / health-poll / discover OLLAMA_BASE_URL / GUARANTEED pause). P2, ADR-0029 / D-P2-9."
+description = "Atlas GPU lifecycle + from-scratch provisioner (create / install Ollama+vLLM / discover OpenAI-compatible endpoints / GUARANTEED pause). P2-P3, ADR-0029 / ADR-0066."
 requires-python = ">=3.11"
-# Runtime is stdlib-only (urllib) on purpose: the helper must run in CI with no
-# third-party deps so the cost-discipline guarantee never depends on a fragile env.
-dependencies = []
+# `jarvislabs` (official SDK/CLI) drives create/resume/pause/destroy. It is imported
+# LAZILY (only inside RealJlClient), so importing atlas_gpu — and the guaranteed-pause
+# watchdog path — never requires the package. Offline tests inject a FakeJlClient, so CI
+# needs no SDK and no network. See ADR-0066 for the stdlib-only tradeoff.
+dependencies = ["jarvislabs>=0.2"]
 
 [dependency-groups]
 dev = ["pytest>=8"]
