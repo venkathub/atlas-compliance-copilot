@@ -20,12 +20,15 @@ the gain with a same-GPU benchmark — turning a synthetic cost-unit into a meas
   **23.6× higher throughput** (1208 vs 51 tok/s at 32 concurrent requests) with **23× lower p99 latency**
   (3.0 s vs 69 s) thanks to **PagedAttention + continuous batching**, cutting **measured cost from ₹224 → ₹9.50
   per 1M output tokens (~24×)**.
-- Kept **Ollama as the quantized dev/CI default** and vLLM as the production profile — a cost-aware,
-  env-swappable serving layer (no app-code change between backends), with the benchmark harness and results
-  committed for reproducibility.
+- Kept **Ollama as the quantized dev/CI default** and added vLLM as the production chat profile —
+  a cost-aware serving layer where the **chat backend is config-selectable** (`ATLAS_CHAT_BACKEND=ollama|vllm`:
+  Spring AI's Ollama-native client or an OpenAI-compatible vLLM client), with **embeddings pinned to Ollama**
+  (nomic-embed, 768-dim pgvector), and the benchmark harness + results committed for reproducibility.
 
-**Evidence:** `infra/bench/results/{ollama,vllm}-L4.json` + `COMPARISON.md` · ADR-0066/0067 · 42 + 16 offline
-tests green · live runs on JarvisLabs L4 (instances destroyed, balance verified).
+**Evidence:** `infra/bench/results/{ollama,vllm}-L4.json` + `COMPARISON.md` · ADR-0066/0067/0068 · rag-engine
+**`VllmChatLiveIT`** (real Spring `ChatModel` generated via vLLM) + `VllmChatConfigTest` · 98 rag-engine + 42 gpu
++ 16 bench tests green · **eval REPLAY gate PASS** (no RAG regression) · live runs on JarvisLabs L4 (instances
+destroyed, balance verified).
 
 **Quantified:** 23.6× throughput · 23× lower p99 · ~24× cheaper/token · vLLM scales 53→1208 tok/s (c=1→32)
 while Ollama stays flat ~51 · all instances torn down (zero idle spend).

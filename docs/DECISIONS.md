@@ -13,6 +13,7 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0068 | 2026-06-29 | rag-engine config-selectable chat backend (Ollama-native default · vLLM via OpenAI client; embeddings stay Ollama) | Accepted | P3 |
 | 0067 | 2026-06-29 | vLLM serving profile alongside Ollama; on-GPU benchmark (23.6× throughput, 24× cheaper/token) | Accepted | P3 |
 | 0066 | 2026-06-29 | Migrate GPU helper to official `jarvislabs` SDK + from-scratch provisioner (Ollama/vLLM) | Accepted | P3 |
 | 0065 | 2026-06-27 | 3-minute demo: docs/DEMO.md + automated e2e-demo Playwright walkthrough + deterministic seed script | Accepted | P6 |
@@ -103,6 +104,36 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0068 — rag-engine config-selectable chat backend (Ollama-native default; vLLM via OpenAI client)
+- **Date:** 2026-06-29 · **Status:** Accepted · **Phase:** P3 · **Corrects:** an over-broad claim in ADR-0067
+  / PORTFOLIO · **Files:** `rag-engine/pom.xml`,
+  `rag-engine/src/main/java/com/atlas/ragengine/config/{ChatBackendProperties,VllmChatConfig}.java`,
+  `rag-engine/src/main/resources/application.yml`, tests `config/VllmChatConfig{Test,LiveIT}.java`, `.env.example`
+- **Context:** ADR-0067 / the PORTFOLIO bullet implied the app was "env-swappable across OpenAI-compatible
+  backends with no app-code change." **That was wrong, and a live check proved it:** `rag-engine` uses Spring AI's
+  **`spring-ai-starter-model-ollama`** — the *native* Ollama API (`/api/chat`, `/api/embeddings`). vLLM only
+  speaks the **OpenAI `/v1`** API, so pointing `OLLAMA_BASE_URL` at vLLM does **not** work; rag-engine needs a
+  Spring AI **OpenAI** client to target vLLM. (Honesty-over-agreeableness: the inflated claim was corrected.)
+- **Constraint:** embeddings **must** stay on Ollama — the pgvector column is pinned to `nomic-embed-text`
+  (768-dim, ADR-0005). So only the **chat (generation)** `ChatModel` may move to vLLM.
+- **Options considered:** (a) migrate rag-engine entirely to the OpenAI starter (would also swap embeddings →
+  breaks the pinned 768-dim vector store); (b) add the OpenAI **starter** (auto-configures an OpenAI
+  `EmbeddingModel` too → bean collision with Ollama's); (c) **add the OpenAI *model module* (not the starter)
+  and build a `@Primary` chat `ChatModel` manually, conditional on `atlas.chat.backend=vllm`.** **Chose (c).**
+- **Decision:** `ATLAS_CHAT_BACKEND=ollama|vllm` (default `ollama`). When `vllm`, `VllmChatConfig`
+  (`@ConditionalOnProperty`) builds a `@Primary OpenAiChatModel` from `ATLAS_VLLM_BASE_URL` + `ATLAS_VLLM_MODEL`,
+  which every chat consumer (`QueryService`, `LlmReranker`, the probe, the inline-eval `ChatClient.Builder`)
+  picks up. No OpenAI `EmbeddingModel` is created → embeddings stay on Ollama. The per-request tier override
+  already uses portable `ChatOptions.model(...)`, so `X-Atlas-Model-Tier` keeps working on vLLM.
+- **Proof:**
+  - **Offline** (`VllmChatConfigTest`, 5 tests): `vllm` → `@Primary OpenAiChatModel`; `ollama`/absent → inert;
+    missing base-url fails fast. Full suite **98 tests green**; **eval REPLAY gate PASS** (default path unchanged → no RAG regression).
+  - **Live** (`VllmChatLiveIT`, `@Tag("live")`): the **real Spring-wired** `ChatModel` generated
+    `ATLAS_OK` from the vLLM-served `Qwen2.5-7B-Instruct-AWQ` (model echoed in response metadata).
+- **Consequences:** rag-engine is now genuinely multi-backend for generation (Ollama-native default, vLLM via
+  OpenAI client), embeddings unchanged. The accurate claim: *config-selectable chat backend*, **not**
+  "zero-code-change endpoint swap." Gateway still selects tiers; vLLM tier model-ids must be vLLM-served names.
 
 ### ADR-0067 — vLLM serving profile alongside Ollama; on-GPU benchmark (23.6× throughput)
 - **Date:** 2026-06-29 · **Status:** Accepted · **Phase:** P3 · **Builds on:** ADR-0066 (provisioner),

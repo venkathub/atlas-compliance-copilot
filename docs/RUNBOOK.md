@@ -177,6 +177,41 @@ All three returning sane values = endpoint is healthy and ready for the RAG engi
 - Do not put real data through the endpoint until it is fronted by the gateway.
 - Hardening option (P3): front the endpoint with an API-key check at the gateway; log decision in `DECISIONS.md`.
 
+### 2.6 From-scratch provisioning + vLLM serving profile (ADR-0066/0067/0068)
+`infra/gpu` (the `atlas_gpu` tool, JarvisLabs SDK) can build a serving GPU **from nothing** and tear it down
+with a guaranteed pause/destroy. `--serve ollama|vllm|both`; endpoints are probe-classified and written back.
+```bash
+# Provision Ollama (dev default), write OLLAMA_BASE_URL into .env, arm the idle watchdog:
+uv run --directory infra/gpu python -m atlas_gpu provision --serve ollama --write-env ./.env
+# Provision a vLLM endpoint (writes ATLAS_VLLM_BASE_URL):
+uv run --directory infra/gpu python -m atlas_gpu provision --serve vllm --gpu L4 --write-env ./.env
+# Inspect the plan + startup script without spending money:
+uv run --directory infra/gpu python -m atlas_gpu provision --serve both --dry-run
+# Tear down (keeps data) — or --destroy to delete:
+uv run --directory infra/gpu python -m atlas_gpu teardown            # pause
+uv run --directory infra/gpu python -m atlas_gpu teardown --destroy  # delete
+```
+
+**Run rag-engine generation on vLLM** (embeddings stay on Ollama — pgvector is pinned to nomic-embed 768-dim):
+```bash
+# .env: OLLAMA_BASE_URL=<ollama for embeddings>, ATLAS_CHAT_BACKEND=vllm,
+#       ATLAS_VLLM_BASE_URL=<vllm /v1 host>, ATLAS_VLLM_MODEL=Qwen/Qwen2.5-7B-Instruct-AWQ
+# Live proof that the real Spring-wired ChatModel generates via vLLM (no DB needed):
+set -a && . ./.env && set +a
+mvn -P live -pl rag-engine -Dit.test=VllmChatLiveIT verify
+```
+
+**Benchmark Ollama vs vLLM** (same GPU, same model family; on-box for clean numbers — see `infra/bench`):
+```bash
+uv run --directory infra/bench python -m atlas_bench run --backend vllm \
+    --base-url "$ATLAS_VLLM_BASE_URL" --model "$ATLAS_VLLM_MODEL" \
+    --gpu L4 --gpu-cost-per-hour 41.31 --concurrency 1,4,8,16,32 --out results/vllm-L4.json
+uv run --directory infra/bench python -m atlas_bench compare \
+    results/ollama-L4.json results/vllm-L4.json --out results/COMPARISON.md
+```
+Measured on L4 (Qwen2.5-7B): vLLM **23.6× throughput** and **23× lower p99** vs Ollama under concurrency
+(`infra/bench/results/COMPARISON.md`).
+
 ---
 
 ## 3. Local service stack (Postgres+pgvector, Redis) — P0

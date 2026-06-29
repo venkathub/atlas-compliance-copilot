@@ -48,6 +48,13 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-ollama</artifactId>
         </dependency>
+        <!-- Spring AI OpenAI MODEL module (NOT the starter, so no OpenAI auto-config /
+             no OpenAI EmbeddingModel bean): lets us build a vLLM chat ChatModel manually
+             when atlas.chat.backend=vllm, while embeddings stay on Ollama. ADR-0068. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-openai</artifactId>
+        </dependency>
 
         <!-- Nimbus JOSE+JWT (version managed by the Spring Boot BOM): verify the Gateway-asserted
              internal clearance JWT on the Gateway-fronted path (ADR-0034 / D-P3-5). Independent
