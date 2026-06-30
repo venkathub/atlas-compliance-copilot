@@ -27,7 +27,15 @@ train = [
   "datasets>=2.20",
   "mlflow>=2.15",
   "huggingface-hub>=0.24",
+  # The base-vs-FT scoring (infer.score_outputs) reuses the deterministic evals scorers
+  # (format-validity / refusal-correctness) + the RAGAS faithfulness runner — the SAME modules
+  # P7 reuses. Path-deps the sibling evals project so there is ONE copy of the scorers. Only in
+  # the `train` group, so the default GPU-free CI install never pulls it. See P6_SPEC §5 Task 10.
+  "atlas-evals",
 ]
+
+[tool.uv.sources]
+atlas-evals = { path = "../evals", editable = true }
 
 [tool.ruff]
 line-length = 100

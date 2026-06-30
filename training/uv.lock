@@ -188,6 +188,20 @@ wheels = [
 ]
 
 [[package]]
+name = "atlas-evals"
+version = "0.1.0"
+source = { editable = "../evals" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8" }]
+ragas = [
+    { name = "langchain-ollama", specifier = ">=0.2,<0.3" },
+    { name = "ragas", specifier = ">=0.2,<0.3" },
+]
+
+[[package]]
 name = "atlas-training"
 version = "0.1.0"
 source = { virtual = "." }
@@ -204,6 +218,7 @@ synth = [
 ]
 train = [
     { name = "accelerate" },
+    { name = "atlas-evals" },
     { name = "bitsandbytes" },
     { name = "datasets" },
     { name = "huggingface-hub" },
@@ -221,6 +236,7 @@ dev = [{ name = "pytest", specifier = ">=8" }]
 synth = [{ name = "openai", specifier = ">=1" }]
 train = [
     { name = "accelerate", specifier = ">=0.33" },
+    { name = "atlas-evals", editable = "../evals" },
     { name = "bitsandbytes", specifier = ">=0.43" },
     { name = "datasets", specifier = ">=2.20" },
     { name = "huggingface-hub", specifier = ">=0.24" },

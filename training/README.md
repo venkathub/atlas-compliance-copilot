@@ -96,6 +96,16 @@ only in listed sources. `data/train.jsonl` + `data/val.jsonl` are the committed,
 (seed-42) chat-format SFT split the run config points at; `builder.split_dataset` regenerates them
 identically from the seed (train/val disjoint, sizes matching the manifest).
 
+## Base-vs-FT benchmark (ADR-0073)
+In the GPU window, `infer.generate` produces base and base+adapter (FT) outputs over the reused
+eval prompts (golden + the labeled `evals/data/refusal.jsonl` subset). `infer.score_outputs` scores
+them into three metrics — RAGAS **faithfulness** (computed in-window) + the deterministic
+**format-validity** and **refusal-correctness** scorers from `evals` (the same ones P7 reuses; the
+sibling `atlas-evals` is a path dep in the `train` group only). `report.build_comparison` then
+writes the committed evidence — `results/comparison.json` + `results/COMPARISON.md` — in the
+`{base, ft, delta}` shape P7's promotion gate consumes. The report generator is pure and CI-tested
+on fixtures; generation/scoring are episodic (GPU).
+
 ## Results / metrics
 _Populated by the episodic run (Task 11): base-vs-FT faithfulness, format-validity, and
 refusal-correctness deltas, plus per-run training cost — committed to `results/COMPARISON.md`._

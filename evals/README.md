@@ -14,6 +14,7 @@ atlas_evals/
     corpus.py            # resolves doc-ids/fixtures against the REAL corpus (no P1↔P2 drift)
     golden.py            # GoldenTuple + load_golden() + schema validation
     adversarial.py       # AdversarialCase + load_adversarial() (references P1 fixtures)
+    refusal.py           # RefusalCase + load_refusal() — labeled refusal subset (P6, reused by P7)
   metrics/
     samples.py           # (golden tuple + /v1/query response) -> EvalSample (RAGAS-free)
     citation.py          # deterministic citation-resolution signal (report-only)
@@ -26,6 +27,7 @@ atlas_evals/
 data/
   golden.jsonl           # committed golden set (versioned)
   adversarial.jsonl      # committed red-team set (references P1 fixtures by ref)
+  refusal.jsonl          # committed labeled refusal subset (out-of-context/unanswerable/out-of-clearance; P6)
   cassettes/{rag,judge}/ # committed cassettes that drive the offline gate (recorded in Task 8)
 tests/                   # pytest: loaders, cassettes, client, samples, citation, runner, scorer-replay
 ```
