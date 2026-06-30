@@ -61,7 +61,7 @@ ollama pull @@JUDGE_MODEL@@
 ollama pull nomic-embed-text
 ollama list || true
 timeout @@TIMEOUT@@ uv run --env-file .env --group train python scripts/run_episodic.py \
-    --config @@CONFIG@@ @@EXTRA_ARGS@@ --hf-only --upload-results "@@HF_REPO@@"
+    --config @@CONFIG@@ @@EXTRA_ARGS@@ @@HF_ONLY@@ --upload-results "@@HF_REPO@@"
 echo "[atlas] pipeline finished rc=$?"
 RUNEOF
 chmod +x /root/atlas_run.sh
@@ -79,9 +79,11 @@ def _require(name: str) -> str:
 
 
 def build_boot_script(config: str, branch: str, timeout_s: int, *, generate: int,
-                      teacher_model: str, faithfulness: int = 0) -> str:
+                      teacher_model: str, faithfulness: int = 0, benchmark_only: str = "") -> str:
     parts = []
-    if generate > 0:
+    if benchmark_only:
+        parts.append(f"--benchmark-only {benchmark_only}")
+    elif generate > 0:
         parts.append(f"--generate-data {generate}")
     if faithfulness != 0:
         parts.append(f"--faithfulness-samples {faithfulness}")
@@ -92,6 +94,8 @@ def build_boot_script(config: str, branch: str, timeout_s: int, *, generate: int
         "@@CONFIG@@": config,
         "@@TIMEOUT@@": str(timeout_s),
         "@@EXTRA_ARGS@@": extra,
+        # benchmark-only reuses the adapter already on HF — no push.
+        "@@HF_ONLY@@": "" if benchmark_only else "--hf-only",
         "@@TEACHER_MODEL@@": teacher_model,
         "@@HF_TOKEN@@": _require("HF_TOKEN"),
         "@@HF_REPO@@": _require("ATLAS_HF_ADAPTER_REPO"),
@@ -119,6 +123,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--faithfulness", type=int, default=0, metavar="N",
                     help="RAGAS faithfulness over N golden samples (0=skip, -1=all; judge runs on "
                          "GPU after the trainer frees it)")
+    ap.add_argument("--benchmark-only", default="", metavar="HF_ADAPTER_REPO",
+                    help="reuse an adapter already on HF and benchmark only (no generate/train)")
     ap.add_argument("--destroy", metavar="MACHINE_ID", help="destroy an instance and exit")
     args = ap.parse_args(argv)
 
@@ -140,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     # contains secrets — never print
     boot = build_boot_script(args.config, args.branch, args.timeout,
                              generate=args.generate, teacher_model=args.teacher_model,
-                             faithfulness=args.faithfulness)
+                             faithfulness=args.faithfulness, benchmark_only=args.benchmark_only)
     script_id = provider.client.add_script(script=boot, name="atlas-p6-train")
     info = provider.client.create_instance(
         gpu_type=provider.create_spec.gpu_type,

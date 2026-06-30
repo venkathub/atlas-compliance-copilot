@@ -114,6 +114,8 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
                     help="generate a larger trusted-corpus dataset via the local Ollama teacher "
                          "(N answer pairs/doc + refusals) before training; writes data/*.jsonl")
     ap.add_argument("--no-register", action="store_true", help="skip the HF push + MLflow register")
+    ap.add_argument("--benchmark-only", default=None, metavar="HF_ADAPTER_REPO",
+                    help="skip generation+training; load this adapter from HF and benchmark only")
     ap.add_argument("--hf-only", action="store_true",
                     help="push adapter to HF WITHOUT MLflow (box mode; register from laptop later)")
     ap.add_argument("--upload-results", default=None, metavar="HF_REPO",
@@ -160,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
     from atlas_evals.datasets.golden import load_golden
     from atlas_evals.datasets.refusal import load_refusal
 
+    from atlas_training.data.builder import SYSTEM_PROMPT
     from atlas_training.data.corpus import load_corpus as load_training_corpus
     from atlas_training.infer import generate, score_outputs
     from atlas_training.train import run_training
@@ -167,32 +170,38 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
     rate, currency = gpu_rate_from_env()
     meter = CostMeter()
     with meter:
-        # 2. train
-        tracker = None
-        if not args.no_register and not args.hf_only:
-            from atlas_training.tracking import HfHubClient, MlflowRegistry, Tracker
+        # 2. train (or, in --benchmark-only, reuse the adapter already on HF — no train/generate)
+        if args.benchmark_only:
+            adapter_ref = args.benchmark_only
+            ft_model_id = f"hf://{adapter_ref}"
+            log.info("benchmark-only: reusing HF adapter %s (no training)", adapter_ref)
+        else:
+            tracker = None
+            if not args.no_register and not args.hf_only:
+                from atlas_training.tracking import HfHubClient, MlflowRegistry, Tracker
 
-            tracker = Tracker.from_env(MlflowRegistry(), HfHubClient())
-        result = run_training(config, data_dir, args.out, tracker=tracker)
-        log.info("train done: %s", result)
+                tracker = Tracker.from_env(MlflowRegistry(), HfHubClient())
+            result = run_training(config, data_dir, args.out, tracker=tracker)
+            log.info("train done: %s", result)
+            adapter_ref = result.adapter_path
 
-        # 3. register / push (HF push happens BEFORE teardown)
-        ft_model_id = args.out
-        if tracker is not None:
-            mv = tracker.register_adapter(
-                result.run_id, result.adapter_path, config.mlflow.register_as)
-            ft_model_id = mv.source
-            log.info("registered %s v%s <- %s", mv.name, mv.version, mv.source)
-        elif args.hf_only:
-            # Box mode: push the adapter to HF (durable) without MLflow; register from the laptop.
-            from atlas_training.tracking import HfHubClient, hf_source_uri
+            # 3. register / push (HF push happens BEFORE teardown)
+            ft_model_id = args.out
+            if tracker is not None:
+                mv = tracker.register_adapter(
+                    result.run_id, result.adapter_path, config.mlflow.register_as)
+                ft_model_id = mv.source
+                log.info("registered %s v%s <- %s", mv.name, mv.version, mv.source)
+            elif args.hf_only:
+                # Box mode: push adapter to HF (durable) without MLflow; register from the laptop.
+                from atlas_training.tracking import HfHubClient, hf_source_uri
 
-            repo = os.environ["ATLAS_HF_ADAPTER_REPO"]
-            private = os.environ.get("HF_PRIVATE", "true").lower() not in ("false", "0", "no")
-            rev = HfHubClient().push(
-                result.adapter_path, repo, private=private, token=os.environ["HF_TOKEN"])
-            ft_model_id = hf_source_uri(repo, rev)
-            log.info("pushed adapter to HF: %s", ft_model_id)
+                repo = os.environ["ATLAS_HF_ADAPTER_REPO"]
+                private = os.environ.get("HF_PRIVATE", "true").lower() not in ("false", "0", "no")
+                rev = HfHubClient().push(
+                    result.adapter_path, repo, private=private, token=os.environ["HF_TOKEN"])
+                ft_model_id = hf_source_uri(repo, rev)
+                log.info("pushed adapter to HF: %s", ft_model_id)
 
         # 4. generate base + FT candidates
         golden = load_golden()
@@ -201,10 +210,12 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
         golden_prompts = [r["prompt"] for r in rows]
         refusal_prompts = [c.question for c in refusal_cases]
 
-        base_golden = generate(config.base_model, golden_prompts)
-        base_refusal = generate(config.base_model, refusal_prompts)
-        ft_golden = generate(config.base_model, golden_prompts, adapter_path=result.adapter_path)
-        ft_refusal = generate(config.base_model, refusal_prompts, adapter_path=result.adapter_path)
+        base_golden = generate(config.base_model, golden_prompts, system=SYSTEM_PROMPT)
+        base_refusal = generate(config.base_model, refusal_prompts, system=SYSTEM_PROMPT)
+        ft_golden = generate(config.base_model, golden_prompts, adapter_path=adapter_ref,
+                             system=SYSTEM_PROMPT)
+        ft_refusal = generate(config.base_model, refusal_prompts, adapter_path=adapter_ref,
+                             system=SYSTEM_PROMPT)
 
         # 5. score. Faithfulness: free the torch GPU first so the Ollama judge loads on the L4
         #    (a co-resident 7B otherwise forces the judge to CPU → RAGAS timeouts). -1 = all.

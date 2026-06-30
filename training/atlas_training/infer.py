@@ -42,8 +42,13 @@ def generate(  # pragma: no cover - GPU window only
     *,
     adapter_path: str | None = None,
     gen_kwargs: dict | None = None,
+    system: str | None = None,
 ) -> list[str]:
-    """Generate outputs for `prompts`. With `adapter_path`, load base+LoRA (the FT candidate)."""
+    """Generate outputs for `prompts`. With `adapter_path`, load base+LoRA (the FT candidate).
+
+    `system` prepends a system turn — pass the SAME system prompt the model was fine-tuned with,
+    or the FT never sees the citation instruction it was trained under (train/inference mismatch).
+    """
     import torch
     from peft import PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -57,7 +62,8 @@ def generate(  # pragma: no cover - GPU window only
 
     outputs: list[str] = []
     for prompt in prompts:
-        msgs = [{"role": "user", "content": prompt}]
+        msgs = ([{"role": "system", "content": system}] if system else []) + \
+            [{"role": "user", "content": prompt}]
         inputs = tokenizer.apply_chat_template(
             msgs, add_generation_prompt=True, return_tensors="pt", return_dict=True
         ).to(model.device)
