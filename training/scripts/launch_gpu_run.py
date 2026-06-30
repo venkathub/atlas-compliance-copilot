@@ -79,8 +79,13 @@ def _require(name: str) -> str:
 
 
 def build_boot_script(config: str, branch: str, timeout_s: int, *, generate: int,
-                      teacher_model: str) -> str:
-    extra = f"--generate-data {generate}" if generate > 0 else ""
+                      teacher_model: str, faithfulness: int = 0) -> str:
+    parts = []
+    if generate > 0:
+        parts.append(f"--generate-data {generate}")
+    if faithfulness != 0:
+        parts.append(f"--faithfulness-samples {faithfulness}")
+    extra = " ".join(parts)
     repl = {
         "@@BRANCH@@": branch,
         "@@REPO_URL@@": REPO_URL,
@@ -111,6 +116,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--teacher-model", default=os.environ.get("ATLAS_EVAL_JUDGE_MODEL",
                                                               "llama3.1:8b"),
                     help="local Ollama model used to generate the dataset")
+    ap.add_argument("--faithfulness", type=int, default=0, metavar="N",
+                    help="RAGAS faithfulness over N golden samples (0=skip, -1=all; judge runs on "
+                         "GPU after the trainer frees it)")
     ap.add_argument("--destroy", metavar="MACHINE_ID", help="destroy an instance and exit")
     args = ap.parse_args(argv)
 
@@ -131,7 +139,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # contains secrets — never print
     boot = build_boot_script(args.config, args.branch, args.timeout,
-                             generate=args.generate, teacher_model=args.teacher_model)
+                             generate=args.generate, teacher_model=args.teacher_model,
+                             faithfulness=args.faithfulness)
     script_id = provider.client.add_script(script=boot, name="atlas-p6-train")
     info = provider.client.create_instance(
         gpu_type=provider.create_spec.gpu_type,

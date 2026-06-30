@@ -118,6 +118,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
                     help="push adapter to HF WITHOUT MLflow (box mode; register from laptop later)")
     ap.add_argument("--upload-results", default=None, metavar="HF_REPO",
                     help="after writing results/, upload them to this HF repo (box retrieval)")
+    ap.add_argument("--faithfulness-samples", type=int, default=0, metavar="N",
+                    help="RAGAS faithfulness over the first N golden samples (0=skip, -1=all). The "
+                         "driver frees the torch GPU first so the Ollama judge runs on the L4.")
     args = ap.parse_args(argv)
 
     config = load(args.config)
@@ -203,14 +206,21 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
         ft_golden = generate(config.base_model, golden_prompts, adapter_path=result.adapter_path)
         ft_refusal = generate(config.base_model, refusal_prompts, adapter_path=result.adapter_path)
 
-        # 5. score
+        # 5. score. Faithfulness: free the torch GPU first so the Ollama judge loads on the L4
+        #    (a co-resident 7B otherwise forces the judge to CPU → RAGAS timeouts). -1 = all.
+        from atlas_training.infer import free_gpu
+
+        fn = len(rows) if args.faithfulness_samples < 0 else args.faithfulness_samples
+        base_faith = ft_faith = None
+        if fn > 0:
+            free_gpu()
+            base_faith = _faithfulness(rows[:fn], base_golden[:fn])
+            ft_faith = _faithfulness(rows[:fn], ft_golden[:fn])
         base_scores = score_outputs(
-            _candidates(rows, base_golden), refusal_cases, base_refusal,
-            faithfulness=_faithfulness(rows, base_golden),
+            _candidates(rows, base_golden), refusal_cases, base_refusal, faithfulness=base_faith,
         )
         ft_scores = score_outputs(
-            _candidates(rows, ft_golden), refusal_cases, ft_refusal,
-            faithfulness=_faithfulness(rows, ft_golden),
+            _candidates(rows, ft_golden), refusal_cases, ft_refusal, faithfulness=ft_faith,
         )
 
     cost = meter.record(rate, currency=currency, teardown_recorded=True)

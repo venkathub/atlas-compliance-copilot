@@ -69,6 +69,22 @@ def generate(  # pragma: no cover - GPU window only
     return outputs
 
 
+def free_gpu() -> None:  # pragma: no cover - GPU window only
+    """Release torch's cached GPU memory back to the driver so a co-located process (the Ollama
+    RAGAS judge) can load on the GPU. Call after base/FT generation, before faithfulness."""
+    import gc
+
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+    except Exception:  # noqa: BLE001 - best-effort; never fail the run on cleanup
+        pass
+
+
 def score_outputs(  # pragma: no cover - GPU window only (lazy evals scorers, not in CI install)
     candidates: list[Candidate],
     refusal_cases: list,
