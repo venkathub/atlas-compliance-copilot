@@ -42,8 +42,13 @@ uv run pytest           # offline unit tests
 ```bash
 # On the JarvisLabs L4 window (see infra/gpu):
 uv sync --group train               # installs the heavy ML stack on the GPU box
-uv run python -m atlas_training.train --config configs/qlora_qwen7b.yaml
+uv run python -m atlas_training.train \
+  --config configs/qlora_qwen7b.yaml --data-dir data --out out/adapter --register
 ```
+`--register` pushes the trained adapter to the HF Hub and registers the MLflow version
+(`source = hf://<repo>@<rev>`). Without it, the adapter is just saved locally. The config→trainer
+wiring (quantization / LoRA / SFT / early-stopping kwargs) is unit-tested GPU-free; only
+`run_training` imports torch/transformers/peft/trl (lazily), so CI never needs a GPU.
 
 ## Run config (the reproducibility contract)
 `configs/qlora_*.yaml` is the pinned contract: base model, 4-bit NF4 quantization, LoRA params,
