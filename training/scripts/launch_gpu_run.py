@@ -26,6 +26,7 @@ export HOME=/root
 export PATH=/usr/local/bin:/usr/bin:/bin:/opt/conda/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH
 export OLLAMA_HOST=127.0.0.1:11434
 ensure_ollama() {
+  command -v lspci >/dev/null 2>&1 || (apt-get update -y && apt-get install -y pciutils lshw) >/dev/null 2>&1 || true
   command -v ollama >/dev/null 2>&1 || (curl -fsSL https://ollama.com/install.sh | sh)
   if ! curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
     pkill -x ollama 2>/dev/null; sleep 2
@@ -35,8 +36,6 @@ ensure_ollama() {
   echo "[atlas] ERROR: ollama not reachable on :11434"; return 1
 }
 ensure_ollama
-ollama pull @@JUDGE_MODEL@@
-ollama pull nomic-embed-text
 command -v uv >/dev/null 2>&1 || (curl -LsSf https://astral.sh/uv/install.sh | sh)
 rm -rf /root/atlas
 git clone --branch @@BRANCH@@ --depth 1 @@REPO_URL@@ /root/atlas
@@ -56,6 +55,11 @@ ATLAS_SYNTH_BASE_URL=http://localhost:11434
 ENVEOF
 uv sync --group train
 ensure_ollama   # re-ensure after the long uv sync (serve may have died / not been ready)
+# pull AFTER the final ensure so the models land in the serve that handles generation/judging
+ollama pull @@TEACHER_MODEL@@
+ollama pull @@JUDGE_MODEL@@
+ollama pull nomic-embed-text
+ollama list || true
 timeout @@TIMEOUT@@ uv run --env-file .env --group train python scripts/run_episodic.py \
     --config @@CONFIG@@ @@EXTRA_ARGS@@ --hf-only --upload-results "@@HF_REPO@@"
 echo "[atlas] pipeline finished rc=$?"
