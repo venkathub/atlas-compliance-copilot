@@ -60,7 +60,9 @@ grounded refusals), all drawn **only** from the trusted corpus (LLM04). The boun
 answer-pair expansion (`FrontierGenerator`, ADR-0071) is an **offline one-off** run in Task 11
 (needs the `synth` dep group + `ATLAS_SYNTH_*` env); it never runs in CI. `manifest.validate`
 enforces that every source id resolves in the committed corpus and synthetic pairs are grounded
-only in listed sources.
+only in listed sources. `data/train.jsonl` + `data/val.jsonl` are the committed, deterministic
+(seed-42) chat-format SFT split the run config points at; `builder.split_dataset` regenerates them
+identically from the seed (train/val disjoint, sizes matching the manifest).
 
 ## Results / metrics
 _Populated by the episodic run (Task 11): base-vs-FT faithfulness, format-validity, and
