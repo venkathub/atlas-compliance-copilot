@@ -846,11 +846,29 @@ open "http://localhost:${MLFLOW_PORT:-5000}"              # browse experiments +
 ```
 
 ### 12.3 The episodic run (GPU)
-```bash
-# 1) [laptop] resume the L4 (watchdog armed → guaranteed pause). See §GPU lifecycle.
-make -C infra gpu-up
 
-# 2) [GPU box] install the heavy stack + run train → register → benchmark in one window:
+**Lifecycle model (read first).** `scripts/run_episodic.py` runs **on the GPU box** (it loads the
+model with torch/CUDA locally), so it does **not** create or destroy the instance itself — the
+instance lifecycle is driven from the laptop by `infra/gpu` (ADR-0066). The pieces:
+
+| Command (from laptop, `infra/gpu`) | Effect |
+|---|---|
+| `atlas_gpu provision --serve ollama` | **create** a fresh L4 + install env + write `OLLAMA_BASE_URL` (the RAGAS judge) + arm watchdog |
+| `atlas_gpu up` | **resume** an existing paused instance (`GPU_INSTANCE_ID`) + arm watchdog |
+| `atlas_gpu down` / `teardown` | **pause** (keeps disk; small storage cost) |
+| `atlas_gpu teardown --destroy` | **destroy** (zero residual cost) |
+| watchdog (`GPU_IDLE_TIMEOUT_MIN`) | safety net — auto-**pauses** (never destroys) if you forget |
+
+> The watchdog guarantees you can't bleed **compute** cost, but it only *pauses*. To drop the
+> **storage** cost you must `teardown --destroy` yourself. Because the adapter is pushed to the HF
+> Hub **before** teardown, **destroy is safe for this one-off** (nothing is lost on the box).
+
+```bash
+# 1) [laptop] CREATE a fresh L4 (writes OLLAMA_BASE_URL into .env for the RAGAS judge; watchdog armed).
+#    (Resuming an existing box instead? use `atlas_gpu up` and set GPU_INSTANCE_ID.)
+uv run --directory infra/gpu python -m atlas_gpu provision --serve ollama --write-env "$PWD/.env"
+
+# 2) [GPU box] ssh in, then install the heavy stack + run train → register → benchmark in one window:
 cd training
 uv sync --group train
 uv run --group train python scripts/run_episodic.py --config configs/qlora_qwen7b.yaml
@@ -859,8 +877,9 @@ uv run --group train python scripts/run_episodic.py --config configs/qlora_qwen7
 #   - generates base + FT outputs over golden + the labeled refusal subset; scores faithfulness/format/refusal
 #   - writes training/results/{base,ft,comparison}.json + COMPARISON.md + cost.json
 
-# 3) [laptop] pause + verify (cost recorded in results/cost.json):
-make -C infra gpu-down
+# 3) [laptop] DESTROY (adapter already safe on HF; zero residual cost). Cost is in results/cost.json.
+uv run --directory infra/gpu python -m atlas_gpu teardown --destroy
+#    Prefer to keep the installed env for fast iteration? pause instead:  make -C infra gpu-down
 ```
 Smoke the wiring first with the 3B config: `--config configs/qlora_qwen3b_smoke.yaml`.
 

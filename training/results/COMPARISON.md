@@ -18,4 +18,4 @@
 - training cost: _pending_
 - recorded: _pending_
 
-Run it: see `docs/RUNBOOK.md` §P6 ("Fine-tuning: episodic train + benchmark").
+Run it: see `docs/RUNBOOK.md` §12 ("Fine-tuning — P6: episodic train + benchmark").

@@ -13,4 +13,4 @@ and committed as the phase's evidence — the same discipline as `infra/bench/re
 
 > **Status: PLACEHOLDER.** The committed `comparison.json` / `COMPARISON.md` below are stubs with
 > `null` metrics and `status: "placeholder"`. The real numbers land when the episodic run executes
-> on the L4 (see `docs/RUNBOOK.md` §P6). No fabricated metrics are committed.
+> on the L4 (see `docs/RUNBOOK.md` §12.3). No fabricated metrics are committed.

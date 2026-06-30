@@ -1,8 +1,11 @@
 """Episodic P6 driver — the one-off GPU run that produces the committed evidence (Task 11).
 
-Runs ON the JarvisLabs L4 inside a single resume→…→pause window (the resume/pause + guaranteed
-teardown are handled from the laptop by `infra/gpu` `atlas_gpu up`/`down` + the watchdog — see
-docs/RUNBOOK.md §P6). This driver does, inside a CostMeter window:
+Runs **on the JarvisLabs L4** (it loads the model with torch/CUDA locally), so it does NOT create or
+destroy the instance itself. The instance lifecycle is driven from the laptop by `infra/gpu`
+(ADR-0066): `atlas_gpu provision` (create) / `up` (resume) beforehand, and `teardown --destroy`
+(zero residual cost) / `down` (pause) afterward — a watchdog auto-*pauses* as a safety net. Because
+this driver pushes the adapter to the HF Hub BEFORE teardown, destroying the box loses nothing.
+See docs/RUNBOOK.md §12.3 for the exact create→run→destroy commands. Inside a CostMeter window:
 
   1. (optional) rebuild train/val from the committed synthetic seed   (builder, deterministic)
   2. QLoRA SFT fine-tune from the pinned config                       (train.run_training)
