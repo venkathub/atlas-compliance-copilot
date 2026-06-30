@@ -8,6 +8,17 @@ requires-python = ">=3.12"
 # tests (and CI) run with no GPU, no network, and no model download. See ADR-0069 / P6_SPEC §4.
 dependencies = ["pyyaml>=6"]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Ship only the importable package so `uv sync` installs `atlas_training` into the venv — this is
+# what lets `python scripts/run_episodic.py` (the episodic GPU driver) import it. configs/data/
+# tests stay source-only and are read from the cloned tree by path. (Bug found on the box: without
+# this, the script's sys.path[0] is scripts/, so `import atlas_training` failed. P6 Task 11.)
+[tool.hatch.build.targets.wheel]
+packages = ["atlas_training"]
+
 [dependency-groups]
 dev = ["pytest>=8"]
 # Offline frontier synthetic-data generator (data/synth.py FrontierGenerator). Only needed for the
