@@ -809,3 +809,65 @@ backstop if you forget.
 > Reminder: the eval/cost CI gate (P6) also blocks a merge if measured cost-units regress beyond the
 > recorded baseline — so an accidental frontier-by-default change cannot land silently.
 
+
+---
+
+## 12. Fine-tuning — P6 (episodic train + benchmark)
+
+The training half of the model lifecycle: produce a versioned, QLoRA-fine-tuned adapter for Atlas's
+citation-bound-answer / grounded-refusal format, tracked in MLflow, pushed durably to the HF Hub,
+and benchmarked base-vs-FT. **Everything except the train + candidate-generation step is GPU-free.**
+The GPU is one bounded episodic window; teardown is guaranteed by `infra/gpu` (ADR-0066).
+
+### 12.1 Secrets setup (one-time)
+Put real values in `.env` ONLY (gitignored; never `.env.example`, never code):
+```bash
+# HF Hub = durable adapter store (ADR-0072). Token needs WRITE scope on the adapter repo.
+ATLAS_HF_ADAPTER_REPO=<your-hf-username>/atlas-citation-adapter
+HF_PRIVATE=true
+HF_TOKEN=hf_xxx                      # secret
+MLFLOW_TRACKING_URI=http://localhost:5000
+# Per-run cost capture (no default baked in — cost discipline):
+ATLAS_GPU_COST_PER_HOUR=<L4 ₹/hr>    # e.g. your JarvisLabs IN2 L4 rate
+ATLAS_GPU_COST_CURRENCY=INR
+# (optional) bounded frontier teacher for synthetic answer-pair expansion — OFFLINE, no GPU:
+# ATLAS_SYNTH_GENERATOR_MODEL=gpt-4o ; ATLAS_SYNTH_BASE_URL=... ; ATLAS_SYNTH_API_KEY=sk-...  # secret
+```
+Verify the HF token without spending:
+```bash
+cd training && uv run --group train python -c \
+  "import os; from huggingface_hub import HfApi; print('HF user:', HfApi(token=os.environ['HF_TOKEN']).whoami()['name'])"
+```
+
+### 12.2 MLflow registry (GPU-free — the demo path)
+```bash
+docker compose -f infra/docker-compose.yml up -d mlflow   # Postgres-backed; or: make -C infra up
+open "http://localhost:${MLFLOW_PORT:-5000}"              # browse experiments + the model registry
+```
+
+### 12.3 The episodic run (GPU)
+```bash
+# 1) [laptop] resume the L4 (watchdog armed → guaranteed pause). See §GPU lifecycle.
+make -C infra gpu-up
+
+# 2) [GPU box] install the heavy stack + run train → register → benchmark in one window:
+cd training
+uv sync --group train
+uv run --group train python scripts/run_episodic.py --config configs/qlora_qwen7b.yaml
+#   - QLoRA SFT from the pinned config (4-bit NF4, eval_loss early stopping)
+#   - pushes the adapter to the HF Hub + registers the MLflow version (source = hf://repo@rev) BEFORE teardown
+#   - generates base + FT outputs over golden + the labeled refusal subset; scores faithfulness/format/refusal
+#   - writes training/results/{base,ft,comparison}.json + COMPARISON.md + cost.json
+
+# 3) [laptop] pause + verify (cost recorded in results/cost.json):
+make -C infra gpu-down
+```
+Smoke the wiring first with the 3B config: `--config configs/qlora_qwen3b_smoke.yaml`.
+
+### 12.4 Commit the evidence (GPU-free)
+```bash
+git add training/results/ training/data/manifest.json training/data/synthetic.jsonl
+git commit -m "chore(training): commit P6 episodic base-vs-FT evidence + adapter registry pointer"
+```
+The committed `training/results/COMPARISON.md` is the headline; the registered MLflow version (source
+= HF repo+revision) is the durable, GPU-decoupled artifact. P7 consumes these GPU-free.

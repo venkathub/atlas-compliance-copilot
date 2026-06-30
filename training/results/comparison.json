@@ -1,0 +1,14 @@
+{
+  "status": "placeholder",
+  "note": "Overwritten by scripts/run_episodic.py on the L4 (P6 Task 11). No fabricated metrics.",
+  "metrics": {
+    "faithfulness": { "base": null, "ft": null, "delta": null },
+    "format_validity": { "base": null, "ft": null, "delta": null },
+    "refusal_correctness": { "base": null, "ft": null, "delta": null }
+  },
+  "model_ids": { "base": "Qwen/Qwen2.5-7B-Instruct", "ft": null },
+  "dataset_size": null,
+  "training_cost": {},
+  "git_sha": null,
+  "recorded_at": null
+}
