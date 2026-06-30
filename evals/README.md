@@ -20,6 +20,8 @@ atlas_evals/
     ragas_runner.py      # RAGAS-free orchestration: build samples -> Scorer -> MetricReport
     ragas_scorer.py      # concrete RAGAS scorer (lazy import) + per-sample judge cassettes
     adversarial_scorer.py# binary red-team scorer (LLM07): leaked-string / above-clearance / forbidden-doc
+    format_validity.py   # deterministic FT format validator: cited-answer / grounded-refusal (P6, reused by P7)
+    refusal.py           # deterministic refusal-correctness scorer over a labeled subset (P6, reused by P7)
   ab.py                  # A/B two cassette sets (eval-gated reranker/sparse decision, ADR-0027)
 data/
   golden.jsonl           # committed golden set (versioned)
