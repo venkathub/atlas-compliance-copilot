@@ -107,5 +107,14 @@ writes the committed evidence — `results/comparison.json` + `results/COMPARISO
 on fixtures; generation/scoring are episodic (GPU).
 
 ## Results / metrics
-_Populated by the episodic run (Task 11): base-vs-FT faithfulness, format-validity, and
-refusal-correctness deltas, plus per-run training cost — committed to `results/COMPARISON.md`._
+Committed base-vs-FT evidence from the episodic L4 run (`results/COMPARISON.md`): under a **bake-in**
+eval (minimal system prompt — no citation instruction), **format-validity 0.000 → 0.955** (the FT
+guarantees the `[doc:ID]` schema the base cannot produce unprompted), refusal-correctness held, and
+faithfulness −0.109 (ft above the 0.656 floor — a structural trade-off of concise cited answers,
+confirmed across a qwen2.5:14b and a gpt-oss:20b teacher). Per-run cost ~₹50. The adapter is durable
+on the HF Hub; register its MLflow version (source = `hf://repo@rev`) GPU-free once MLflow is up:
+```bash
+docker compose -f infra/docker-compose.yml up -d mlflow
+MLFLOW_TRACKING_URI=http://localhost:5000 \
+  uv run --directory training --group train python scripts/register_adapter.py
+```

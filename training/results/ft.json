@@ -1,0 +1,42 @@
+{
+  "model": "hf://venkat2393/atlas-citation-adapter@386e3d3b9a1742e1ce631ae47dab799f32247c93",
+  "scores": {
+    "faithfulness": 0.678,
+    "format_validity": 0.9545,
+    "refusal_correctness": 0.375
+  },
+  "golden": [
+    "$1,577 million [doc:financebench_id_03029].",
+    "$8.74 billion [doc:financebench_id_04672].",
+    "No, 3M is not a capital-intensive business based on FY2022 data [doc:financebench_id_00499]. The company's net property, plant and equipment was $2.6 billion, representing only 7.6% of total assets of $34.2 billion.",
+    "Operating margin decreased 1.7 percentage points from 20.8% in FY2021 to 19.1% in FY2022 [doc:financebench_id_01226]. SG&A increased 6.1 percentage points as a percent of net sales [doc:financebench_id_01226].",
+    "Consumer [doc:financebench_id_01865].",
+    "The quick ratio is not relevant to measure liquidity [doc:financebench_id_00807].",
+    "The following debt securities are registered to trade on a national securities exchange under 3M's name as of Q2 of 2023 [doc:financebench_id_00941]: 1.500% Notes due 2026 (ticker: MMM26), 1.750% Notes due 2030 (ticker: MMM30), and 1.500% Notes due 2031 (ticker: MMM31).",
+    "Yes, 3M has maintained a stable trend of dividend distribution [doc:financebench_id_01858].",
+    "The FY2019 fixed asset turnover ratio is 24.26 [doc:financebench_id_02987].",
+    "The effective tax rate decreased from 24.6% in FY2021 to 21.6% in FY2022 [doc:financebench_id_01351].",
+    "I can't answer that from the provided context alone; it doesn't contain information about retention rates [doc:financebench_id_01981].",
+    "$22 [doc:financebench_id_05718].",
+    "Under Atlas Bank's AML policy, a SAR must be filed when the bank knows, suspects, or has reason to suspect that a transaction (or pattern) aggregating $5,000 or more involves funds from illegal activity [doc:l2-aml-policy-overview].",
+    "$10,000 [doc:l2-aml-policy-overview].",
+    "Structuring is the process of breaking cash deposits into multiple smaller amounts below the $10,000 CTR threshold, in order to evade detection. [doc:l2-bsa-regulatory-reference]",
+    "At least five years from the date of the transaction [doc:l2-bsa-regulatory-reference].",
+    "The risk rating is high [doc:l2-northwind-kyc-summary].",
+    "121 [doc:l2-aml-quarterly-metrics].",
+    "The account has four open exceptions in 2026 Q2, three of which individually or in aggregate exceed the $5,000 SAR consideration threshold [doc:l2-northwind-aml-exceptions-2026q2].",
+    "EX-2026-0142 is a structuring exception with an amount of $47,900 [doc:l2-northwind-aml-exceptions-2026q2].",
+    "This exception flagged a pass-through wire pattern involving Northwind [doc:l2-northwind-exception-register].",
+    "The structuring pattern consisted of eight cash deposits aggregating $47,900 [doc:l2-northwind-exception-register]."
+  ],
+  "refusal": [
+    "$4.5 billion [doc:benchmarks-earnings].",
+    "$6.3 billion [doc:financebench-id-04587].",
+    "According to the 10-K filing, Tesla's FY2020 automotive gross margin was 25.0% [doc:financebench_id_03968] \u00b7",
+    "I can't predict the future price of Bitcoin or any other asset.",
+    "The draft SAR alleges structuring to evade the $10,000 CTR threshold, with 29 cash deposits aggregating $87,000 across three branches in a single day.",
+    "$1,456 [doc:financebench_id_00796].",
+    "The SAR filing threshold is $5,000 for single or aggregate transactions involving cash instruments (such as currency or cashier's checks) or multiple wire transfers from the same account within a 14-day period. The SAR must be filed no later than 10 working days after the institution identifies the transaction as suspicious.",
+    "Three years from the date of the filing, or longer if required by other law."
+  ]
+}

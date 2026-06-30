@@ -35,6 +35,77 @@ while Ollama stays flat ~51 · all instances torn down (zero idle spend).
 
 ---
 
+## Fine-tuning lifecycle — QLoRA + MLflow + HF registry + base-vs-FT eval (P6 · 2026-06-30)
+
+**One-liner:** Owned the **training half** of the model lifecycle P0–P5 only consumed — a reproducible-from-
+committed-config **QLoRA fine-tune** of Qwen2.5-7B for Atlas's citation-bound-answer format, with a
+self-hosted-teacher synthetic dataset (trusted-corpus-only, LLM04), MLflow tracking + a Hugging Face Hub
+model registry (adapter durable off-GPU), per-run cost capture, and an **honest base-vs-FT benchmark** —
+all on a single episodic, self-destructing JarvisLabs L4 window.
+
+**What shipped:** `training/` (new `uv` project) — pinned `qlora_*.yaml` run contract + fail-fast loader;
+trusted-corpus loader + provenance manifest (`validate()` enforces every source resolves + grounded-only);
+self-hosted-teacher synthetic generation (Ollama, citations post-enforced); deterministic train/val split;
+QLoRA `SFTTrainer` (4-bit NF4, eval-loss early stop, loss→MLflow); HF-Hub push + MLflow version (source =
+`hf://repo@rev`); per-run `CostMeter` (₹/hr × wall-clock); base/FT inference + comparison report. Plus
+deterministic **format-validity + refusal-correctness** scorers in `evals/` (reused verbatim by P7's gate),
+a Postgres-backed **MLflow** service in `/infra`, and a self-contained boot-script launcher that runs the
+whole pipeline unattended and lands artifacts on HF. **GPU-free CI stays green** (135+ offline tests; the
+heavy stack never installs in CI).
+
+**The honest result (bake-in eval — no citation instruction given to either model):**
+
+| Metric | base | ft | Δ | note |
+|---|---|---|---|---|
+| **format_validity** | **0.000** | **0.955** | **+0.955** | FT ≥ 0.95 target **met** — base can't cite unprompted |
+| refusal_correctness | 0.375 | 0.375 | +0.000 | held |
+| faithfulness | 0.787 | 0.678 | −0.109 | ft above the 0.656 floor; a structural trade-off (see below) |
+
+> _Committed evidence: gpt-oss:20b-teacher run (₹49.9 / 71 min), `training/results/COMPARISON.md`,
+> adapter `hf://venkat2393/atlas-citation-adapter@386e3d3…`._
+
+**Two-teacher experiment (an honest negative sub-result that strengthens the story):** ran the
+fine-tune with **both** a same-family `qwen2.5:14b` teacher and a stronger cross-family `gpt-oss:20b`
+teacher. The **format-validity +0.955 win is robust across both** (the base scores 0.000 unprompted
+either way). The stronger teacher did **not** improve faithfulness — it produced *terser* cited
+answers, so faithfulness fell further (gpt-oss −0.109 vs qwen14b −0.062). Conclusion: the
+faithfulness dip is a **structural trade-off of the concise citation format**, not a teacher-quality
+gap — precisely what the **P7 promotion gate** is built to weigh.
+
+**Quantified:** format-validity **0.00 → 0.955** (the FT guarantees `[doc:ID]` answers with **zero prompt
+overhead**, where the base scores 0 without a ~60-token instruction) · adapter **versioned off-GPU** (HF +
+MLflow, survives teardown) · **~₹50/run** measured (×2 teachers) · dataset **~150 pairs**, trusted-corpus-
+only with a committed provenance manifest · **6 ADRs** (0069–0074) · base-vs-FT evidence committed in the
+P7-gate schema.
+
+**Why it's a senior-level story:** the benchmark is **honest** — it surfaced that a strong instruct base is
+already near-ceiling *when instructed*, so the FT's real value is **internalizing the format** (the base
+scores 0 unprompted). And the faithfulness −0.062 is exactly the kind of regression P7's promotion gate is
+built to catch — the eval gate *works*.
+
+### Challenges & traceability (episodic-run debugging log)
+The fine-tune ran on a disposable L4 with **no SSH/exec** (the SDK allows only a boot script), so every issue
+was diagnosed from the box log + HF artifacts and fixed forward. Each was caught **before** paid training
+where possible, and the instance destroyed immediately (≈₹250 total across ~10 short instances).
+
+| # | Challenge | Root cause | Fix (commit) |
+|---|---|---|---|
+| 1 | `uv sync --group train` / `import atlas_training` failed on the box | sibling projects weren't installable packages (no build-system) | hatchling backends for `atlas-evals` + `atlas-training` (`db66ff8`, `9358901`) |
+| 2 | `SFTConfig` rejected `max_seq_length` | TRL API drift (renamed `max_length`) | rename + drop greedy `temperature` (`50c143c`) |
+| 3 | `generate()` crashed on `.shape` | recent `apply_chat_template` returns a `BatchEncoding`, not a tensor | `return_dict=True` + `generate(**inputs)` (`ec56861`) |
+| 4 | Ollama `404` model-not-found at generation | serve died across the long `uv sync`; models pulled against a stale serve | `ensure_ollama` (setsid + health-wait) re-checked pre-run; pull **after** final ensure; pciutils for GPU detect (`fbcd59a`, `e2efc39`) |
+| 5 | RAGAS faithfulness timed out (~3 min/sample, all NaN) | torch 7B held the GPU → Ollama judge fell back to CPU | `free_gpu()` (empty_cache) after generation → judge on L4 (**6.7 s/item**) (`a2886c3`) |
+| 6 | format-validity 0.0 for **both** base and FT | train/inference prompt mismatch — trained with the Atlas system prompt, evaluated without it | pass the same system prompt at inference (`11c73c9`) |
+| 7 | FT regressed all metrics vs base | strong instruct base near-ceiling + distillation from a weaker teacher on ~150 pairs | **bake-in** (minimal system → FT learns format unprompted, +0.955) + stronger teacher (`9db1409`) |
+| 8 | No way to run training on the box (SDK = boot script only) | JarvisLabs SDK exposes create/pause/destroy + boot script, no SSH/exec | self-contained boot script: clone public repo → install → run → upload results to HF (secrets in the JL-stored script only, never committed) (`19805d7`, `4b7c028`) |
+
+**Lessons:** episodic-GPU MLOps is an *integration* problem (packaging, API drift, server lifecycle, GPU
+contention, train/eval parity) more than a modelling one; an **honest** eval that can show a regression is
+worth more than a vanity metric; and on a strong instruct base, the durable FT value is **format guarantee
+with zero prompt overhead**, not raw accuracy.
+
+---
+
 ## P0 — Foundations (complete · 2026-06-13)
 
 **One-liner:** Stood up a reproducible, secure, CI-gated polyglot monorepo and proved an env-swappable

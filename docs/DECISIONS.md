@@ -205,6 +205,13 @@
 - **Consequences:** A small, bounded frontier spend (separate from the runtime ceiling). Distillation from a
   frontier teacher — provider ToS noted; fine for a non-commercial portfolio. The `manifest.validate` guard
   rejects any synthetic context not grounded in a listed corpus source.
+- **Empirical addendum (2026-06-30, Task 11):** No frontier key was configured at run time, so generation
+  used option **(b)** — a **self-hosted Ollama teacher on the episodic L4** (`qwen2.5:14b`, then `gpt-oss:20b`),
+  with citations **post-enforced** in code (`enforce_citation`) so every kept answer is format-valid + grounded
+  regardless of teacher sloppiness (~150 pairs/run). A **two-teacher experiment** found the format-validity win
+  (+0.955) is **robust across teachers**, while a stronger cross-family teacher (gpt-oss:20b) did **not** lift
+  faithfulness (−0.109 vs qwen14b −0.062) — the dip is a **structural trade-off of concise cited answers**, not
+  a teacher-quality gap. See `docs/PORTFOLIO.md` (P6) + `training/results/COMPARISON.md`.
 
 ### ADR-0070 — Fine-tune base model: Qwen2.5-7B-Instruct (3B as smoke config)
 - **Date:** 2026-06-30 · **Status:** Accepted · **Phase/tag:** Training · **Spec:** `docs/phases/P6_SPEC.md`
