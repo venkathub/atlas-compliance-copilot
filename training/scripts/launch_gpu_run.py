@@ -91,6 +91,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--destroy", metavar="MACHINE_ID", help="destroy an instance and exit")
     args = ap.parse_args(argv)
 
+    from pathlib import Path
+
+    # atlas_gpu (the jarvislabs SDK seam) lives in infra/gpu — add it to the path.
+    repo_root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(repo_root / "infra" / "gpu"))
     from atlas_gpu.providers import make_provider
 
     provider = make_provider()
