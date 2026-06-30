@@ -50,6 +50,19 @@ uv run python -m atlas_training.train \
 wiring (quantization / LoRA / SFT / early-stopping kwargs) is unit-tested GPU-free; only
 `run_training` imports torch/transformers/peft/trl (lazily), so CI never needs a GPU.
 
+### Per-run cost (cost discipline)
+`atlas_training/cost.py` captures the window's cost = `ATLAS_GPU_COST_PER_HOUR` × wall-clock into a
+committed `CostRecord`. It composes with `infra/gpu`'s guaranteed-teardown `GpuSession` (ADR-0066)
+via a duck-typed seam — the cost is recorded even if training raises:
+```python
+from atlas_gpu.lifecycle import GpuSession           # ADR-0066: pause guaranteed on exit
+from atlas_training.cost import costed_gpu_window, gpu_rate_from_env
+rate, _ = gpu_rate_from_env()
+result, cost = costed_gpu_window(GpuSession(provider), body=run_one, rate_per_hour=rate)
+cost.save("results/cost.json")
+```
+The GPU rate is never hardcoded — set `ATLAS_GPU_COST_PER_HOUR` (+ `ATLAS_GPU_COST_CURRENCY`).
+
 ## Run config (the reproducibility contract)
 `configs/qlora_*.yaml` is the pinned contract: base model, 4-bit NF4 quantization, LoRA params,
 seed, dataset refs, early-stopping, and MLflow names. `config.load(path)` **fails fast** (raising
