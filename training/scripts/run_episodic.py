@@ -105,6 +105,10 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
     ap.add_argument("--build-data", action="store_true",
                     help="regenerate train/val from the committed synthetic.jsonl first")
     ap.add_argument("--no-register", action="store_true", help="skip the HF push + MLflow register")
+    ap.add_argument("--hf-only", action="store_true",
+                    help="push adapter to HF WITHOUT MLflow (box mode; register from laptop later)")
+    ap.add_argument("--upload-results", default=None, metavar="HF_REPO",
+                    help="after writing results/, upload them to this HF repo (box retrieval)")
     args = ap.parse_args(argv)
 
     config = load(args.config)
@@ -131,20 +135,30 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
     with meter:
         # 2. train
         tracker = None
-        if not args.no_register:
+        if not args.no_register and not args.hf_only:
             from atlas_training.tracking import HfHubClient, MlflowRegistry, Tracker
 
             tracker = Tracker.from_env(MlflowRegistry(), HfHubClient())
         result = run_training(config, data_dir, args.out, tracker=tracker)
         log.info("train done: %s", result)
 
-        # 3. register (HF push happens BEFORE teardown)
+        # 3. register / push (HF push happens BEFORE teardown)
         ft_model_id = args.out
         if tracker is not None:
             mv = tracker.register_adapter(
                 result.run_id, result.adapter_path, config.mlflow.register_as)
             ft_model_id = mv.source
             log.info("registered %s v%s <- %s", mv.name, mv.version, mv.source)
+        elif args.hf_only:
+            # Box mode: push the adapter to HF (durable) without MLflow; register from the laptop.
+            from atlas_training.tracking import HfHubClient, hf_source_uri
+
+            repo = os.environ["ATLAS_HF_ADAPTER_REPO"]
+            private = os.environ.get("HF_PRIVATE", "true").lower() not in ("false", "0", "no")
+            rev = HfHubClient().push(
+                result.adapter_path, repo, private=private, token=os.environ["HF_TOKEN"])
+            ft_model_id = hf_source_uri(repo, rev)
+            log.info("pushed adapter to HF: %s", ft_model_id)
 
         # 4. generate base + FT candidates
         golden = load_golden()
@@ -189,6 +203,18 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
     )
     jp, mp = write_comparison(comparison, results_dir)
     log.info("wrote %s and %s", jp, mp)
+
+    # 7. (box mode) upload results/ to HF so the laptop can retrieve them without SSH
+    if args.upload_results:
+        from huggingface_hub import HfApi
+
+        HfApi(token=os.environ["HF_TOKEN"]).upload_folder(
+            repo_id=args.upload_results, folder_path=str(results_dir),
+            path_in_repo="results", repo_type="model",
+            commit_message="Atlas P6: episodic base-vs-FT results",
+        )
+        log.info("uploaded results/ to HF repo %s", args.upload_results)
+
     print(f"cost: {cost.cost} {cost.currency} over {cost.wall_seconds}s")
     return 0
 
