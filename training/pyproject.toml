@@ -10,6 +10,10 @@ dependencies = ["pyyaml>=6"]
 
 [dependency-groups]
 dev = ["pytest>=8"]
+# Offline frontier synthetic-data generator (data/synth.py FrontierGenerator). Only needed for the
+# one-off answer-pair generation; the hand-authored seed + mocked unit tests need none of it.
+# Install with: uv sync --group synth. See ADR-0071 / .env.example (ATLAS_SYNTH_*).
+synth = ["openai>=1"]
 # Heavy GPU/ML stack — only needed inside the episodic JarvisLabs L4 training window (train.py /
 # infer.py), NEVER for the offline dataset/config/scorer unit tests or CI. Install on the GPU box
 # with: uv sync --group train. `torch` is intentionally left to the GPU image's CUDA build (do not

@@ -53,6 +53,15 @@ seed, dataset refs, early-stopping, and MLflow names. `config.load(path)` **fail
 reproduces the adapter. See ADR-0069 (QLoRA 4-bit NF4 via PEFT/TRL) and ADR-0070 (Qwen2.5-7B base,
 3B smoke).
 
+## Dataset & provenance
+`data/synthetic.jsonl` + `data/manifest.json` are the committed, provenance-tagged dataset. The
+seed is **hand-authored** (cited answers grounded in verbatim FinanceBench figures + authored
+grounded refusals), all drawn **only** from the trusted corpus (LLM04). The bounded-frontier
+answer-pair expansion (`FrontierGenerator`, ADR-0071) is an **offline one-off** run in Task 11
+(needs the `synth` dep group + `ATLAS_SYNTH_*` env); it never runs in CI. `manifest.validate`
+enforces that every source id resolves in the committed corpus and synthetic pairs are grounded
+only in listed sources.
+
 ## Results / metrics
 _Populated by the episodic run (Task 11): base-vs-FT faithfulness, format-validity, and
 refusal-correctness deltas, plus per-run training cost — committed to `results/COMPARISON.md`._

@@ -1,0 +1,42 @@
+{
+  "dataset_version": "p6-v1",
+  "seed": 42,
+  "sources": [
+    {
+      "kind": "financebench",
+      "license": "CC-BY-NC-4.0",
+      "count": 4,
+      "ids": [
+        "financebench_id_03029",
+        "financebench_id_04672",
+        "financebench_id_05718",
+        "financebench_id_01351"
+      ]
+    },
+    {
+      "kind": "layer2_overlay",
+      "license": "authored-internal",
+      "count": 2,
+      "docs": [
+        "l2-aml-policy-overview",
+        "l2-bsa-regulatory-reference"
+      ]
+    }
+  ],
+  "synthetic": {
+    "generator_model": "hand-authored",
+    "generator_provider": "internal",
+    "prompt_template_sha": "a69298b28e78362b733fc00245995cdaf77b7a8d18fa9ff744714d8e16c22373",
+    "count": 10,
+    "answer_pairs": 6,
+    "refusal_pairs": 4,
+    "grounded_in": "trusted-corpus-only"
+  },
+  "split": {
+    "train": 8,
+    "val": 2,
+    "strategy": "deterministic-by-id"
+  },
+  "generated_at": "2026-06-30T05:36:10.704283+00:00",
+  "git_sha": "55ad7cf"
+}
