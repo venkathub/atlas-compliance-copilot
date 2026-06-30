@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
@@ -38,6 +39,28 @@ PROMPT_TEMPLATE = (
 def prompt_template_sha() -> str:
     """sha256 of the pinned prompt template (recorded in the provenance manifest)."""
     return hashlib.sha256(PROMPT_TEMPLATE.encode("utf-8")).hexdigest()
+
+
+# Multi-pair generation prompt (self-hosted teacher, ADR-0071b): produce N diverse QA pairs that are
+# answerable SOLELY from the context, each citing [doc:<id>]. Output is post-processed so every kept
+# answer is format-valid + grounded only in this doc (LLM04), regardless of teacher sloppiness.
+QA_GEN_PROMPT = (
+    "You are creating training data for Atlas, a financial/compliance assistant. Read the CONTEXT "
+    "and write {n} DIVERSE question/answer pairs.\n"
+    "Rules:\n"
+    "- Each question must be answerable SOLELY from the CONTEXT.\n"
+    "- Each answer is concise, factual, and ends with the citation [doc:{doc_id}].\n"
+    "- Vary the angle: specific figures, definitions, yes/no, short comparisons.\n"
+    'Return ONLY a JSON array, no prose: '
+    '[{{"question": "...", "answer": "..."}}, ...]\n\n'
+    "CONTEXT:\n[doc:{doc_id}] {context}\n"
+)
+
+_JSON_ARRAY = re.compile(r"\[.*\]", re.DOTALL)
+
+
+def qa_gen_prompt_sha() -> str:
+    return hashlib.sha256(QA_GEN_PROMPT.encode("utf-8")).hexdigest()
 
 
 def excerpt(text: str, limit: int = CONTEXT_EXCERPT_CHARS) -> str:
@@ -118,6 +141,42 @@ class FrontierGenerator:
             temperature=self.temperature,
         )
         return (resp.choices[0].message.content or "").strip()
+
+
+class OllamaGenerator:
+    """Self-hosted teacher via Ollama's native `/api/generate` (stdlib urllib — no `openai` dep).
+
+    ADR-0071b: generate trusted-corpus pairs on the episodic GPU box's local Ollama, no external
+    spend. `base_url` is the native Ollama root (e.g. http://localhost:11434), NOT the /v1 path.
+    """
+
+    def __init__(self, model_id: str, base_url: str, *, temperature: float = 0.5) -> None:
+        self.model_id = model_id
+        self.base_url = base_url.rstrip("/")
+        self.temperature = temperature
+
+    @classmethod
+    def from_env(cls) -> OllamaGenerator:
+        model = os.environ.get("ATLAS_SYNTH_GENERATOR_MODEL") or os.environ.get(
+            "ATLAS_EVAL_JUDGE_MODEL")
+        base = os.environ.get("ATLAS_SYNTH_BASE_URL") or os.environ.get("OLLAMA_BASE_URL")
+        if not model or not base:
+            raise RuntimeError(
+                "set ATLAS_SYNTH_GENERATOR_MODEL + ATLAS_SYNTH_BASE_URL (or OLLAMA_* fallbacks)")
+        return cls(model, base)
+
+    def __call__(self, prompt: str) -> str:  # pragma: no cover - live, against a local Ollama
+        import urllib.request
+
+        body = json.dumps({
+            "model": self.model_id, "prompt": prompt, "stream": False,
+            "options": {"temperature": self.temperature},
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            self.base_url + "/api/generate", data=body,
+            headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=300) as resp:  # noqa: S310 - trusted local URL
+            return json.loads(resp.read()).get("response", "").strip()
 
 
 def build_prompt(doc: TrustedDoc, question: str) -> str:
@@ -248,6 +307,98 @@ def authored_refusals(corpus: Corpus) -> list[SyntheticPair]:
 def build_seed(corpus: Corpus) -> list[SyntheticPair]:
     """The committed, provenance-honest seed dataset (answers + grounded refusals)."""
     return authored_answers(corpus) + authored_refusals(corpus)
+
+
+# ── self-hosted-teacher generation at scale (ADR-0071b; LLM04: grounded only in the trusted doc) ──
+
+_ANY_DOC_MARKER = re.compile(r"\[doc:[A-Za-z0-9_-]+\]")
+
+# Out-of-scope question templates → grounded refusals (deterministic, safe; never teacher-answered).
+_OUT_OF_SCOPE = (
+    "What was {other}'s net income last year?",
+    "What is the current share price of {other}?",
+    "Summarize {other}'s litigation exposure.",
+    "What dividend did {other} pay this quarter?",
+)
+_OTHER_ENTITIES = ("Tesla", "Nvidia", "JPMorgan", "Shell", "Pfizer", "Boeing")
+
+
+def enforce_citation(answer: str, doc_id: str) -> str:
+    """Strip any (possibly hallucinated) [doc:*] markers and append the one correct citation.
+
+    Guarantees the kept answer is format-valid AND grounded only in `doc_id` (LLM04), regardless of
+    teacher sloppiness — so generated data never carries a fabricated/cross-doc citation.
+    """
+    cleaned = _ANY_DOC_MARKER.sub("", answer).strip().rstrip(".")
+    return f"{cleaned} [doc:{doc_id}]." if cleaned else ""
+
+
+def parse_qa_array(text: str) -> list[dict]:
+    """Extract the first JSON array of {question, answer} objects from a teacher response."""
+    m = _JSON_ARRAY.search(text or "")
+    if not m:
+        return []
+    try:
+        data = json.loads(m.group(0))
+    except json.JSONDecodeError:
+        return []
+    out = []
+    for item in data if isinstance(data, list) else []:
+        if isinstance(item, dict) and isinstance(item.get("question"), str) \
+                and isinstance(item.get("answer"), str):
+            out.append({"question": item["question"].strip(), "answer": item["answer"].strip()})
+    return out
+
+
+def generate_doc_pairs(doc: TrustedDoc, n: int, generator: Generator) -> list[SyntheticPair]:
+    """Generate up to `n` cited-answer pairs grounded in `doc` via the injected teacher."""
+    prompt = QA_GEN_PROMPT.format(n=n, doc_id=doc.doc_id, context=excerpt(doc.text))
+    raw = generator(prompt)
+    pairs: list[SyntheticPair] = []
+    seen: set[str] = set()
+    ctx = f"[doc:{doc.doc_id}] {excerpt(doc.text)}"
+    for qa in parse_qa_array(raw):
+        q = qa["question"]
+        key = " ".join(q.lower().split())
+        if not q or key in seen:
+            continue
+        answer = enforce_citation(qa["answer"], doc.doc_id)
+        if not answer:
+            continue
+        seen.add(key)
+        pairs.append(SyntheticPair(question=q, context=ctx, answer=answer, label="answer",
+                                   provenance_ref=doc.doc_id, generator=generator.model_id))
+    return pairs[:n]
+
+
+def templated_refusals(corpus: Corpus, per_doc: int = 1, *, seed: int = 42) -> list[SyntheticPair]:
+    """Deterministic grounded refusals: each doc paired with an out-of-scope question."""
+    import random
+
+    rng = random.Random(seed)
+    pairs: list[SyntheticPair] = []
+    for doc in corpus.docs.values():
+        ctx = f"[doc:{doc.doc_id}] {excerpt(doc.text)}"
+        for _ in range(per_doc):
+            tmpl = rng.choice(_OUT_OF_SCOPE)
+            other = rng.choice(_OTHER_ENTITIES)
+            q = tmpl.format(other=other)
+            ans = (f"I can't answer that from the provided sources: the context does not contain "
+                   f"information about {other}.")
+            pairs.append(SyntheticPair(question=q, context=ctx, answer=ans, label="refusal",
+                                       provenance_ref=doc.doc_id, generator="templated"))
+    return pairs
+
+
+def build_generated_dataset(
+    corpus: Corpus, generator: Generator, *, answers_per_doc: int = 6, refusals_per_doc: int = 1,
+) -> list[SyntheticPair]:
+    """Generate a larger trusted-corpus dataset: teacher answers per doc + templated refusals."""
+    pairs: list[SyntheticPair] = []
+    for doc in corpus.docs.values():
+        pairs.extend(generate_doc_pairs(doc, answers_per_doc, generator))
+    pairs.extend(templated_refusals(corpus, refusals_per_doc))
+    return pairs
 
 
 # ── jsonl IO + manifest assembly ──────────────────────────────────────────────────────────────────

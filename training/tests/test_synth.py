@@ -179,3 +179,89 @@ def test_frontier_from_env_reads_config(monkeypatch):
     assert gen.model_id == "teacher-x"
     assert gen.base_url == "https://example/v1"
     assert gen.api_key == "sk-test"
+
+
+# ── self-hosted-teacher generation at scale ──────────────────────────────────────────────────────
+
+
+class FakeQAGenerator:
+    """Returns a fixed JSON array of QA pairs (teacher seam, no network)."""
+
+    model_id = "ollama-teacher"
+
+    def __init__(self, reply: str):
+        self.reply = reply
+        self.calls = 0
+
+    def __call__(self, prompt: str) -> str:
+        self.calls += 1
+        return self.reply
+
+
+def test_parse_qa_array_extracts_pairs():
+    from atlas_training.data.synth import parse_qa_array
+
+    txt = 'sure!\n[{"question": "Q1?", "answer": "A1"}, {"question":"Q2?","answer":"A2"}] done'
+    out = parse_qa_array(txt)
+    assert [o["question"] for o in out] == ["Q1?", "Q2?"]
+
+
+def test_parse_qa_array_handles_garbage():
+    from atlas_training.data.synth import parse_qa_array
+
+    assert parse_qa_array("no json here") == []
+    assert parse_qa_array("[not valid json") == []
+
+
+def test_enforce_citation_strips_and_appends():
+    from atlas_training.data.synth import enforce_citation
+
+    # hallucinated cross-doc citation removed; correct one appended
+    out = enforce_citation("Revenue was $10M [doc:wrong_id]", "fb_a")
+    assert out == "Revenue was $10M [doc:fb_a]."
+    assert "[doc:wrong_id]" not in out
+    assert enforce_citation("", "fb_a") == ""
+
+
+def test_generate_doc_pairs_grounded_and_format_valid(corpus):
+    from atlas_training.data.synth import generate_doc_pairs
+
+    doc = corpus.resolve("financebench_id_03029")
+    gen = FakeQAGenerator(
+        '[{"question":"What was capex?","answer":"It was $1,577M [doc:hallucinated]"},'
+        '{"question":"What was capex?","answer":"dup question"},'
+        '{"question":"Net income?","answer":"$5,363M"}]'
+    )
+    pairs = generate_doc_pairs(doc, 6, gen)
+    # dedup by question (2 unique) and every answer cites ONLY this doc
+    assert len(pairs) == 2
+    for p in pairs:
+        assert p.label == "answer"
+        assert p.provenance_ref == "financebench_id_03029"
+        assert "[doc:financebench_id_03029]" in p.answer
+        assert "[doc:hallucinated]" not in p.answer
+
+
+def test_templated_refusals_grounded(corpus):
+    from atlas_training.data.synth import templated_refusals
+
+    refs = templated_refusals(corpus, per_doc=1)
+    assert len(refs) == len(corpus)
+    for r in refs:
+        assert r.label == "refusal"
+        assert "can't answer" in r.answer.lower()
+        corpus.resolve(r.provenance_ref)
+
+
+def test_build_generated_dataset(corpus):
+    from atlas_training.data.synth import build_generated_dataset
+
+    gen = FakeQAGenerator('[{"question":"Q?","answer":"A"}]')
+    pairs = build_generated_dataset(corpus, gen, answers_per_doc=1, refusals_per_doc=1)
+    n_ans = sum(1 for p in pairs if p.label == "answer")
+    n_ref = sum(1 for p in pairs if p.label == "refusal")
+    assert n_ans == len(corpus)  # 1 answer/doc
+    assert n_ref == len(corpus)  # 1 refusal/doc
+    # all grounded in the trusted corpus
+    for p in pairs:
+        corpus.resolve(p.provenance_ref)

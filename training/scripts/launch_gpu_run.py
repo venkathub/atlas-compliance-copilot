@@ -44,10 +44,12 @@ ATLAS_EVAL_JUDGE_MODEL=@@JUDGE_MODEL@@
 ATLAS_EVAL_JUDGE_BASE_URL=http://localhost:11434
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_EMBED_MODEL=nomic-embed-text
+ATLAS_SYNTH_GENERATOR_MODEL=@@TEACHER_MODEL@@
+ATLAS_SYNTH_BASE_URL=http://localhost:11434
 ENVEOF
 uv sync --group train
 timeout @@TIMEOUT@@ uv run --env-file .env --group train python scripts/run_episodic.py \
-    --config @@CONFIG@@ --hf-only --upload-results "@@HF_REPO@@"
+    --config @@CONFIG@@ @@EXTRA_ARGS@@ --hf-only --upload-results "@@HF_REPO@@"
 echo "[atlas] pipeline finished rc=$?"
 RUNEOF
 chmod +x /root/atlas_run.sh
@@ -64,12 +66,16 @@ def _require(name: str) -> str:
     return val
 
 
-def build_boot_script(config: str, branch: str, timeout_s: int) -> str:
+def build_boot_script(config: str, branch: str, timeout_s: int, *, generate: int,
+                      teacher_model: str) -> str:
+    extra = f"--generate-data {generate}" if generate > 0 else ""
     repl = {
         "@@BRANCH@@": branch,
         "@@REPO_URL@@": REPO_URL,
         "@@CONFIG@@": config,
         "@@TIMEOUT@@": str(timeout_s),
+        "@@EXTRA_ARGS@@": extra,
+        "@@TEACHER_MODEL@@": teacher_model,
         "@@HF_TOKEN@@": _require("HF_TOKEN"),
         "@@HF_REPO@@": _require("ATLAS_HF_ADAPTER_REPO"),
         "@@HF_PRIVATE@@": os.environ.get("HF_PRIVATE", "true"),
@@ -88,6 +94,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--config", default="configs/qlora_qwen3b_smoke.yaml")
     ap.add_argument("--branch", default=DEFAULT_BRANCH)
     ap.add_argument("--timeout", type=int, default=7200, help="box-side hard cap (s) on the run")
+    ap.add_argument("--generate", type=int, default=0, metavar="ANSWERS_PER_DOC",
+                    help="generate a trusted-corpus dataset (N answers/doc) via the local teacher")
+    ap.add_argument("--teacher-model", default=os.environ.get("ATLAS_EVAL_JUDGE_MODEL",
+                                                              "llama3.1:8b"),
+                    help="local Ollama model used to generate the dataset")
     ap.add_argument("--destroy", metavar="MACHINE_ID", help="destroy an instance and exit")
     args = ap.parse_args(argv)
 
@@ -106,7 +117,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"destroyed instance {args.destroy}")
         return 0
 
-    boot = build_boot_script(args.config, args.branch, args.timeout)  # contains secrets — never print
+    # contains secrets — never print
+    boot = build_boot_script(args.config, args.branch, args.timeout,
+                             generate=args.generate, teacher_model=args.teacher_model)
     script_id = provider.client.add_script(script=boot, name="atlas-p6-train")
     info = provider.client.create_instance(
         gpu_type=provider.create_spec.gpu_type,

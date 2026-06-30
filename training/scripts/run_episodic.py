@@ -66,6 +66,10 @@ def _golden_prompts(golden, corpus):
 def _faithfulness(rows, outputs):  # pragma: no cover - episodic (RAGAS + judge)
     """RAGAS faithfulness mean over (question, model output, contexts, ground_truth)."""
     try:
+        import tempfile
+
+        from atlas_evals.cassettes import CassetteStore, Mode
+        from atlas_evals.fingerprint import ragas_fingerprint
         from atlas_evals.metrics.ragas_scorer import RagasScorer
         from atlas_evals.metrics.samples import EvalSample
 
@@ -75,9 +79,11 @@ def _faithfulness(rows, outputs):  # pragma: no cover - episodic (RAGAS + judge)
             for r, out in zip(rows, outputs, strict=True)
         ]
         scorer = RagasScorer(
+            store=CassetteStore(Path(tempfile.mkdtemp()), Mode.RECORD),
             judge_model=os.environ["ATLAS_EVAL_JUDGE_MODEL"],
             embed_model=os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text"),
             base_url=os.environ.get("ATLAS_EVAL_JUDGE_BASE_URL", os.environ["OLLAMA_BASE_URL"]),
+            fingerprint=ragas_fingerprint(),
         )
         return float(scorer.score(samples).get("faithfulness", float("nan")))
     except Exception:  # noqa: BLE001 - faithfulness is best-effort; never lose the run over it
@@ -104,6 +110,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
     ap.add_argument("--results", default=str(HERE / "results"))
     ap.add_argument("--build-data", action="store_true",
                     help="regenerate train/val from the committed synthetic.jsonl first")
+    ap.add_argument("--generate-data", type=int, default=0, metavar="ANSWERS_PER_DOC",
+                    help="generate a larger trusted-corpus dataset via the local Ollama teacher "
+                         "(N answer pairs/doc + refusals) before training; writes data/*.jsonl")
     ap.add_argument("--no-register", action="store_true", help="skip the HF push + MLflow register")
     ap.add_argument("--hf-only", action="store_true",
                     help="push adapter to HF WITHOUT MLflow (box mode; register from laptop later)")
@@ -113,6 +122,28 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
 
     config = load(args.config)
     data_dir = Path(args.data_dir)
+
+    # 0. (optional) generate a larger trusted-corpus dataset via local Ollama teacher (ADR-0071b)
+    if args.generate_data > 0:
+        from atlas_training.data import builder, manifest
+        from atlas_training.data import synth as S
+        from atlas_training.data.corpus import load_corpus
+
+        corpus = load_corpus()
+        gen = S.OllamaGenerator.from_env()
+        log.info("generating dataset: %d answers/doc via teacher %s", args.generate_data,
+                 gen.model_id)
+        pairs = S.build_generated_dataset(corpus, gen, answers_per_doc=args.generate_data,
+                                          refusals_per_doc=1)
+        S.write_jsonl(pairs, data_dir / "synthetic.jsonl")
+        man = S.build_manifest(pairs, corpus, dataset_version="p6-gen", seed=config.seed,
+                               generator_model=gen.model_id, generator_provider="ollama-selfhosted")
+        manifest.validate(man, corpus, synthetic_refs=S.provenance_refs(pairs))
+        manifest.save(man, data_dir / "manifest.json")
+        builder.build_and_write(pairs, seed=config.seed, out_dir=data_dir)
+        n_ans = sum(1 for p in pairs if p.label == "answer")
+        log.info("generated %d pairs (%d answers, %d refusals); split train=%d val=%d",
+                 len(pairs), n_ans, len(pairs) - n_ans, man.split.train, man.split.val)
 
     # 1. (optional) deterministic dataset rebuild
     if args.build_data:

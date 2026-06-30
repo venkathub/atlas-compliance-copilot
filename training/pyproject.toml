@@ -43,6 +43,10 @@ train = [
   # P7 reuses. Path-deps the sibling evals project so there is ONE copy of the scorers. Only in
   # the `train` group, so the default GPU-free CI install never pulls it. See P6_SPEC §5 Task 10.
   "atlas-evals",
+  # RAGAS faithfulness is computed in the GPU window over the FT outputs (ADR-0024/0028). Pinned to
+  # the same 0.2.x line as evals' `ragas` group; only installed on the GPU box, never in CI.
+  "ragas>=0.2,<0.3",
+  "langchain-ollama>=0.2,<0.3",
 ]
 
 [tool.uv.sources]
