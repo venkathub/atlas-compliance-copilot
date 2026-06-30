@@ -6,6 +6,12 @@
 >
 > **Status legend:** `Accepted` · `Proposed` · `Superseded by ADR-NNN` · `Deprecated`
 > Add new entries at the top of §2 (reverse-chronological). Use the template in §3.
+>
+> **Phase/tag column:** historically a roadmap phase (`P0`–`P5`). Because build iterations drifted from
+> roadmap phase numbers, newer cross-cutting work uses **stable theme tags** instead — `Deploy`
+> (prod-deploy / demo / observability), `Training` (fine-tuning / MLflow / dataset lifecycle),
+> `Backlog` (post-roadmap ideas). Theme tags don't drift; prefer them for new entries. *(2026-06-30:
+> ADR-0060–0065 retagged `P6`→`Deploy`, ADR-0032 `P6`→`Backlog` to free the collided `P6` label.)*
 
 ---
 
@@ -13,15 +19,21 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0074 | 2026-06-30 | FT metrics: deterministic, GPU-free format-validity + refusal-correctness validators (reused by P7 gate) | Accepted | Training |
+| 0073 | 2026-06-30 | Base-vs-FT candidate-output generation via Transformers/PEFT in the GPU window (vLLM multi-LoRA stays P7) | Accepted | Training |
+| 0072 | 2026-06-30 | MLflow tracking/registry on existing Postgres; Hugging Face Hub as primary durable artifact store (Oracle mirror deferred) | Accepted | Training |
+| 0071 | 2026-06-30 | Synthetic data: bounded frontier-generated answer pairs + hand-authored refusals, trusted-corpus-only, provenance-tracked | Accepted | Training |
+| 0070 | 2026-06-30 | Fine-tune base model: Qwen2.5-7B-Instruct (Apache-2.0); 3B retained as fast smoke config | Accepted | Training |
+| 0069 | 2026-06-30 | QLoRA (4-bit NF4) via PEFT/TRL over full fine-tuning (Unsloth as speed fallback) | Accepted | Training |
 | 0068 | 2026-06-29 | rag-engine config-selectable chat backend (Ollama-native default · vLLM via OpenAI client; embeddings stay Ollama) | Accepted | P3 |
 | 0067 | 2026-06-29 | vLLM serving profile alongside Ollama; on-GPU benchmark (23.6× throughput, 24× cheaper/token) | Accepted | P3 |
 | 0066 | 2026-06-29 | Migrate GPU helper to official `jarvislabs` SDK + from-scratch provisioner (Ollama/vLLM) | Accepted | P3 |
-| 0065 | 2026-06-27 | 3-minute demo: docs/DEMO.md + automated e2e-demo Playwright walkthrough + deterministic seed script | Accepted | P6 |
-| 0064 | 2026-06-27 | CI/CD: cost-regression gate, Trivy CRITICAL/HIGH gating, manual gated deploy workflow + rollback | Accepted | P6 |
-| 0063 | 2026-06-27 | Alerting: Prometheus rules (cost/error-rate/breaker/eval) + Alertmanager; latency p50/p95 panel | Accepted | P6 |
-| 0062 | 2026-06-27 | Structured JSON logging + X-Request-Id correlation across all services; gateway tracing; frontier kept off | Accepted | P6 |
-| 0061 | 2026-06-27 | Container hardening: distroless health-probe, agents multi-stage/non-root, prod-compose limits/health-ordering | Accepted | P6 |
-| 0060 | 2026-06-27 | Prod runbook: in-prod topology, env/secrets reference, $10/mo cost ceiling & frontier-off posture | Accepted | P6 |
+| 0065 | 2026-06-27 | 3-minute demo: docs/DEMO.md + automated e2e-demo Playwright walkthrough + deterministic seed script | Accepted | Deploy |
+| 0064 | 2026-06-27 | CI/CD: cost-regression gate, Trivy CRITICAL/HIGH gating, manual gated deploy workflow + rollback | Accepted | Deploy |
+| 0063 | 2026-06-27 | Alerting: Prometheus rules (cost/error-rate/breaker/eval) + Alertmanager; latency p50/p95 panel | Accepted | Deploy |
+| 0062 | 2026-06-27 | Structured JSON logging + X-Request-Id correlation across all services; gateway tracing; frontier kept off | Accepted | Deploy |
+| 0061 | 2026-06-27 | Container hardening: distroless health-probe, agents multi-stage/non-root, prod-compose limits/health-ordering | Accepted | Deploy |
+| 0060 | 2026-06-27 | Prod runbook: in-prod topology, env/secrets reference, $10/mo cost ceiling & frontier-off posture | Accepted | Deploy |
 | 0059 | 2026-06-26 | UI AI-transparency surfacing (EU AI Act / NIST AI RMF) | Accepted | P5 |
 | 0058 | 2026-06-26 | UI output handling: client sanitizer + proxy CSP/security headers (LLM05) | Accepted | P5 |
 | 0057 | 2026-06-26 | Multimodal frontier-model demo (budget-gated stretch) | Accepted | P5 |
@@ -49,7 +61,7 @@
 | 0035 | 2026-06-14 | Cost-aware model router (declarative rules + model-cascade) | Accepted | P3 |
 | 0034 | 2026-06-14 | Simulated-IdP verified-clearance trust boundary | Accepted | P3 |
 | 0033 | 2026-06-14 | API Gateway framework (Spring Cloud Gateway WebMVC) | Accepted | P3 |
-| 0032 | 2026-06-14 | Katzilla external primary-source data (post-P5 backlog) | Proposed | P6 |
+| 0032 | 2026-06-14 | Katzilla external primary-source data (post-P5 backlog) | Proposed | Backlog |
 | 0031 | 2026-06-14 | Adversarial breadth: fixtures gate + Promptfoo OWASP sweep | Accepted | P2 |
 | 0030 | 2026-06-14 | Trace content-capture & redaction policy (LLM02/LLM07) | Accepted | P2 |
 | 0029 | 2026-06-14 | Automated fail-safe GPU lifecycle (pause/resume) | Accepted | P2 |
@@ -104,6 +116,136 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0074 — FT metrics: deterministic, GPU-free format-validity + refusal-correctness validators
+- **Date:** 2026-06-30 · **Status:** Accepted · **Phase/tag:** Training · **Spec:** `docs/phases/P6_SPEC.md`
+  §3 (D6), §4.3 · **Anticipated files:** `evals/atlas_evals/metrics/format_validity.py`,
+  `evals/atlas_evals/metrics/refusal.py`, `evals/tests/test_format_validity.py`, `evals/tests/test_refusal.py`
+- **Context:** The base-vs-FT comparison (and P7's promotion gate) needs the two FT-specific signals beyond
+  RAGAS faithfulness: **format-validity** (does the output obey the citation-bound-answer / grounded-refusal
+  schema?) and **refusal-correctness** (does it refuse when it should, without over-refusing?). P7's gate must
+  run **GPU-free** in CI against committed artifacts, so these scorers cannot depend on an LLM judge.
+- **Options considered:** (a) **deterministic validators** — format-validity = parses to the answer schema
+  (answer text + ≥1 resolvable `[doc:ID]` marker) or the refusal schema; refusal-correctness = exact
+  refuse/answer match against a labeled `should_refuse` subset; (b) **LLM-as-judge** for both — flexible but
+  costs GPU/$, adds variance, and **breaks P7's GPU-free gate**; (c) RAGAS-only (no format/refusal signal) —
+  fails the citation-format and grounded-refusal thesis.
+- **Decision:** **(a)** — deterministic, GPU-free validators living in `evals/atlas_evals/metrics/` so P7
+  inherits them **verbatim**. Faithfulness stays RAGAS (LLM-judge), computed in the GPU window and committed.
+- **Rationale:** Determinism is what lets the P7 promotion gate (and P6's own scorer unit tests) run in CI with
+  no GPU and no flakiness; the validators encode the product contract (citations / grounded refusal) directly.
+- **Consequences:** A small labeled **refusal subset** (out-of-context / unanswerable / out-of-clearance) is
+  authored as a new eval fixture. The validators are a stable contract P7 depends on — covered by table-driven
+  unit tests. Faithfulness remains the one LLM-judged metric, produced episodically and committed.
+
+### ADR-0073 — Base-vs-FT candidate-output generation via Transformers/PEFT (vLLM multi-LoRA deferred to P7)
+- **Date:** 2026-06-30 · **Status:** Accepted · **Phase/tag:** Training · **Spec:** `docs/phases/P6_SPEC.md`
+  §3 (D5), §2.5 · **Builds on:** ADR-0067/0068 (vLLM serving profile) · **Anticipated files:**
+  `training/atlas_training/infer.py`, `training/results/{base,ft}.json`, `training/results/COMPARISON.md`
+- **Context:** The committed base-vs-FT benchmark needs base **and** fine-tuned candidate outputs over the
+  reused eval datasets. There are two ways to produce the FT outputs: load the adapter for direct inference, or
+  serve it behind an endpoint. vLLM **multi-LoRA hot-swap** is explicitly a **P7** deliverable.
+- **Options considered:** (a) **Transformers + PEFT adapter inference in the same episodic GPU window**
+  (`infer.py` loads base + adapter, generates, scores) — self-contained, no dependency on P7's serving work;
+  (b) **serve via vLLM multi-LoRA and generate through the OpenAI-compatible endpoint** — closer to production
+  but pulls a P7 deliverable into P6 and blurs the phase boundary; (c) merge adapter into base weights and
+  serve — heavier, produces a large artifact, still needs serving infra.
+- **Decision:** **(a)** — generate base/FT candidate outputs via Transformers/PEFT in the training window and
+  commit `results/*.json` + `COMPARISON.md`. P7 re-serves via vLLM for its production benchmark.
+- **Rationale:** Keeps the P6/P7 boundary clean and makes P6 independent of serving readiness; P6 only owes a
+  committed evidence bundle, which this produces with the least new infra.
+- **Consequences:** The benchmark's cost-per-request figure is a *training-window inference* number, not the
+  production vLLM number — P7 produces the production-serving cost on the same GPU. Outputs are committed in the
+  exact schema P7's gate consumes (per-metric `{base, ft, delta}`).
+
+### ADR-0072 — MLflow on existing Postgres + Hugging Face Hub as primary durable artifact store
+- **Date:** 2026-06-30 · **Status:** Accepted · **Phase/tag:** Training · **Spec:** `docs/phases/P6_SPEC.md`
+  §3 (D4) · **Mirrors:** ADR-0025 (self-hosted-on-shared-Postgres pattern) · **Relates to:** ADR-0055
+  (Oracle live box deferred) · **Anticipated files:** `infra/docker-compose.yml` (`mlflow` service),
+  `infra/mlflow/**`, `training/atlas_training/tracking.py`, `.env.example` (`HF_TOKEN`)
+- **Context:** P6 needs experiment tracking + a model registry, and a **durable** home for the adapter that
+  survives GPU teardown. The roadmap assumed a durable artifact root on the always-on Oracle ARM box — **but
+  that box is not provisioned** (ADR-0055 deferred the live box). The laptop is low-spec and not always-on.
+- **Options considered:** (a) reuse `atlas-postgres` (separate `mlflow` db) for tracking/registry metadata +
+  **Hugging Face Hub as the primary durable artifact store** (adapter pushed from the GPU window pre-teardown;
+  registry version records HF repo+revision); (b) MLflow with local SQLite + local-filesystem artifacts —
+  simplest but not durable/shared and a weak registry story; (c) stand up a new Postgres + MinIO object store —
+  most "production" but violates the no-new-datastore / ₹0 constraints; (d) wait for the Oracle box — blocks P6.
+- **Decision:** **(a).** Postgres-backed MLflow (reusing `atlas-postgres`, Langfuse-style footprint); **HF Hub
+  is the primary durable store**; the Oracle durable root becomes a **future second mirror** once the box
+  exists. `HF_TOKEN` (write) is a managed secret — `.env.example` only, never in code; the HF repo is private
+  by default.
+- **Rationale:** Removes the dependency on unprovisioned infra without losing durability or the
+  "decoupled-from-the-disposable-GPU" invariant; HF Hub also doubles as portfolio surface and a clean P7 pull
+  source (`hf` download). No new datastore; one-command local bring-up (`docker compose up mlflow`).
+- **Consequences:** Adapter weights live on HF, not in git — the repo commits only a **registry pointer**
+  (HF repo+revision) + the small `COMPARISON.md`/`results/*.json`, keeping the "fresh-clone, GPU-free" promise.
+  Adds an egress path (HF push/pull) gated behind `HF_TOKEN`. The HF push sits behind a mockable seam so CI
+  stays network-free.
+
+### ADR-0071 — Synthetic data: bounded frontier answer pairs + authored refusals, trusted-corpus-only
+- **Date:** 2026-06-30 · **Status:** Accepted · **Phase/tag:** Training · **Spec:** `docs/phases/P6_SPEC.md`
+  §3 (D3), §2.3 · **Security:** OWASP **LLM04** (data poisoning), **LLM03** (provenance) · **Anticipated
+  files:** `training/atlas_training/data/synth.py`, `training/data/synthetic.jsonl`, `training/data/manifest.json`
+- **Context:** QLoRA needs (context→cited-answer / grounded-refusal) training pairs in Atlas's output format.
+  FinanceBench tuples + the Layer-2 overlay are too few and aren't in the target format. The generator's
+  quality drives the FT ceiling; in a compliance domain, training inputs must be **trusted-corpus-only** and
+  provenance-tracked.
+- **Options considered:** (a) **bounded frontier model** generates answer pairs from our trusted contexts +
+  **hand-authored grounded-refusal edge cases** — highest signal, small bounded frontier spend, authoritative
+  safety cases; (b) **self-hosted larger Ollama model on the episodic GPU** — no external spend, all-local, but
+  lower-quality pairs and more curation; (c) **hand-authored only** — cleanest provenance but small N / slow.
+- **Decision:** **(a)** (owner-approved frontier budget for **offline** generation). Contexts are drawn
+  **exclusively** from the committed corpus (FinanceBench snippets + Layer-2 overlay); the safety-critical
+  grounded-refusal cases are hand-authored. Every item is recorded in `manifest.json`
+  (source / generator model+provider / license / prompt-template SHA / size / seed).
+- **Rationale:** The frontier teacher gives high-signal answer pairs cheaply at small N; hand-authoring the
+  refusals keeps the safety behaviour authoritative; trusted-corpus-only grounding upholds LLM04 and the
+  no-untrusted-training-data non-goal.
+- **Consequences:** A small, bounded frontier spend (separate from the runtime ceiling). Distillation from a
+  frontier teacher — provider ToS noted; fine for a non-commercial portfolio. The `manifest.validate` guard
+  rejects any synthetic context not grounded in a listed corpus source.
+
+### ADR-0070 — Fine-tune base model: Qwen2.5-7B-Instruct (3B as smoke config)
+- **Date:** 2026-06-30 · **Status:** Accepted · **Phase/tag:** Training · **Spec:** `docs/phases/P6_SPEC.md`
+  §3 (D2) · **Relates to:** ADR-0042 (agent tier `qwen2.5:7b`), ADR-0067 (`Qwen2.5-7B-Instruct-AWQ` on L4),
+  ADR-0005 (dev RAG `qwen2.5:3b`) · **Anticipated files:** `training/configs/qlora_qwen7b.yaml`
+- **Context:** The fine-tuned artifact should align with the family Atlas already serves/tiers, so P7's router
+  tiering and vLLM serving are coherent, while staying trainable on the modest episodic L4.
+- **Options considered:** (a) **Qwen2.5-7B-Instruct (Apache-2.0)** — matches the agent reasoning tier
+  (ADR-0042) and the vLLM-validated `Qwen2.5-7B-Instruct-AWQ` on L4 (ADR-0067); heavier/slower to train;
+  (b) **Qwen2.5-3B-Instruct** — matches the dev RAG model, much cheaper/faster, but a lower ceiling and
+  diverges from the 7B serving family P7 expects; (c) **Llama-3.1-8B-Instruct** — strong but adds a third model
+  family, a non-Apache license consideration, and has no Atlas GPU validation.
+- **Decision:** **(a) Qwen2.5-7B-Instruct**, with **(b) Qwen2.5-3B-Instruct retained as a fast "smoke"
+  config** for pipeline shakedown/dry runs.
+- **Rationale:** Aligning the trained artifact with the 7B family P7 will serve/tier is the whole point of the
+  lifecycle story; the 3B smoke config keeps iteration cheap and validates wiring without burning L4 time.
+- **Consequences:** 7B QLoRA on L4 fits within the ~1 L4-day episodic budget (Q1); if wall-clock/cost proves
+  painful, Unsloth (ADR-0069) is the documented speed fallback. The base model is pinned in the run config.
+
+### ADR-0069 — QLoRA (4-bit NF4) via PEFT/TRL over full fine-tuning
+- **Date:** 2026-06-30 · **Status:** Accepted · **Phase/tag:** Training · **Spec:** `docs/phases/P6_SPEC.md`
+  §3 (D1), §2.3 · **Anticipated files:** `training/pyproject.toml`, `training/configs/qlora_*.yaml`,
+  `training/atlas_training/{config,train}.py`
+- **Context:** P6 must produce a citation-format adapter on a modest, episodic L4 GPU within a bounded budget,
+  reproducibly from committed config. The method (parameter-efficient vs full fine-tune) and the library are
+  the foundational training choices.
+- **Options considered (method):** full fine-tuning (best ceiling, but needs far more VRAM/time/cost than an L4
+  episodic budget allows, and produces a large artifact) **vs QLoRA (4-bit NF4 + LoRA adapters)** (fits 7B on
+  one L4, tiny adapter artifact, cheap episodic runs — the standard for this constraint).
+- **Options considered (library):** (a) **PEFT + TRL `SFTTrainer`** — de-facto standard, maximally
+  transferable/interview-legible, best docs, works with `bitsandbytes` NF4; (b) **Unsloth** — ~2× faster /
+  lower VRAM but a less-vanilla dependency; (c) **Axolotl** — YAML-config-first but a heavier framework,
+  duplicating our own pinned-config approach.
+- **Decision:** **QLoRA (4-bit NF4) via PEFT + TRL `SFTTrainer`.** Unsloth is the documented **speed fallback**
+  if L4 wall-clock/cost on 7B hurts (the `train.py` seam stays identical). No full fine-tuning, no RLHF/DPO.
+- **Rationale:** QLoRA is the only method that fits the episodic-L4 + bounded-budget constraint while yielding
+  a small, registry-friendly adapter; PEFT/TRL is the portfolio-legible standard and pairs cleanly with our
+  pinned-YAML config + MLflow logging.
+- **Consequences:** The artifact of record is a **LoRA adapter** (not merged weights) — small to push to HF and
+  hot-swappable by P7's vLLM multi-LoRA serving. Exact LoRA/training hyper-params are run-time tuning details;
+  the **committed config is the reproducibility contract**.
 
 ### ADR-0068 — rag-engine config-selectable chat backend (Ollama-native default; vLLM via OpenAI client)
 - **Date:** 2026-06-29 · **Status:** Accepted · **Phase:** P3 · **Corrects:** an over-broad claim in ADR-0067
@@ -225,7 +367,7 @@
     live; 42 offline tests cover the logic with a `FakeJlClient`.
 
 ### ADR-0065 — 3-minute demo: DEMO.md + automated e2e-demo walkthrough + deterministic seed
-- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `docs/DEMO.md`,
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** Deploy · **Files:** `docs/DEMO.md`,
   `ui/e2e-demo/forcing-story.demo.spec.ts`, `ui/playwright.demo.config.ts`, `ui/package.json`,
   `infra/deploy/seed-demo.sh`
 - **Context:** The P5 audit found the demo assets were referenced but missing: `ui/e2e-demo/` and
@@ -258,7 +400,7 @@
   format clean; `seed-demo.sh` passes `bash -n`.
 
 ### ADR-0064 — CI/CD: cost-regression gate, Trivy CRITICAL/HIGH gating, manual gated deploy + rollback
-- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `evals/atlas_evals/cost_gate.py`,
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** Deploy · **Files:** `evals/atlas_evals/cost_gate.py`,
   `evals/tests/test_cost_gate.py`, `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`, `.trivyignore.yaml`
 - **Context:** The P5 CI gate blocked merges on **quality** (RAGAS faithfulness floor + 100%-pass adversarial
   ≈ hallucination) but **not on cost** — `gateway-baseline.json` recorded cost but nothing enforced it. Trivy
@@ -295,7 +437,7 @@
   `atlas_evals.cost_gate` **PASS** offline; both workflow YAMLs parse (`ci` 8 jobs, `deploy` gate→deploy).
 
 ### ADR-0063 — Alerting: Prometheus rules + Alertmanager; latency p50/p95
-- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `infra/prometheus/alerts.rules.yml`,
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** Deploy · **Files:** `infra/prometheus/alerts.rules.yml`,
   `infra/prometheus/alertmanager.yml`, `infra/prometheus/prometheus.yml`, `infra/docker-compose.yml`,
   `infra/Makefile`, `infra/grafana/dashboards/atlas-cost.json`
 - **Context:** P2–P5 shipped dashboards but **no firing alerts** — cost/error signals were only a Grafana
@@ -326,7 +468,7 @@
   volumes.
 
 ### ADR-0062 — Structured JSON logging + X-Request-Id correlation across all services; gateway tracing; frontier kept off
-- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `*/observability/RequestIdFilter.java`,
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** Deploy · **Files:** `*/observability/RequestIdFilter.java`,
   `*/application.yml` (`logging.structured`), `gateway/config/DownstreamConfig.java`, `gateway/pom.xml`,
   `agents/app/logging_config.py`, `agents/app/api.py`, `agents/app/gateway_client.py`
 - **Context:** The P5 audit found the biggest cross-cutting hole was **no structured logging anywhere** (all
@@ -371,7 +513,7 @@
   `docker compose config` applies `ecs`/`json` per service.
 
 ### ADR-0061 — Container hardening: distroless health-probe, agents multi-stage/non-root, prod-compose limits & health-ordering
-- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Files:** `infra/docker/HealthCheck.java`,
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** Deploy · **Files:** `infra/docker/HealthCheck.java`,
   `*/Dockerfile`, `infra/proxy/Caddyfile`, `infra/docker-compose.yml`, `infra/docker-compose.prod.yml`
 - **Context:** P5 left three container gaps for prod: (1) the `agents` image was the outlier — single-stage,
   **root**, tag-pinned (not digest); (2) **no image carried a Dockerfile `HEALTHCHECK`**, so compose
@@ -406,14 +548,14 @@
 - **Consequences:** Each Java health check spawns a short-lived JVM (~hundreds of ms) per 30s interval —
   negligible on a 4 vCPU box, noted as the trade-off vs. a static probe binary. `.dockerignore` had to
   re-include `infra/docker/HealthCheck.java` (it excludes `infra` wholesale). rag-engine's prod authz profile
-  is intentionally left to the box `.env` (a boot-safe choice; the explicit `prod` profile is P6 Task 3).
+  is intentionally left to the box `.env` (a boot-safe choice; the explicit `prod` profile is Deploy Task 3).
 - **Verification:** `agents` image built + run as **uid 10001** with `uvicorn` on the venv path and
   `app.api` importing; BuildKit `--check` clean on the rewritten Dockerfiles; the `healthprobe` stage builds
   and `javac` compiles against the real `.dockerignore`; merged `docker compose config` valid with limits,
   log rotation, and `service_healthy` ordering present.
 
 ### ADR-0060 — Production runbook: in-prod topology, env/secrets reference, $10/mo cost ceiling & frontier-off posture
-- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** P6 · **Doc:** `RUNBOOK.md` §9.0, §10, §11
+- **Date:** 2026-06-27 · **Status:** Accepted · **Phase:** Deploy · **Doc:** `RUNBOOK.md` §9.0, §10, §11
 - **Context:** Taking Atlas to production needs an operator-facing source of truth for (a) what the prod
   topology actually is, (b) every env var + how secrets are handled on a single VM, and (c) the spend
   envelope and the cloud-frontier fallback's posture. CLAUDE.md makes cost discipline a first-class feature.
@@ -427,7 +569,7 @@
     `ATLAS_ROUTER_FRONTIER_ENABLED=false`.
 - **Decision:** Oracle Ampere A1 compose stays the target (faithful to ADR-0006). A **hard ≈$10/mo ceiling**
   governs the only paid deps (GPU + frontier), enforced operationally by GPU pause discipline + the gateway
-  daily budget guard (`ATLAS_BUDGET_DAILY_CAP_UNITS`) + a Prometheus cost alert (P6 Task 4). The
+  daily budget guard (`ATLAS_BUDGET_DAILY_CAP_UNITS`) + a Prometheus cost alert (Deploy Task 4). The
   **cloud-frontier tier ships DISABLED** (no key in repo); enabling it is a documented, eyes-open opt-in
   (RUNBOOK §11.3). Secrets live only in the box `.env`/CI secrets; `VITE_*` are the only intentionally-public
   values. Documented the in-prod Mermaid topology (§9.0) and a full env-var reference table (§10).
@@ -436,7 +578,7 @@
   preserves **honest fail-fast degradation** (503 + Retry-After) over silent expensive substitution when
   Ollama is down. The VM target avoids amputating the observability story to fit a PaaS free tier.
 - **Consequences:** No automatic model fail-over when the GPU is down (by design). Secret rotation is manual
-  (edit `.env` + restart); the Vault/secret-manager upgrade is a noted future path. The cost alert + the P6
+  (edit `.env` + restart); the Vault/secret-manager upgrade is a noted future path. The cost alert + the Deploy
   cost-regression CI gate are the backstops against an accidental frontier-on or cost regression.
 
 ### ADR-0059 — UI AI-transparency surfacing (EU AI Act / NIST AI RMF)
@@ -1244,7 +1386,7 @@
   `host.docker.internal:${GATEWAY_PORT}`, mirroring the established `rag-engine` pattern.
 
 ### ADR-0032 — Katzilla external primary-source data (post-P5 backlog)
-- **Date:** 2026-06-14 · **Status:** Proposed · **Phase:** P6 (post-P5) · **Spec:** `ROADMAP.md` §8
+- **Date:** 2026-06-14 · **Status:** Proposed · **Phase:** Backlog · **Spec:** `ROADMAP.md` §8
 - **Context:** Katzilla (katzilla.dev) is a hosted, **MCP-native** API wrapping 30+ US/intl government datasets
   (SEC, FDA, Federal Register, Congress, court opinions, clinical trials…) with a machine-readable **citation +
   provenance** (`source / license / retrieved_at / data_hash`) on every response. Evaluated for fit with the
@@ -1260,7 +1402,7 @@
 - **Consequences:** If implemented, it is **env-gated** (`KATZILLA_API_KEY`, off by default) so the core system
   still runs fully self-hosted from a fresh clone with it absent; used only for the public-data side of a demo
   (e.g. cite a real Federal Register / FDA item alongside private AML findings). Revisit with a superseding
-  **Accepted** ADR when a P6 lane is actually scoped.
+  **Accepted** ADR when a dedicated lane is actually scoped.
 
 ### ADR-0031 — Adversarial breadth: fixtures gate + Promptfoo OWASP sweep
 - **Date:** 2026-06-14 · **Status:** Accepted · **Phase:** P2 · **Spec:** P2_SPEC §3 (D-P2-11), §8 (E4)
