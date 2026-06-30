@@ -4,6 +4,17 @@ version = "0.1.0"
 description = "Atlas evaluation & observability harness (RAGAS/DeepEval). P0: scaffold only."
 requires-python = ">=3.11"
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Only the importable package ships in the wheel (tests/data/report stay source-only). This makes
+# `atlas-evals` installable as the P6 training path-dependency (training reuses the scorers) without
+# setuptools' multi-top-level-package auto-discovery failing. Editable installs keep the source
+# paths, so the datasets' REPO_ROOT/data resolution still works. See training/pyproject.toml.
+[tool.hatch.build.targets.wheel]
+packages = ["atlas_evals"]
+
 [dependency-groups]
 dev = ["pytest>=8"]
 # Heavy LLM-eval stack — only needed for the live RECORD/calibration path (Task 8), never for the
