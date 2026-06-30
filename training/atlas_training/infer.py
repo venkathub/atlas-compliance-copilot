@@ -59,11 +59,12 @@ def generate(  # pragma: no cover - GPU window only
     for prompt in prompts:
         msgs = [{"role": "user", "content": prompt}]
         inputs = tokenizer.apply_chat_template(
-            msgs, add_generation_prompt=True, return_tensors="pt"
+            msgs, add_generation_prompt=True, return_tensors="pt", return_dict=True
         ).to(model.device)
         with torch.no_grad():
-            gen = model.generate(inputs, **(gen_kwargs or GEN_KWARGS))
-        text = tokenizer.decode(gen[0][inputs.shape[1]:], skip_special_tokens=True)
+            gen = model.generate(**inputs, **(gen_kwargs or GEN_KWARGS))
+        prompt_len = inputs["input_ids"].shape[1]
+        text = tokenizer.decode(gen[0][prompt_len:], skip_special_tokens=True)
         outputs.append(text.strip())
     return outputs
 
