@@ -63,7 +63,7 @@ def test_sft_kwargs(config, tmp_path):
     assert s["learning_rate"] == pytest.approx(2.0e-4)
     assert s["per_device_train_batch_size"] == 4
     assert s["gradient_accumulation_steps"] == 4
-    assert s["max_seq_length"] == 2048
+    assert s["max_length"] == 2048
     assert s["seed"] == 42
     # early stopping needs per-epoch eval + load-best on eval_loss (lower is better)
     assert s["eval_strategy"] == "epoch"
@@ -78,7 +78,7 @@ def test_sft_kwargs(config, tmp_path):
 def test_sft_kwargs_smoke_differs(smoke, tmp_path):
     s = sft_kwargs(smoke, tmp_path)
     assert s["num_train_epochs"] == 1
-    assert s["max_seq_length"] == 1024
+    assert s["max_length"] == 1024
 
 
 def test_early_stopping_kwargs(config):

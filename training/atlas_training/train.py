@@ -52,8 +52,8 @@ def lora_kwargs(config: RunConfig) -> dict[str, Any]:
 def sft_kwargs(config: RunConfig, output_dir: str | Path) -> dict[str, Any]:
     """TRL SFTConfig kwargs. Early stopping needs eval each epoch + load-best-at-end on eval_loss.
 
-    Note: `max_seq_length` targets the pinned trl>=0.9 line; newer TRL renamed it `max_length`
-    (a one-line change at run time if the pin is bumped).
+    Uses `max_length` (current TRL ≥0.12; the older `max_seq_length` was renamed — confirmed on the
+    box, which rejected `max_seq_length`).
     """
     tr = config.train
     return {
@@ -63,7 +63,7 @@ def sft_kwargs(config: RunConfig, output_dir: str | Path) -> dict[str, Any]:
         "per_device_train_batch_size": tr.batch_size,
         "per_device_eval_batch_size": tr.batch_size,
         "gradient_accumulation_steps": tr.grad_accum,
-        "max_seq_length": tr.max_seq_len,
+        "max_length": tr.max_seq_len,
         "seed": tr.seed,
         "eval_strategy": "epoch",
         "save_strategy": "epoch",

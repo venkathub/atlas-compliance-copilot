@@ -16,8 +16,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-# Shared decode settings for a fair base-vs-FT comparison (greedy, bounded).
-GEN_KWARGS = {"max_new_tokens": 320, "do_sample": False, "temperature": 0.0}
+# Shared decode settings for a fair base-vs-FT comparison (greedy, bounded). No temperature: with
+# do_sample=False recent transformers errors on temperature=0.0.
+GEN_KWARGS = {"max_new_tokens": 320, "do_sample": False}
 
 
 @dataclass(frozen=True)
