@@ -116,6 +116,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
     ap.add_argument("--no-register", action="store_true", help="skip the HF push + MLflow register")
     ap.add_argument("--benchmark-only", default=None, metavar="HF_ADAPTER_REPO",
                     help="skip generation+training; load this adapter from HF and benchmark only")
+    ap.add_argument("--bake-in", action="store_true",
+                    help="train + eval under a minimal system prompt (no citation instruction) so "
+                         "the FT learns the format unconditionally — base scores ~0, FT high")
     ap.add_argument("--hf-only", action="store_true",
                     help="push adapter to HF WITHOUT MLflow (box mode; register from laptop later)")
     ap.add_argument("--upload-results", default=None, metavar="HF_REPO",
@@ -127,6 +130,12 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
 
     config = load(args.config)
     data_dir = Path(args.data_dir)
+
+    # The system prompt the FT trains AND evaluates under (must match — train/inference parity).
+    from atlas_training.data.builder import MINIMAL_SYSTEM, SYSTEM_PROMPT
+
+    train_system = MINIMAL_SYSTEM if args.bake_in else SYSTEM_PROMPT
+    log.info("system-prompt mode: %s", "bake-in (minimal)" if args.bake_in else "full-instruction")
 
     # 0. (optional) generate a larger trusted-corpus dataset via local Ollama teacher (ADR-0071b)
     if args.generate_data > 0:
@@ -145,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
                                generator_model=gen.model_id, generator_provider="ollama-selfhosted")
         manifest.validate(man, corpus, synthetic_refs=S.provenance_refs(pairs))
         manifest.save(man, data_dir / "manifest.json")
-        builder.build_and_write(pairs, seed=config.seed, out_dir=data_dir)
+        builder.build_and_write(pairs, seed=config.seed, out_dir=data_dir, system=train_system)
         n_ans = sum(1 for p in pairs if p.label == "answer")
         log.info("generated %d pairs (%d answers, %d refusals); split train=%d val=%d",
                  len(pairs), n_ans, len(pairs) - n_ans, man.split.train, man.split.val)
@@ -162,7 +171,6 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
     from atlas_evals.datasets.golden import load_golden
     from atlas_evals.datasets.refusal import load_refusal
 
-    from atlas_training.data.builder import SYSTEM_PROMPT
     from atlas_training.data.corpus import load_corpus as load_training_corpus
     from atlas_training.infer import generate, score_outputs
     from atlas_training.train import run_training
@@ -210,12 +218,12 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
         golden_prompts = [r["prompt"] for r in rows]
         refusal_prompts = [c.question for c in refusal_cases]
 
-        base_golden = generate(config.base_model, golden_prompts, system=SYSTEM_PROMPT)
-        base_refusal = generate(config.base_model, refusal_prompts, system=SYSTEM_PROMPT)
+        base_golden = generate(config.base_model, golden_prompts, system=train_system)
+        base_refusal = generate(config.base_model, refusal_prompts, system=train_system)
         ft_golden = generate(config.base_model, golden_prompts, adapter_path=adapter_ref,
-                             system=SYSTEM_PROMPT)
+                             system=train_system)
         ft_refusal = generate(config.base_model, refusal_prompts, adapter_path=adapter_ref,
-                             system=SYSTEM_PROMPT)
+                             system=train_system)
 
         # 5. score. Faithfulness: free the torch GPU first so the Ollama judge loads on the L4
         #    (a co-resident 7B otherwise forces the judge to CPU → RAGAS timeouts). -1 = all.

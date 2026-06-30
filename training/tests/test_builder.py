@@ -66,6 +66,15 @@ def test_every_example_carries_system_prompt(pairs):
         assert ex.messages[0]["content"] == SYSTEM_PROMPT
 
 
+def test_bake_in_uses_minimal_system(pairs):
+    from atlas_training.data.builder import MINIMAL_SYSTEM
+
+    train, val = split_dataset(pairs, seed=42, system=MINIMAL_SYSTEM)
+    for ex in train + val:
+        assert ex.messages[0]["content"] == MINIMAL_SYSTEM
+        assert "[doc:" not in ex.messages[0]["content"]  # no citation instruction leaked
+
+
 # ── deterministic split ─────────────────────────────────────────────────────────────────────────
 
 

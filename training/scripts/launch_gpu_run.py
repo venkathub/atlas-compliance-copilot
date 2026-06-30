@@ -79,7 +79,8 @@ def _require(name: str) -> str:
 
 
 def build_boot_script(config: str, branch: str, timeout_s: int, *, generate: int,
-                      teacher_model: str, faithfulness: int = 0, benchmark_only: str = "") -> str:
+                      teacher_model: str, faithfulness: int = 0, benchmark_only: str = "",
+                      bake_in: bool = False) -> str:
     parts = []
     if benchmark_only:
         parts.append(f"--benchmark-only {benchmark_only}")
@@ -87,6 +88,8 @@ def build_boot_script(config: str, branch: str, timeout_s: int, *, generate: int
         parts.append(f"--generate-data {generate}")
     if faithfulness != 0:
         parts.append(f"--faithfulness-samples {faithfulness}")
+    if bake_in:
+        parts.append("--bake-in")
     extra = " ".join(parts)
     repl = {
         "@@BRANCH@@": branch,
@@ -125,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
                          "GPU after the trainer frees it)")
     ap.add_argument("--benchmark-only", default="", metavar="HF_ADAPTER_REPO",
                     help="reuse an adapter already on HF and benchmark only (no generate/train)")
+    ap.add_argument("--bake-in", action="store_true",
+                    help="train+eval under a minimal system prompt (FT learns the format unprompted)")
     ap.add_argument("--destroy", metavar="MACHINE_ID", help="destroy an instance and exit")
     args = ap.parse_args(argv)
 
@@ -146,7 +151,8 @@ def main(argv: list[str] | None = None) -> int:
     # contains secrets — never print
     boot = build_boot_script(args.config, args.branch, args.timeout,
                              generate=args.generate, teacher_model=args.teacher_model,
-                             faithfulness=args.faithfulness, benchmark_only=args.benchmark_only)
+                             faithfulness=args.faithfulness, benchmark_only=args.benchmark_only,
+                             bake_in=args.bake_in)
     script_id = provider.client.add_script(script=boot, name="atlas-p6-train")
     info = provider.client.create_instance(
         gpu_type=provider.create_spec.gpu_type,

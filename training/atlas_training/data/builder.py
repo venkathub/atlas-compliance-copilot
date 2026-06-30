@@ -26,6 +26,12 @@ SYSTEM_PROMPT = (
     "missing information. Never fabricate facts, citations, or document ids."
 )
 
+# "Bake-in" system prompt: anchors the role but gives NO citation/format instruction. Training +
+# evaluating under this teaches the FT to emit the citation schema *unconditionally* — the base,
+# never told to cite, scores ~0 on format, so the FT's learned format is a real, measurable gain
+# with zero prompt overhead. (P6 Task 11; the inference must use the SAME system the FT trained on.)
+MINIMAL_SYSTEM = "You are Atlas, an enterprise financial and compliance assistant."
+
 VALID_LABELS = ("answer", "refusal")
 
 
@@ -51,13 +57,17 @@ class SFTExample:
         )
 
 
-def to_example(pair: SyntheticPair) -> SFTExample:
-    """Build one chat-format SFT example from a synthetic pair."""
+def to_example(pair: SyntheticPair, *, system: str = SYSTEM_PROMPT) -> SFTExample:
+    """Build one chat-format SFT example from a synthetic pair.
+
+    `system` is the system turn the model trains under — pass MINIMAL_SYSTEM to "bake in" the
+    citation format (no instruction), or SYSTEM_PROMPT (default) to teach instruction-following.
+    """
     if pair.label not in VALID_LABELS:
         raise ValueError(f"unknown label {pair.label!r} (expected one of {VALID_LABELS})")
     return SFTExample(
         messages=(
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system},
             {"role": "user", "content": f"{pair.question}\n\n{pair.context}"},
             {"role": "assistant", "content": pair.answer},
         ),
@@ -71,7 +81,7 @@ def _stable_key(pair: SyntheticPair) -> tuple[str, str]:
 
 
 def split_dataset(
-    pairs: list[SyntheticPair], seed: int
+    pairs: list[SyntheticPair], seed: int, *, system: str = SYSTEM_PROMPT
 ) -> tuple[list[SFTExample], list[SFTExample]]:
     """Deterministic (train, val) split of SFT examples.
 
@@ -84,7 +94,8 @@ def split_dataset(
     _, n_val = planned_split(len(ordered))
     val_pairs = ordered[:n_val]
     train_pairs = ordered[n_val:]
-    return [to_example(p) for p in train_pairs], [to_example(p) for p in val_pairs]
+    return ([to_example(p, system=system) for p in train_pairs],
+            [to_example(p, system=system) for p in val_pairs])
 
 
 def write_jsonl(examples: list[SFTExample], path: str | Path) -> None:
@@ -103,10 +114,10 @@ def read_jsonl(path: str | Path) -> list[SFTExample]:
 
 
 def build_and_write(
-    pairs: list[SyntheticPair], seed: int, out_dir: str | Path
+    pairs: list[SyntheticPair], seed: int, out_dir: str | Path, *, system: str = SYSTEM_PROMPT
 ) -> tuple[Path, Path]:
     """Split `pairs` and write train.jsonl + val.jsonl into `out_dir`. Returns the two paths."""
-    train, val = split_dataset(pairs, seed)
+    train, val = split_dataset(pairs, seed, system=system)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     train_path, val_path = out / "train.jsonl", out / "val.jsonl"
