@@ -24,8 +24,7 @@ configs/qlora_qwen3b_smoke.yaml  fast pipeline-shakedown variant (3B, few steps)
 atlas_training/config.py         typed, fail-fast loader for the pinned config  ← Task 1
 atlas_training/data/             corpus loader, synth generation, manifest, builder   (Tasks 2–5)
 atlas_training/train.py          QLoRA SFT (PEFT/TRL) — GPU window only                (Task 8)
-atlas_training/tracking.py       MLflow logging + push adapter → HF Hub + register     (Task 7)
-atlas_training/infer.py          base/FT candidate-output generation — GPU window      (Task 10)
+atlas_training/tracking.py       MLflow logging + push adapter → HF Hub + register     (Task 7)atlas_training/infer.py          base/FT candidate-output generation — GPU window      (Task 10)
 atlas_training/cost.py           per-run training-cost capture                         (Task 9)
 data/                            committed synthetic.jsonl + manifest.json
 results/                         committed base/ft scores + COMPARISON.md
@@ -52,6 +51,21 @@ seed, dataset refs, early-stopping, and MLflow names. `config.load(path)` **fail
 `ConfigError`) on any missing/unpinned required field — a re-run from the committed config
 reproduces the adapter. See ADR-0069 (QLoRA 4-bit NF4 via PEFT/TRL) and ADR-0070 (Qwen2.5-7B base,
 3B smoke).
+
+## Experiment tracking + model registry (ADR-0072)
+`atlas_training/tracking.py` logs params/metrics/loss to **MLflow** (Postgres-backed, `infra/`
+`docker compose up mlflow`), then **pushes the adapter to the Hugging Face Hub** (the durable
+store) and registers a model version whose **source URI is `hf://<repo>@<revision>`** — so the
+adapter is decoupled from the disposable GPU (teardown never loses it). Both the HF and MLflow
+clients are injectable seams, so the unit tests run GPU-free with no `mlflow`/`huggingface_hub`
+import. A live round-trip is opt-in (not in CI):
+```bash
+docker compose -f infra/docker-compose.yml up -d mlflow
+ATLAS_MLFLOW_IT=1 MLFLOW_TRACKING_URI=http://localhost:5000 \
+  uv run --directory training --group train pytest tests/test_tracking_it.py -q
+```
+Config via env: `MLFLOW_TRACKING_URI`, `ATLAS_HF_ADAPTER_REPO`, `HF_TOKEN` (write, secret),
+`HF_PRIVATE`.
 
 ## Dataset & provenance
 `data/synthetic.jsonl` + `data/manifest.json` are the committed, provenance-tagged dataset. The
