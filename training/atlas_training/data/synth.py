@@ -166,17 +166,26 @@ class OllamaGenerator:
         return cls(model, base)
 
     def __call__(self, prompt: str) -> str:  # pragma: no cover - live, against a local Ollama
+        import time
+        import urllib.error
         import urllib.request
 
         body = json.dumps({
             "model": self.model_id, "prompt": prompt, "stream": False,
             "options": {"temperature": self.temperature},
         }).encode("utf-8")
-        req = urllib.request.Request(
-            self.base_url + "/api/generate", data=body,
-            headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=300) as resp:  # noqa: S310 - trusted local URL
-            return json.loads(resp.read()).get("response", "").strip()
+        last_err: Exception | None = None
+        for attempt in range(6):  # tolerate a slow-to-bind Ollama (early box boot)
+            try:
+                req = urllib.request.Request(
+                    self.base_url + "/api/generate", data=body,
+                    headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=300) as resp:  # noqa: S310 - trusted local
+                    return json.loads(resp.read()).get("response", "").strip()
+            except urllib.error.URLError as exc:
+                last_err = exc
+                time.sleep(5 * (attempt + 1))
+        raise RuntimeError(f"Ollama unreachable at {self.base_url} after retries: {last_err}")
 
 
 def build_prompt(doc: TrustedDoc, question: str) -> str:
