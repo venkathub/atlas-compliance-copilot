@@ -1,0 +1,37 @@
+[project]
+name = "atlas-training"
+version = "0.1.0"
+description = "Atlas QLoRA fine-tuning pipeline + experiment tracking (citation-bound answer / grounded-refusal). P6, ADR-0069..0074."
+requires-python = ">=3.12"
+# PyYAML is the ONLY always-on runtime dep: the pinned run-config (configs/qlora_*.yaml) is the
+# reproducibility contract and `config.py` parses it with no torch/ML import, so the offline unit
+# tests (and CI) run with no GPU, no network, and no model download. See ADR-0069 / P6_SPEC §4.
+dependencies = ["pyyaml>=6"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+# Heavy GPU/ML stack — only needed inside the episodic JarvisLabs L4 training window (train.py /
+# infer.py), NEVER for the offline dataset/config/scorer unit tests or CI. Install on the GPU box
+# with: uv sync --group train. `torch` is intentionally left to the GPU image's CUDA build (do not
+# pin a CPU wheel here). See P6_SPEC §2.2 and ADR-0069 (PEFT/TRL QLoRA), ADR-0072 (MLflow + HF Hub).
+train = [
+  "transformers>=4.44",
+  "peft>=0.12",
+  "trl>=0.9",
+  "bitsandbytes>=0.43",
+  "accelerate>=0.33",
+  "datasets>=2.20",
+  "mlflow>=2.15",
+  "huggingface-hub>=0.24",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

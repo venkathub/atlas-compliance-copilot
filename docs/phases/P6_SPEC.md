@@ -1,7 +1,7 @@
 # P6 — Fine-tuning Pipeline + Experiment Tracking — SPEC
 
-> **Status:** Groomed (2026-06-30) — owner-confirmed decisions recorded in §3.1. Pending: log
-> ADR-0069…0074 in `docs/DECISIONS.md`, then begin Task 1. No code until that go-ahead.
+> **Status:** In progress (2026-06-30) — owner-confirmed decisions recorded in §3.1 and logged as
+> **ADR-0069…0074** (tag `Training`) in `docs/DECISIONS.md`. Task 1 (scaffold `training/`) underway.
 > **Phase goal (from ROADMAP §2 P6):** Own the **training half** of the model lifecycle that P0–P5
 > only ever *consumed*. Produce a **versioned, QLoRA-fine-tuned small model** for Atlas's
 > **citation-bound answer / grounded-refusal** format, tracked and registered reproducibly. Extends
@@ -448,7 +448,7 @@ base — all browsable GPU-free from a fresh clone.
 
 ---
 
-> **STOP — awaiting final go-ahead.** §3 (D1–D6) and the budget/runtime questions are confirmed (§3.1).
-> On your go-ahead I'll log **ADR-0069…0074** in `docs/DECISIONS.md` and begin Task 1 (scaffold `training/`).
-> No code until then. D1 (PEFT+TRL), D5 (Transformers/PEFT inference), and D6 (deterministic validators) are
-> recorded as my recommendations — flag if you'd prefer otherwise before I log them.
+> **GO-AHEAD GIVEN (2026-06-30).** §3 (D1–D6) and the budget/runtime questions are confirmed (§3.1) and
+> logged as **ADR-0069…0074** (tag `Training`) in `docs/DECISIONS.md`. Implementation proceeds task-by-task
+> per §5, starting with Task 1 (scaffold `training/`). D1 (PEFT+TRL), D5 (Transformers/PEFT inference), and
+> D6 (deterministic validators) are the recorded choices.
