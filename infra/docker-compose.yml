@@ -347,6 +347,36 @@ services:
       - "${GRAFANA_PORT:-3001}:3000"
     restart: unless-stopped
 
+  # ── MLflow tracking + model registry (P6 Task 7 — ADR-0072) ───────────────────────
+  # Self-hosted experiment tracking + model registry on the SHARED atlas-postgres
+  # (separate `mlflow` db, created by db/init/03-mlflow-db.sql) — the no-new-datastore
+  # footprint (mirrors Langfuse, ADR-0025). Postgres holds run/registry METADATA; the
+  # durable model artifact lives on the Hugging Face Hub (the registered version's source
+  # is the HF repo+revision), so GPU teardown never loses the adapter. Default profile so
+  # `docker compose up mlflow` (the 30-second demo path) works without the app profile.
+  mlflow:
+    build:
+      context: ./mlflow
+    image: atlas/mlflow:0.1.0
+    container_name: atlas-mlflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas}@postgres:5432/mlflow
+      MLFLOW_ARTIFACT_ROOT: ${MLFLOW_ARTIFACT_ROOT:-/mlflow/artifacts}
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+    volumes:
+      - atlas-mlflow-artifacts:/mlflow/artifacts
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:5000/health').status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
   # ── Reverse proxy + static UI (P5 Task 7 — D-P5-2/5) ──────────────────────────────
   # Single origin: serves the built React UI and path-routes /v1/* to the backends,
   # terminating TLS (internal/self-signed by default). The image (multi-stage: build UI →
@@ -390,6 +420,9 @@ volumes:
   atlas-alertmanager-data:
   # Caddy's local CA + issued certs (the internal-TLS material) persist here.
   atlas-caddy-data:
+  # MLflow incidental run artifacts (loss curves, params files). The fine-tuned adapter is
+  # NOT here — it is pushed to the HF Hub (durable store); this only holds run-local artifacts.
+  atlas-mlflow-artifacts:
   # Config volumes are seeded from repo files by `make up` (see infra/Makefile);
   # declared external so Compose mounts the already-seeded volume rather than a blank one.
   atlas-prometheus-config:

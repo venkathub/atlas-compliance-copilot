@@ -19,10 +19,17 @@ Added to the same `docker-compose.yml` (all **digest-pinned**):
 | `prometheus` | `prom/prometheus:v3.4.1` | `${PROMETHEUS_PORT}` (9090) | Scrapes rag-engine `/actuator/prometheus` + pushgateway |
 | `pushgateway` | `prom/pushgateway:v1.11.1` | `${PUSHGATEWAY_PORT}` (9091) | Eval gate pushes RAGAS/adversarial scores here (Grafana trends) |
 | `grafana` | `grafana/grafana:11.6.1` | `${GRAFANA_PORT}` (3001) | Eval-score / latency / trace-volume dashboard |
+| `mlflow` | `atlas/mlflow` (built) | `${MLFLOW_PORT}` (5000) | P6 experiment tracking + model registry (Postgres-backed; adapters on HF Hub) |
 
 - Langfuse v3 **reuses** `atlas-postgres` (separate `langfuse` db, created by
   `db/init/02-langfuse-db.sql`) and `atlas-redis` (db index 0); only ClickHouse + MinIO are new
   containers (owner-confirmed footprint, D-P2-5).
+- **MLflow** (P6, ADR-0072) likewise **reuses** `atlas-postgres` (separate `mlflow` db, created by
+  `db/init/03-mlflow-db.sql`) for run/registry **metadata** — no new datastore. The durable model
+  artifact lives on the **Hugging Face Hub**: the fine-tuned adapter is pushed to HF from the GPU
+  window before teardown, and the registered version's **source is the HF repo+revision**, so the
+  adapter survives GPU teardown. `MLFLOW_ARTIFACT_ROOT` (a volume) holds only incidental run
+  artifacts. Browse the registry at `http://localhost:${MLFLOW_PORT}` (the P6 demo path).
 - Langfuse is **headless-bootstrapped** via `LANGFUSE_INIT_*` — `make up` creates the
   `atlas`/`atlas-rag` project and wires the `.env` API keys; no manual first-run setup.
 - Prometheus + Grafana config live as **repo files** under `infra/prometheus/` and
@@ -31,7 +38,7 @@ Added to the same `docker-compose.yml` (all **digest-pinned**):
   are auto-provisioned.
 
 ```bash
-make -C infra up       # start, wait for healthy, apply pgvector + langfuse init, seed obs config
+make -C infra up       # start, wait for healthy, apply pgvector + langfuse + mlflow init, seed obs config
 make -C infra health   # container health + pgvector version + redis PONG + langfuse/grafana/prometheus
 make -C infra down      # stop (keeps data volumes)
 make -C infra clean     # stop + delete data + config volumes
