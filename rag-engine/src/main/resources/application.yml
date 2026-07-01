@@ -90,6 +90,10 @@ atlas:
     tier2-model: ${ATLAS_ROUTER_TIER2_MODEL:qwen2.5:7b-instruct}
     frontier-model: ${ATLAS_ROUTER_FRONTIER_MODEL:}
     frontier-enabled: ${ATLAS_ROUTER_FRONTIER_ENABLED:false}
+    # Fine-tuned citation tier (P7, ADR-0080): served on the global vLLM multi-LoRA backend as a
+    # model-name swap (not an endpoint switch). Off by default; fail-safe to the default ChatModel.
+    ft-tier-model: ${ATLAS_ROUTER_FT_TIER_MODEL:}
+    ft-tier-enabled: ${ATLAS_ROUTER_FT_TIER_ENABLED:false}
   # Chat (generation) backend (ADR-0068). Default `ollama` = Spring AI Ollama-native client.
   # `vllm` swaps the chat ChatModel to an OpenAI-compatible client at ATLAS_VLLM_BASE_URL (/v1);
   # embeddings ALWAYS stay on Ollama (nomic-embed, 768-dim). Env-swappable, never hardcoded.
