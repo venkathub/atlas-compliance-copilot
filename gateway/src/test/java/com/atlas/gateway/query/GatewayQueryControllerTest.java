@@ -56,8 +56,8 @@ class GatewayQueryControllerTest {
     private final DownstreamClearanceSigner signer =
             new DownstreamClearanceSigner(new GatewayProperties("http://localhost:8081", "test-internal-secret"));
     private final ModelRouter router = new ModelRouter(
-            new RoutingProperties("tier1-small", "qwen2.5:3b-instruct", "qwen2.5:7b-instruct", 1200, true, false, null));
-    private final CostTable costTable = new CostTable(new CostProperties(0.30, 0.70, 5.00));
+            new RoutingProperties("tier1-small", "qwen2.5:3b-instruct", "qwen2.5:7b-instruct", 1200, true, false, null, false, null));
+    private final CostTable costTable = new CostTable(new CostProperties(0.30, 0.70, 5.00, 0.70));
     private final ObjectMapper json = new ObjectMapper();
     private final QueryEmbedder stubEmbedder = text -> new float[] {1f, 0f, 0f};
 
@@ -90,6 +90,61 @@ class GatewayQueryControllerTest {
 
     private MockMvc defaultMvc() {
         return mvc(new NoOpSemanticCache(), false, new AllowAllRateLimiter(), new NoOpBudgetGuard());
+    }
+
+    /** Build the controller with a custom router (P7 FT-tier IT) — cache off, allow-all limits. */
+    private MockMvc mvcWithRouter(ModelRouter customRouter) {
+        CacheProperties cacheProps = new CacheProperties(false, 0.95, 86400, "v1", false);
+        RequestLimits limits = new RequestLimits(6000, 1024);
+        ModelCircuitBreaker cb = new ModelCircuitBreaker(PASSTHROUGH, 10);
+        PiiRedactor redactor = new PiiRedactor(List.of());
+        OutputSanitizer sanitizer = new OutputSanitizer();
+        SafetyProperties safety = new SafetyProperties(true, true, List.of());
+        CostMeter meter = new CostMeter(new SimpleMeterRegistry());
+        return MockMvcBuilders.standaloneSetup(new GatewayQueryController(
+                        ragEngine, signer, customRouter, new NoOpSemanticCache(), stubEmbedder, cacheProps,
+                        new AllowAllRateLimiter(), new NoOpBudgetGuard(), limits, cb, costTable, redactor,
+                        sanitizer, safety, meter, json))
+                .setControllerAdvice(new GatewayExceptionHandler())
+                .build();
+    }
+
+    private static ModelRouter ftRouter(boolean ftEnabled) {
+        return new ModelRouter(new RoutingProperties("tier1-small", "qwen2.5:3b-instruct",
+                "qwen2.5:7b-instruct", 1200, true, false, null, ftEnabled, "atlas-citation-adapter"));
+    }
+
+    @Test
+    void ftHintRoutesToFtTierAndForwardsTierToRagEngine() throws Exception {
+        // ft-tier-enabled=true + explicit FT hint ⇒ route()→tier-ft-citation, and the tier flows to
+        // rag-engine as the X-Atlas-Model-Tier header (asserted via the model-tier arg).
+        when(ragEngine.query(anyString(), eq("tier-ft-citation"), anyInt(), any()))
+                .thenReturn(json.readTree("{\"answer\":\"Grounded [1].\",\"citations\":[]}"));
+
+        mvcWithRouter(ftRouter(true)).perform(post("/v1/query")
+                        .header(ModelRouter.FT_HINT_HEADER, "true")
+                        .requestAttr(CallerClearance.ATTRIBUTE, new CallerClearance("priya", Clearance.COMPLIANCE))
+                        .contentType("application/json").content("{\"query\":\"cite policy\",\"topK\":6}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.routing.modelTier").value("tier-ft-citation"));
+
+        verify(ragEngine).query(anyString(), eq("tier-ft-citation"), anyInt(), any());
+    }
+
+    @Test
+    void ftHintIgnoredWhenTierDisabled() throws Exception {
+        // Prod default (ft-tier-enabled=false): the FT hint is inert — stays tier1-small.
+        when(ragEngine.query(anyString(), eq("tier1-small"), anyInt(), any()))
+                .thenReturn(json.readTree("{\"answer\":\"Small [1].\",\"citations\":[]}"));
+
+        mvcWithRouter(ftRouter(false)).perform(post("/v1/query")
+                        .header(ModelRouter.FT_HINT_HEADER, "true")
+                        .requestAttr(CallerClearance.ATTRIBUTE, new CallerClearance("priya", Clearance.COMPLIANCE))
+                        .contentType("application/json").content("{\"query\":\"cite policy\",\"topK\":6}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.routing.modelTier").value("tier1-small"));
+
+        verify(ragEngine, never()).query(anyString(), eq("tier-ft-citation"), anyInt(), any());
     }
 
     @Test

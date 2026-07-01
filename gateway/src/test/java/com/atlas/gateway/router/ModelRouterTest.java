@@ -8,7 +8,12 @@ class ModelRouterTest {
 
     private static RoutingProperties props(boolean frontierEnabled) {
         return new RoutingProperties("tier1-small", "qwen2.5:3b-instruct", "qwen2.5:7b-instruct",
-                1200, true, frontierEnabled, "gpt-4o");
+                1200, true, frontierEnabled, "gpt-4o", false, null);
+    }
+
+    private static RoutingProperties ftProps(boolean ftEnabled) {
+        return new RoutingProperties("tier1-small", "qwen2.5:3b-instruct", "qwen2.5:7b-instruct",
+                1200, true, false, "gpt-4o", ftEnabled, "atlas-citation-adapter");
     }
 
     private final ModelRouter router = new ModelRouter(props(false));
@@ -51,9 +56,42 @@ class ModelRouterTest {
     void evalFloorGuardFallsBackWhenConfiguredDefaultUnselectable() {
         // Configure default = frontier while frontier is disabled → must fall back to tier1-small.
         RoutingProperties p = new RoutingProperties("tier3-frontier", "qwen2.5:3b-instruct",
-                "qwen2.5:7b-instruct", 1200, true, false, "gpt-4o");
+                "qwen2.5:7b-instruct", 1200, true, false, "gpt-4o", false, null);
         ModelRouter r = new ModelRouter(p);
         assertThat(r.route("short", null).tier()).isEqualTo(ModelTier.TIER1_SMALL);
+    }
+
+    @Test
+    void ftTierSelectedWhenEnabledAndHinted() {
+        ModelRouter r = new ModelRouter(ftProps(true));
+        ModelRouter.RoutingDecision d = r.route("cite this", null, "true");
+        assertThat(d.tier()).isEqualTo(ModelTier.TIER_FT_CITATION);
+        assertThat(d.model()).isEqualTo("atlas-citation-adapter");
+        assertThat(d.escalated()).isFalse(); // capability selection, not a cost escalation
+        assertThat(d.reason()).isEqualTo("ft-hint");
+    }
+
+    @Test
+    void ftTierNeverSelectedWhenFlagOffEvenWithHint() {
+        ModelRouter r = new ModelRouter(ftProps(false));
+        // Prod default: FT is not even selectable → the hint is ignored, falls through to default.
+        assertThat(r.route("cite this", null, "true").tier()).isEqualTo(ModelTier.TIER1_SMALL);
+    }
+
+    @Test
+    void ftTierNotAutoSelectedWithoutHint() {
+        ModelRouter r = new ModelRouter(ftProps(true));
+        // Enabled but no FT hint → never auto-selected; normal policy applies.
+        assertThat(r.route("short", null, null).tier()).isEqualTo(ModelTier.TIER1_SMALL);
+        assertThat(r.route("anything", "high", null).tier()).isEqualTo(ModelTier.TIER2_MID);
+    }
+
+    @Test
+    void ftHintTakesPrecedenceOverQualityEscalation() {
+        ModelRouter r = new ModelRouter(ftProps(true));
+        // Both an FT hint and a strong escalation signal → FT wins (explicit capability request).
+        assertThat(r.route("a".repeat(9000), "high", "citation").tier())
+                .isEqualTo(ModelTier.TIER_FT_CITATION);
     }
 
     @Test

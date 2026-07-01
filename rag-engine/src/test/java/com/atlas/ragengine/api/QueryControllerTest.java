@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -39,7 +40,55 @@ class QueryControllerTest {
     @BeforeEach
     void setUp() {
         mvc = MockMvcBuilders.standaloneSetup(new QueryController(queryService, resolver,
-                new ModelTierResolver(new ModelTierProperties(null, null, false)))).build();
+                new ModelTierResolver(new ModelTierProperties(null, null, false, null, false)))).build();
+    }
+
+    @Test
+    void ftTierHeaderResolvesToLoraModelNameForwardedToChat() throws Exception {
+        // P7 (ADR-0080): X-Atlas-Model-Tier: tier-ft-citation + ft-tier-enabled ⇒ the resolved vLLM
+        // multi-LoRA model-name flows to the chat layer (queryService mocked — no GPU/vLLM call).
+        when(resolver.resolve(any(RequestHeaders.class))).thenReturn(ClearanceLevel.COMPLIANCE);
+        QaResult result = new QaResult("Grounded [1].", List.of(),
+                new RetrievalStats(20, 5, 12, 6, "compliance"));
+        when(queryService.answer(eq("cite policy?"), eq(ClearanceLevel.COMPLIANCE), anyInt(),
+                        anyString(), eq("atlas-citation-adapter"), nullable(Integer.class)))
+                .thenReturn(result);
+
+        MockMvc ftMvc = MockMvcBuilders.standaloneSetup(new QueryController(queryService, resolver,
+                new ModelTierResolver(new ModelTierProperties(
+                        "qwen2.5:7b-instruct", null, false, "atlas-citation-adapter", true)))).build();
+
+        ftMvc.perform(post("/v1/query")
+                        .header("X-Atlas-User", "priya")
+                        .header(ModelTierResolver.HEADER, "tier-ft-citation")
+                        .contentType("application/json")
+                        .content("{\"query\":\"cite policy?\",\"topK\":6}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.answer").value("Grounded [1]."));
+
+        verify(queryService).answer(eq("cite policy?"), eq(ClearanceLevel.COMPLIANCE), anyInt(),
+                anyString(), eq("atlas-citation-adapter"), nullable(Integer.class));
+    }
+
+    @Test
+    void ftTierHeaderFallsBackToDefaultWhenDisabled() throws Exception {
+        // Prod default (ft-tier-enabled=false): the FT header is inert → no model override (default).
+        when(resolver.resolve(any(RequestHeaders.class))).thenReturn(ClearanceLevel.COMPLIANCE);
+        QaResult result = new QaResult("Default [1].", List.of(),
+                new RetrievalStats(20, 5, 12, 6, "compliance"));
+        when(queryService.answer(eq("cite policy?"), eq(ClearanceLevel.COMPLIANCE), anyInt(),
+                        anyString(), nullable(String.class), nullable(Integer.class)))
+                .thenReturn(result);
+
+        mvc.perform(post("/v1/query")
+                        .header("X-Atlas-User", "priya")
+                        .header(ModelTierResolver.HEADER, "tier-ft-citation")
+                        .contentType("application/json")
+                        .content("{\"query\":\"cite policy?\",\"topK\":6}"))
+                .andExpect(status().isOk());
+
+        verify(queryService).answer(eq("cite policy?"), eq(ClearanceLevel.COMPLIANCE), anyInt(),
+                anyString(), nullable(String.class), nullable(Integer.class));
     }
 
     @Test

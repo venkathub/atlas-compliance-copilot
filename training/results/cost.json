@@ -1,0 +1,9 @@
+{
+  "rate_per_hour": 42.0,
+  "currency": "INR",
+  "wall_seconds": 3845.681,
+  "cost": 44.8663,
+  "teardown_recorded": true,
+  "started_at": "2026-07-01T10:19:58.765504+00:00",
+  "ended_at": "2026-07-01T11:24:04.446792+00:00"
+}

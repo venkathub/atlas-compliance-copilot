@@ -7,13 +7,14 @@ import org.junit.jupiter.api.Test;
 
 class CostTableTest {
 
-    private final CostTable costs = new CostTable(new CostProperties(0.30, 0.70, 5.00));
+    private final CostTable costs = new CostTable(new CostProperties(0.30, 0.70, 5.00, 0.70));
 
     @Test
     void unitsPerTier() {
         assertThat(costs.unitsPer1k(ModelTier.TIER1_SMALL)).isEqualTo(0.30);
         assertThat(costs.unitsPer1k(ModelTier.TIER2_MID)).isEqualTo(0.70);
         assertThat(costs.unitsPer1k(ModelTier.TIER3_FRONTIER)).isEqualTo(5.00);
+        assertThat(costs.unitsPer1k(ModelTier.TIER_FT_CITATION)).isEqualTo(0.70);
     }
 
     @Test

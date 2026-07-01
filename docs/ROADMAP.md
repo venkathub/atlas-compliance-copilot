@@ -74,7 +74,7 @@ the integration test for the entire portfolio.
 
 ---
 
-## 2. Phase plan (P0 → P5, dependency order)
+## 2. Phase plan (P0 → P7, dependency order)
 
 Each phase obeys the **CLAUDE.md Definition of Done** (tests + evals in CI, README + DECISIONS updated,
 clean-from-scratch run, 30-second demo path, resume bullet). The per-phase **Exit Criteria** below are
@@ -194,9 +194,96 @@ the *phase-specific* additions on top of that baseline.
   - [ ] The full forcing user story (Priya → cited answer → approved draft SAR) is demonstrable on the deployed system.
   - [ ] Final portfolio writeup + demo recording; `docs/PORTFOLIO.md` complete.
 
+### P6 — Fine-tuning pipeline + experiment tracking
+- **Goal.** Own the **training half** of the model lifecycle that P0–P5 only ever *consumed*: produce a
+  **versioned, QLoRA-fine-tuned small model** for Atlas's **citation-bound answer / grounded-refusal**
+  format, tracked and registered reproducibly. Extends Atlas's "every model call evaluated, traced, governed"
+  thesis from inference to the **model artifact itself**. Primarily hardens **R2** (hallucination / ungrounded
+  answers).
+- **Subsystems touched.** New `training/` module (Python: dataset curation + synthetic data generation +
+  PEFT/TRL QLoRA), **MLflow** (experiment tracking + model registry) in `/infra` on the **existing Postgres**
+  backend (no new datastore) + a **durable artifact root on the always-on Oracle ARM box** (optional **HF Hub**
+  mirror), `/evals` (base-vs-fine-tuned **comparison benchmark** harness), the **JarvisLabs GPU provisioner**
+  (episodic `resume→train→pause`, guaranteed teardown).
+- **Key skills demonstrated.** QLoRA (4-bit NF4) fine-tuning, dataset curation + synthetic data generation
+  with provenance, experiment tracking + **model registry/versioning** (MLflow), reproducible-from-config
+  training, train/val-loss monitoring with early stopping, episodic training-cost discipline.
+- **Entry criteria.** P5 exit met (deployed system); **P2 eval harness + golden/adversarial datasets**
+  available to reuse for the comparison; **GPU provisioner with guaranteed teardown** in place; a bounded
+  **episodic training budget** approved, **separate from the ~$10/mo runtime ceiling**.
+- **Exit criteria (DoD).** *(Proposed 2026-06-29 — awaiting grooming.)*
+  - [ ] `training/` module with **pinned config** (base model, QLoRA 4-bit NF4 params, dataset refs, seed); a
+        fine-tune run is **reproducible from committed config**.
+  - [ ] Dataset curation: **FinanceBench** corpus (CC-BY-NC-4.0, §0.1) + **synthetic context→answer/refusal
+        pairs** (bounded frontier-generated seed set), with a **provenance manifest** (source / generator
+        model / license / size).
+  - [ ] QLoRA fine-tune via **PEFT/TRL** (or Unsloth) on a **3B–8B base** (default **Qwen2.5-7B-Instruct**,
+        Apache-2.0), with **train/val-loss monitoring + early stopping**.
+  - [ ] **MLflow** tracking + model registry stood up in `/infra` on the **existing Postgres** backend (+
+        **durable artifact root on the always-on Oracle box**, optional HF Hub mirror); the adapter is
+        registered as a **versioned artifact, decoupled from the disposable GPU** — pausing/destroying the GPU
+        never loses the model.
+  - [ ] Episodic GPU lifecycle (`resume→train→pause`) reuses the JarvisLabs provisioner; **per-run training
+        cost** recorded.
+  - [ ] Base-vs-fine-tuned **comparison benchmark** (RAGAS **faithfulness** + **format-validity** +
+        **refusal-correctness**) reuses existing eval datasets and emits a **committed evidence artifact**
+        (`COMPARISON.md` + `results/*.json`, candidate Δ vs base) — same shape as the vLLM-vs-Ollama benchmark.
+        *(Candidate outputs are generated live in the GPU window, then committed; P7's CI gate consumes the
+        committed report **GPU-free**.)*
+  - [ ] `docs/DECISIONS.md` entries (QLoRA-over-full-FT, base-model pick, MLflow store, synthetic-data
+        generator); `training/README.md` + quantified `docs/PORTFOLIO.md` bullet drafted.
+  - **Done when.** A fine-tune run is reproducible from committed config; the adapter lands in the registry as
+        a versioned artifact **(durable off-GPU)**; the committed base-vs-FT benchmark shows the candidate's
+        delta vs base.
+  - **Quantify.** faithfulness / format-validity / refusal-correctness (candidate vs base); training cost per
+        run; dataset size + provenance.
+
+### P7 — Eval-gated promotion gate, base-vs-FT benchmark & drift demo
+- **Goal.** Close the loop **as a committed evidence bundle, not a live endpoint**: prove a fine-tuned adapter
+  reaches the router's production tier **only** by clearing the same eval+cost gate philosophy P2/P3 enforce on
+  code — now applied to **model versions** — and prove the system can **detect drift**. The deliverable is
+  **reproducible, committed proof** (mirroring the vLLM-vs-Ollama benchmark); the GPU is spun up **episodically**
+  to generate evidence, then torn down. De-risks **R6** (model regression / train–serve skew).
+- **Subsystems touched.** `/evals` + CI (**GPU-free** model-promotion gate extending the P2 replay gate),
+  Gateway router (selectable "production fine-tuned tier" — capability proven by an integration test), **vLLM**
+  serving profile (multi-LoRA hot-swap, ADR-0066–0068; used **episodically** to generate benchmark outputs),
+  Langfuse/Prometheus/Grafana + **Alertmanager** (version-tagged metrics + a **one-shot seeded** drift alert),
+  MLflow registry (stage transitions for promote/rollback).
+- **Key skills demonstrated.** **Eval-gated model promotion** (model-version analog of the P2 merge gate),
+  cost-regression gating, **base-vs-fine-tuned benchmarking** (quality + cost, same-GPU), **multi-adapter LLM
+  serving** (vLLM base + LoRA hot-swap), router tiering, model **drift detection + alerting**, documented
+  rollback / model-lifecycle operations.
+- **Entry criteria.** P6 exit met (a registered, versioned adapter + its **committed** comparison benchmark
+  exist); **vLLM serving profile** (ADR-0066–0068) in place; P2 eval **floors** defined.
+- **Exit criteria (DoD).** *(Proposed 2026-06-29 — awaiting grooming; benchmark/evidence-bundle style — no
+  always-on serving.)*
+  - [ ] **GPU-free CI model-promotion gate**: runs against the **committed** P6 benchmark/cassettes (no GPU);
+        promotes an adapter to the production tier **only if** it clears faithfulness / format-validity /
+        refusal-correctness **floors** **and** a **cost-regression check**. A **committed CI run shows a
+        sub-floor adapter provably blocked** (and a passing one promoted) — the proof-it-bites artifact.
+  - [ ] **Base-vs-fine-tuned benchmark** committed (`COMPARISON.md` + `results/*.json`): quality
+        (faithfulness/format/refusal) **and** cost-per-request, base vs FT on the **same GPU** — the headline,
+        in the same format as the vLLM-vs-Ollama benchmark.
+  - [ ] **Router-integration test** proving the router **can select** the fine-tuned tier for the
+        citation/refusal path (capability, **not uptime**; frontier tier still shipped **disabled**); served
+        **episodically** to produce the benchmark, then torn down.
+  - [ ] **One-shot drift demo**: a **seeded regression** fires the **Alertmanager** rule on
+        faithfulness/format-validity, captured as a **committed artifact** (no always-on monitor required).
+  - [ ] **Rollback path** documented (registry stage demotion + router re-point); `docs/RUNBOOK.md` updated.
+  - [ ] **One-command local reproduce (GPU-free):** `docker compose up mlflow` → browse the registry → run the
+        promotion gate on committed artifacts (satisfies the DoD 30-second path).
+  - [ ] *Note:* the eval **floors** are reused from the P2 harness, so the model-promotion bar is identical to
+        the code-merge bar — the model lifecycle inherits the proven gate rather than inventing a parallel one.
+  - **Done when.** A committed CI run shows a sub-floor adapter **blocked** (and a passing one promoted); the
+        router-integration test is green; the base-vs-FT benchmark is committed; a seeded regression fires the
+        drift alert — all **reproducible from a fresh clone**, no always-on GPU.
+  - **Quantify.** candidate Δ vs base (faithfulness / format-validity / refusal-correctness); **measured**
+        cost-per-request base vs FT (same GPU); promotions **blocked by the gate** (proof it bites);
+        drift-alert **lead time** on the seeded regression.
+
 ---
 
-## 3. Risk register (top 5) & how phases de-risk
+## 3. Risk register (top risks) & how phases de-risk
 
 | # | Risk | Impact | Primary de-risk | Reinforced by |
 |---|------|--------|-----------------|---------------|
@@ -205,6 +292,8 @@ the *phase-specific* additions on top of that baseline.
 | R3 | **Cost/latency blowup** — naive model use makes the system uneconomic | Fails the "cost as a feature" thesis | **P3** cost-aware router + caching + per-route metering; small models by default | **P0** env-swappable models + stop-when-idle GPU; **P2** dashboards make cost/latency continuously visible |
 | R4 | **Unsafe / unreliable agent actions** — wrong or unauthorized writes | Real-world damage; the scariest failure | **P4** mandatory human-in-the-loop before writes; MCP tools are governed + audited | **P2** harness extends to agent/tool-call evals as a gate; R1 authz re-check |
 | R5 | **Infra / model-connectivity fragility** — remote Ollama or env config breaks reproducibility | Blocks all downstream work; "works on my machine" | **P0** connectivity smoke test + strict env config + multi-arch Docker Compose, all in CI | **P5** full ARM containerization + one-command deploy; RUNBOOK kept current every phase |
+| R6 | **Model regression / train–serve skew** — a fine-tuned adapter degrades quality or behaves differently in serving than in eval | Silent quality loss in a compliance copilot; erodes the grounding guarantee | **P7** eval-gated promotion (faithfulness/format/refusal floors + cost-regression) blocks any adapter that doesn't beat base; the same harness runs offline and in-gate | **P7** version-tagged drift monitoring + Alertmanager + documented rollback; **P2** floors reused so the bar stays consistent |
+| R7 | **Training-data provenance/licensing & drift** — synthetic or non-commercial data taints the model, or production drifts from the eval distribution | Legal/compliance exposure; stale or off-distribution model | **P6** provenance manifest (source/license/generator) + FinanceBench CC-BY-NC scoping; trusted-corpus-only | **P7** drift watch with lead-time alert; **LLM04** poisoning controls extended to training time |
 
 ---
 
@@ -246,6 +335,13 @@ evidenced* (tests/evals/dashboards), so nothing is left as an unproven claim.
 | Streaming chat & citation/trace UX | P5 · UI | Deployed UI with traces visible |
 | Multi-service deploy on free-tier cloud | P5 · Infra/UI | One-command deploy + recording |
 | Multimodal (reserved, budgeted) | P5 · UI/Gateway | Final frontier-model demo |
+| **QLoRA fine-tuning (4-bit NF4)** | P6 · Training | Reproducible run from pinned config + loss curves |
+| Synthetic data curation + provenance | P6 · Training | Provenance manifest + dataset card |
+| Experiment tracking + model registry (MLflow) | P6 · Infra/MLflow | Versioned adapter artifact (durable off-GPU) |
+| **Eval-gated model promotion** | P7 · Evals/CI | Committed CI run blocking a sub-floor adapter (GPU-free gate) |
+| Base-vs-fine-tuned benchmark (quality + cost) | P7 · Evals | `COMPARISON.md` + `results/*.json`, same-GPU |
+| Multi-adapter LLM serving (vLLM) | P7 · Serving/Gateway | Router-integration test + episodic base-vs-FT benchmark |
+| Model drift monitoring + alerting | P7 · Observability | Seeded-regression drift alert (committed artifact) |
 
 ---
 
@@ -263,10 +359,17 @@ project, not a known-quantity build).
 | **P3** | Cost-aware gateway + router + dashboards | 2–3 weeks | 25–40 h |
 | **P4** | Agent orchestrator + MCP tool servers | 3–4 weeks | 40–60 h |
 | **P5** | React UI + containerization + deploy | 2.5–3.5 weeks | 30–50 h |
-| **Total** | End-to-end forcing story shipped | **~14–19 weeks** | **~165–260 h** |
+| **P6** | QLoRA fine-tune + MLflow tracking/registry + compare eval | 2–3 weeks | 25–40 h |
+| **P7** | Eval-gated promotion gate + base-vs-FT benchmark + drift demo | 2–3 weeks | 25–40 h |
+| **Total** | Forcing story (P0–P5) shipped **+** MLOps lane (P6–P7) | **~18–25 weeks** | **~215–340 h** |
 
 **Notes / sequencing risks to budget for.**
 - P1 and P4 are the long poles (correctness/safety-heavy). Expect the widest variance there.
+- **P6–P7 are post-forcing-story and benchmark/evidence-bundle style:** the clickable demo ships at P5; the
+  MLOps lane adds the *produce-and-govern-the-model* path (P6 train → track, P7 eval-gate → base-vs-FT
+  benchmark → drift-demo) as **committed, reproducible proof with no always-on serving** — the GPU runs
+  episodically to produce evidence, then is torn down. Can be sequenced independently after P5, one subsystem
+  per session per CLAUDE.md.
 - P2 is intentionally *before* P3/P4: a few hours invested in the eval gate repays itself by catching
   regressions in every later phase.
 - Estimates exclude the cloud-frontier multimodal demo polish in P5, which is budget-gated, not time-gated.
@@ -321,8 +424,8 @@ the **EU AI Act** (high-risk obligations effective 2026-08-02). Security work is
 |---|---|---|---|
 | LLM01 Prompt Injection | Input guardrails + poisoned-doc fixture tests | P1 | In plan |
 | LLM02 Sensitive Information Disclosure | PII detection + egress redaction; clearance-scoped retrieval | P3 / P1 | Added §6 (G1) |
-| **LLM03 Supply Chain** | CI dependency + secret scanning; digest-pinned images/models; SBOM/AIBOM | P0 | **Added now** |
-| **LLM04 Data & Model Poisoning** | Ingestion validation + source provenance; trusted-corpus-only admission | P1 | **Added now** |
+| **LLM03 Supply Chain** | CI dependency + secret scanning; digest-pinned images/models; SBOM/AIBOM; model-artifact + adapter provenance via the MLflow registry | P0 / P6 | **Added now** |
+| **LLM04 Data & Model Poisoning** | Ingestion validation + source provenance; trusted-corpus-only admission; **training-data provenance manifest + trusted-corpus-only fine-tune (P6) + eval-gated promotion (P7)** | P1 / P6 / P7 | **Added now** |
 | **LLM05 Improper Output Handling** | Output sanitization/encoding at gateway egress + safe UI rendering | P3 / P5 | **Added now** |
 | LLM06 Excessive Agency | Least-privilege MCP tools; HITL approval; per-call clearance re-check | P4 | In plan |
 | **LLM07 System Prompt Leakage** | No secrets in prompts; system-prompt-leakage red-team tests | P2 | **Added now** |
@@ -344,18 +447,18 @@ durable Postgres checkpoints) — all land in **P4**.
 
 ---
 
-## 8. Future extensions (post-P5 backlog)
+## 8. Future extensions (post-P7 backlog)
 
-Ideas evaluated as **on-narrative but deliberately out of P0–P5 scope** — captured here so they aren't lost,
-to be scoped as a post-P5 "P6" lane **only after the core forcing story ships**. Each must preserve the core
+Ideas evaluated as **on-narrative but deliberately out of P0–P7 scope** — captured here so they aren't lost,
+to be scoped as a post-P7 lane (**P8+**) **only after the core forcing story ships**. Each must preserve the core
 invariants: **self-hosted, runs-from-a-fresh-clone, and the permission-aware moat stays self-built** (never
 displaced by a third party).
 
 | # | Idea | Fit assessment | Placement | ADR |
 |---|------|----------------|-----------|-----|
-| F1 | **Katzilla** (katzilla.dev) — hosted, **MCP-native** API over 30+ US/intl government datasets (SEC, FDA, Federal Register, Congress, court opinions, clinical trials…), with citation + provenance (`source / license / retrieved_at / data_hash`) baked into every response. | **Complementary, not core.** Aligns with Atlas's citation/provenance ethos and would demonstrate **MCP client multi-server composition**. But it is **public** data (no RBAC — cannot touch the permission-aware moat), a **third-party SaaS** (conflicts with self-hosted / no-egress / cost discipline), and a young vendor. Must stay complementary and never replace the self-built core (RBAC RAG + Atlas's own governed MCP tools). | **Post-P5 (P6)**, optional, **env-gated** (`KATZILLA_API_KEY`, off by default), used only for the public-data side of a demo (e.g. cite a real Federal Register / FDA item alongside private AML findings). | ADR-0032 (Proposed) |
+| F1 | **Katzilla** (katzilla.dev) — hosted, **MCP-native** API over 30+ US/intl government datasets (SEC, FDA, Federal Register, Congress, court opinions, clinical trials…), with citation + provenance (`source / license / retrieved_at / data_hash`) baked into every response. | **Complementary, not core.** Aligns with Atlas's citation/provenance ethos and would demonstrate **MCP client multi-server composition**. But it is **public** data (no RBAC — cannot touch the permission-aware moat), a **third-party SaaS** (conflicts with self-hosted / no-egress / cost discipline), and a young vendor. Must stay complementary and never replace the self-built core (RBAC RAG + Atlas's own governed MCP tools). | **Post-P7 (P8)**, optional, **env-gated** (`KATZILLA_API_KEY`, off by default), used only for the public-data side of a demo (e.g. cite a real Federal Register / FDA item alongside private AML findings). | ADR-0032 (Proposed) |
 
-> Adding to this table is cheap; promoting an item to an actual P6 build requires a superseding **Accepted** ADR
+> Adding to this table is cheap; promoting an item to an actual P8 build requires a superseding **Accepted** ADR
 > that confirms scope, the env-gating, and that the core still runs without it.
 
 ---

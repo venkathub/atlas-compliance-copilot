@@ -19,6 +19,7 @@ public class CostTable {
             case TIER1_SMALL -> props.tier1UnitsPer1k();
             case TIER2_MID -> props.tier2UnitsPer1k();
             case TIER3_FRONTIER -> props.frontierUnitsPer1k();
+            case TIER_FT_CITATION -> props.ftTierUnitsPer1k();
         };
     }
 

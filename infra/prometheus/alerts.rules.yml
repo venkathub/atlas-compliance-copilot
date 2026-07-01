@@ -79,3 +79,26 @@ groups:
           description: >-
             atlas_eval_gate_passed=0 — the last recorded eval run breached a quality/cost gate. See
             the Grafana "Atlas — Eval & Observability" dashboard and evals/report/summary.md.
+
+      # Model-quality DRIFT for a registered model version (P7 Task 10, D7/ADR-0081). The drift
+      # emitter (atlas_evals.drift) pushes a version-tagged score + its registered baseline; fire when
+      # a version's score has dropped >0.05 below its baseline for the window. Matched on
+      # (metric, model_version) so it never collides with the gate's unversioned metric series.
+      # Deliberately a simple threshold-vs-baseline check (one-shot demo); a production build would
+      # use PSI/KS/CUSUM over a sliding window (P7_SPEC §8/W5).
+      - alert: AtlasModelQualityDrift
+        expr: |
+          (
+            atlas_model_quality_baseline
+              - on(metric, model_version) atlas_eval_metric_score
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          area: quality
+        annotations:
+          summary: "Model {{ $labels.model_version }} drifted on {{ $labels.metric }}"
+          description: >-
+            {{ $labels.metric }} for model version {{ $labels.model_version }} dropped
+            {{ $value | printf "%.3f" }} below its registered baseline (threshold 0.05). Investigate
+            the served adapter / rollback via the MLflow @champion alias (RUNBOOK rollback section).

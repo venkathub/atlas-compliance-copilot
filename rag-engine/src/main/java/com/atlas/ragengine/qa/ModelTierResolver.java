@@ -16,6 +16,9 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code tier2-mid} → the configured escalation model;</li>
  *   <li>{@code tier3-frontier} → the frontier model, but only when explicitly enabled (else fail-safe
  *       to default).</li>
+ *   <li>{@code tier-ft-citation} → the fine-tuned adapter served on the global vLLM multi-LoRA
+ *       backend, but only when explicitly enabled + configured (else fail-safe to default). This is a
+ *       model-name swap on the single backend, not an endpoint switch (P7, ADR-0080).</li>
  * </ul>
  */
 public class ModelTierResolver {
@@ -26,6 +29,7 @@ public class ModelTierResolver {
     public static final String TIER1_SMALL = "tier1-small";
     public static final String TIER2_MID = "tier2-mid";
     public static final String TIER3_FRONTIER = "tier3-frontier";
+    public static final String TIER_FT_CITATION = "tier-ft-citation";
 
     private static final Logger log = LoggerFactory.getLogger(ModelTierResolver.class);
 
@@ -52,6 +56,13 @@ public class ModelTierResolver {
                     yield Optional.of(props.frontierModel());
                 }
                 log.warn("Frontier tier requested but disabled/unconfigured — using default model");
+                yield Optional.empty();
+            }
+            case TIER_FT_CITATION -> {
+                if (props.ftTierEnabled() && props.ftTierModel() != null) {
+                    yield Optional.of(props.ftTierModel());
+                }
+                log.warn("FT citation tier requested but disabled/unconfigured — using default model");
                 yield Optional.empty();
             }
             default -> {

@@ -28,11 +28,13 @@ up:
 	@docker exec -i atlas-postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) < db/init/01-extensions.sql
 	@echo "Applying Langfuse DB init..."
 	@docker exec -i atlas-postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) < db/init/02-langfuse-db.sql
+	@echo "Applying MLflow DB init..."
+	@docker exec -i atlas-postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) < db/init/03-mlflow-db.sql
 	@echo "Seeding observability configs into named volumes (Snap-Docker safe)..."
 	@$(MAKE) --no-print-directory seed-config
 	@echo "Starting observability stack (langfuse, prometheus, grafana)..."
 	@cat docker-compose.yml | $(DC) up -d
-	@echo "✅ Infra up (data stores + langfuse + prometheus + grafana)."
+	@echo "✅ Infra up (data stores + langfuse + prometheus + grafana + mlflow)."
 
 # Stream Prometheus + Grafana config from repo files into named volumes. Snap-Docker
 # cannot bind-mount /data, so `make` (running as the user, which CAN read /data) reads
@@ -61,6 +63,8 @@ health:
 	@docker exec -i atlas-postgres psql -tAc "SELECT 'vector ' || extversion FROM pg_extension WHERE extname='vector';" -U $(POSTGRES_USER) -d $(POSTGRES_DB)
 	@echo "== langfuse db =="
 	@docker exec -i atlas-postgres psql -tAc "SELECT datname FROM pg_database WHERE datname='langfuse';" -U $(POSTGRES_USER) -d $(POSTGRES_DB)
+	@echo "== mlflow db =="
+	@docker exec -i atlas-postgres psql -tAc "SELECT datname FROM pg_database WHERE datname='mlflow';" -U $(POSTGRES_USER) -d $(POSTGRES_DB)
 	@echo "== redis =="
 	@docker exec atlas-redis redis-cli ping
 	@$(MAKE) --no-print-directory obs-health

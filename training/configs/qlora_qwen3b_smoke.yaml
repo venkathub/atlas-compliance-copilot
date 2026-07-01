@@ -1,0 +1,41 @@
+# ── Atlas QLoRA SMOKE config (pipeline shakedown) ─────────────────────────────────────────────
+# Fast, cheap variant for end-to-end wiring verification (data -> train -> register -> infer ->
+# score) on the 3B base. ADR-0070 retains Qwen2.5-3B as the smoke base; NOT the production artifact.
+# Same schema/contract as qlora_qwen7b.yaml so config.load() exercises the identical code path.
+
+base_model: Qwen/Qwen2.5-3B-Instruct          # ADR-0070: 3B smoke base (fast shakedown, not shipped)
+
+quant:
+  load_in_4bit: true
+  bnb_4bit_quant_type: nf4
+  bnb_4bit_compute_dtype: bfloat16
+  double_quant: true
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+train:
+  epochs: 1                                    # smoke: a few steps to prove wiring, not to converge
+  lr: 2.0e-4
+  batch_size: 2
+  grad_accum: 2
+  max_seq_len: 1024
+  seed: 42
+
+early_stopping:
+  metric: eval_loss
+  patience: 1
+  min_delta: 0.005
+
+dataset:
+  manifest: data/manifest.json
+  train: data/train.jsonl
+  val: data/val.jsonl
+
+mlflow:
+  experiment: atlas-citation-ft
+  run_name: qlora-qwen3b-smoke
+  register_as: atlas-citation-adapter-smoke

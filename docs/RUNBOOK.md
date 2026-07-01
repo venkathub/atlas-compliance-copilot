@@ -809,3 +809,151 @@ backstop if you forget.
 > Reminder: the eval/cost CI gate (P6) also blocks a merge if measured cost-units regress beyond the
 > recorded baseline — so an accidental frontier-by-default change cannot land silently.
 
+
+---
+
+## 12. Fine-tuning — P6 (episodic train + benchmark)
+
+The training half of the model lifecycle: produce a versioned, QLoRA-fine-tuned adapter for Atlas's
+citation-bound-answer / grounded-refusal format, tracked in MLflow, pushed durably to the HF Hub,
+and benchmarked base-vs-FT. **Everything except the train + candidate-generation step is GPU-free.**
+The GPU is one bounded episodic window; teardown is guaranteed by `infra/gpu` (ADR-0066).
+
+### 12.1 Secrets setup (one-time)
+Put real values in `.env` ONLY (gitignored; never `.env.example`, never code):
+```bash
+# HF Hub = durable adapter store (ADR-0072). Token needs WRITE scope on the adapter repo.
+ATLAS_HF_ADAPTER_REPO=<your-hf-username>/atlas-citation-adapter
+HF_PRIVATE=true
+HF_TOKEN=hf_xxx                      # secret
+MLFLOW_TRACKING_URI=http://localhost:5000
+# Per-run cost capture (no default baked in — cost discipline):
+ATLAS_GPU_COST_PER_HOUR=<L4 ₹/hr>    # e.g. your JarvisLabs IN2 L4 rate
+ATLAS_GPU_COST_CURRENCY=INR
+# (optional) bounded frontier teacher for synthetic answer-pair expansion — OFFLINE, no GPU:
+# ATLAS_SYNTH_GENERATOR_MODEL=gpt-4o ; ATLAS_SYNTH_BASE_URL=... ; ATLAS_SYNTH_API_KEY=sk-...  # secret
+```
+Verify the HF token without spending:
+```bash
+cd training && uv run --group train python -c \
+  "import os; from huggingface_hub import HfApi; print('HF user:', HfApi(token=os.environ['HF_TOKEN']).whoami()['name'])"
+```
+
+### 12.2 MLflow registry (GPU-free — the demo path)
+```bash
+docker compose -f infra/docker-compose.yml up -d mlflow   # Postgres-backed; or: make -C infra up
+open "http://localhost:${MLFLOW_PORT:-5000}"              # browse experiments + the model registry
+```
+
+### 12.3 The episodic run (GPU)
+
+**Lifecycle model (read first).** `scripts/run_episodic.py` runs **on the GPU box** (it loads the
+model with torch/CUDA locally), so it does **not** create or destroy the instance itself — the
+instance lifecycle is driven from the laptop by `infra/gpu` (ADR-0066). The pieces:
+
+| Command (from laptop, `infra/gpu`) | Effect |
+|---|---|
+| `atlas_gpu provision --serve ollama` | **create** a fresh L4 + install env + write `OLLAMA_BASE_URL` (the RAGAS judge) + arm watchdog |
+| `atlas_gpu up` | **resume** an existing paused instance (`GPU_INSTANCE_ID`) + arm watchdog |
+| `atlas_gpu down` / `teardown` | **pause** (keeps disk; small storage cost) |
+| `atlas_gpu teardown --destroy` | **destroy** (zero residual cost) |
+| watchdog (`GPU_IDLE_TIMEOUT_MIN`) | safety net — auto-**pauses** (never destroys) if you forget |
+
+> The watchdog guarantees you can't bleed **compute** cost, but it only *pauses*. To drop the
+> **storage** cost you must `teardown --destroy` yourself. Because the adapter is pushed to the HF
+> Hub **before** teardown, **destroy is safe for this one-off** (nothing is lost on the box).
+
+```bash
+# 1) [laptop] CREATE a fresh L4 (writes OLLAMA_BASE_URL into .env for the RAGAS judge; watchdog armed).
+#    (Resuming an existing box instead? use `atlas_gpu up` and set GPU_INSTANCE_ID.)
+uv run --directory infra/gpu python -m atlas_gpu provision --serve ollama --write-env "$PWD/.env"
+
+# 2) [GPU box] ssh in, then install the heavy stack + run train → register → benchmark in one window:
+cd training
+uv sync --group train
+uv run --group train python scripts/run_episodic.py --config configs/qlora_qwen7b.yaml
+#   - QLoRA SFT from the pinned config (4-bit NF4, eval_loss early stopping)
+#   - pushes the adapter to the HF Hub + registers the MLflow version (source = hf://repo@rev) BEFORE teardown
+#   - generates base + FT outputs over golden + the labeled refusal subset; scores faithfulness/format/refusal
+#   - writes training/results/{base,ft,comparison}.json + COMPARISON.md + cost.json
+
+# 3) [laptop] DESTROY (adapter already safe on HF; zero residual cost). Cost is in results/cost.json.
+uv run --directory infra/gpu python -m atlas_gpu teardown --destroy
+#    Prefer to keep the installed env for fast iteration? pause instead:  make -C infra gpu-down
+```
+Smoke the wiring first with the 3B config: `--config configs/qlora_qwen3b_smoke.yaml`.
+
+### 12.4 Commit the evidence (GPU-free)
+```bash
+git add training/results/ training/data/manifest.json training/data/synthetic.jsonl
+git commit -m "chore(training): commit P6 episodic base-vs-FT evidence + adapter registry pointer"
+```
+The committed `training/results/COMPARISON.md` is the headline; the registered MLflow version (source
+= HF repo+revision) is the durable, GPU-decoupled artifact. P7 consumes these GPU-free.
+
+## 13. Model promotion, rollback & drift — P7
+
+P7 turns the P6 evidence into a **governed promotion path**: a GPU-free CI gate, a router FT tier, an
+MLflow `@champion` lifecycle, and a one-shot drift alert. Everything the CI gate touches is GPU-free;
+the GPU is episodic (§13.4).
+
+### 13.1 Run the promotion gate on committed evidence (GPU-free — the 30-second path)
+```bash
+# PROMOTE the real cost-extended adapter (exit 0):
+uv run --directory evals python -m atlas_evals.promotion_gate \
+    --comparison ../training/results/comparison.json
+# Proof-it-bites: the sub-floor fixture is BLOCKED (exit non-zero):
+uv run --directory evals python -m atlas_evals.promotion_gate \
+    --comparison data/promotion/blocked/comparison.json || echo "BLOCKED as expected"
+```
+CI runs both over `evals/data/promotion/{pass,blocked}/` in the required check
+**"Model promotion gate (base-vs-FT, floors + cost)"** (`ci.yml`). Floors: `evals/data/promotion-floors.json`.
+
+### 13.2 MLflow promote / rollback (GPU-free)
+```bash
+docker compose -f infra/docker-compose.yml up -d mlflow      # registry (30-sec demo browses it)
+MLFLOW_TRACKING_URI=http://localhost:5000 \
+  uv run --directory training --group train python scripts/register_adapter.py   # register the HF adapter
+MLFLOW_TRACKING_URI=http://localhost:5000 \
+  uv run --directory training --group train python scripts/promote.py --version 1 # @champion -> v1
+# ROLLBACK: re-point @champion to the prior version + swap @previous_champion (ADR-0079):
+MLFLOW_TRACKING_URI=http://localhost:5000 \
+  uv run --directory training --group train python scripts/rollback.py
+```
+The **router** reads the served LoRA name indirectly via `ATLAS_ROUTER_FT_TIER_MODEL` (never a version
+number), so promote/rollback take effect without a redeploy. Legacy-stage equivalent (deprecated in
+MLflow ≥2.9): promote == transition to "Production" + archive the prior.
+
+### 13.3 One-shot drift demo (GPU-free)
+```bash
+# stack up (prometheus + pushgateway + alertmanager), then seed a version-tagged degraded score:
+PUSHGATEWAY_URL=http://localhost:9091 \
+  uv run --directory evals python -m atlas_evals.drift \
+    --model-version 3 --metric faithfulness --score 0.60 --baseline 0.79
+# AtlasModelQualityDrift fires after its for:2m window; capture the fired alert + lead-time:
+ATLAS_ALERTMANAGER_URL=http://localhost:9093 \
+  uv run --directory evals python scripts/capture_drift_alert.py --seeded-at "$(date +%s)"
+# -> evals/report/drift-alert.json (committed artifact). Rule unit-tested: promtool test rules
+#    infra/prometheus/alerts.rules.test.yml  (→ SUCCESS).
+```
+
+### 13.4 The episodic P7 window (GPU) + lessons learned live
+```bash
+# ONE bounded L4 window: reuse the committed adapter, regenerate base-vs-FT quality + measure
+# cost/latency-per-request on the SAME GPU + report-only CIs/significance. Guaranteed teardown.
+uv run --directory infra/gpu --with huggingface-hub --env-file "$PWD/.env" \
+  python ../../training/scripts/p7_episodic_run.py \
+    --config configs/qlora_qwen7b.yaml --bake-in --faithfulness -1
+```
+> **Lessons learned (2026-07-01 live run):**
+> 1. **Push first.** The box clones `origin`; run the episodic driver only **after** pushing the
+>    branch, or it runs stale code (the first run produced no `cost`/stats — ₹35 wasted).
+> 2. **`--bake-in`** reproduces the committed eval regime (base can't cite → format 0.0; FT → 0.955).
+> 3. **Script cap.** JarvisLabs caps saved startup scripts; the wrapper upserts by name, but a *new*
+>    name at the cap fails with `APIError: Maximum scripts reached` — prune with `scripts.remove`.
+> 4. **Teardown is manual here.** Background pollers don't survive; always confirm `instances.list()`
+>    is empty after, or `atlas_gpu teardown --destroy`.
+
+Result (committed): faithfulness 0.776→0.674 (Δ −0.102, above the 0.656 floor); format 0.000→0.955
+(McNemar-significant); **cost/req −79.2%** (ft 0.037 vs base 0.177 units; ft ~5× faster — concise
+cited answers use fewer tokens). The promotion gate PROMOTES it (hybrid + cost ≤ 10%).

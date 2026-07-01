@@ -14,16 +14,20 @@ atlas_evals/
     corpus.py            # resolves doc-ids/fixtures against the REAL corpus (no P1↔P2 drift)
     golden.py            # GoldenTuple + load_golden() + schema validation
     adversarial.py       # AdversarialCase + load_adversarial() (references P1 fixtures)
+    refusal.py           # RefusalCase + load_refusal() — labeled refusal subset (P6, reused by P7)
   metrics/
     samples.py           # (golden tuple + /v1/query response) -> EvalSample (RAGAS-free)
     citation.py          # deterministic citation-resolution signal (report-only)
     ragas_runner.py      # RAGAS-free orchestration: build samples -> Scorer -> MetricReport
     ragas_scorer.py      # concrete RAGAS scorer (lazy import) + per-sample judge cassettes
     adversarial_scorer.py# binary red-team scorer (LLM07): leaked-string / above-clearance / forbidden-doc
+    format_validity.py   # deterministic FT format validator: cited-answer / grounded-refusal (P6, reused by P7)
+    refusal.py           # deterministic refusal-correctness scorer over a labeled subset (P6, reused by P7)
   ab.py                  # A/B two cassette sets (eval-gated reranker/sparse decision, ADR-0027)
 data/
   golden.jsonl           # committed golden set (versioned)
   adversarial.jsonl      # committed red-team set (references P1 fixtures by ref)
+  refusal.jsonl          # committed labeled refusal subset (out-of-context/unanswerable/out-of-clearance; P6)
   cassettes/{rag,judge}/ # committed cassettes that drive the offline gate (recorded in Task 8)
 tests/                   # pytest: loaders, cassettes, client, samples, citation, runner, scorer-replay
 ```
@@ -81,6 +85,24 @@ Reads `data/baseline.json` + the committed `data/cassettes/`, runs RAGAS-replay 
 scorer, writes `report/metrics.json` + `report/summary.md`. **No GPU, no RAGAS install needed.**
 First calibrated baseline (qwen2.5:3b RAG + llama3.1:8b judge, 22 tuples): faithfulness 0.80 /
 answer_relevancy 0.70 / context_recall 0.78 gating; adversarial 1.00 (0 violations).
+
+## Model-promotion gate + drift (P7, ADR-0075…0082)
+The **model-version** analog of the merge gate — GPU-free, consumes the committed base-vs-FT
+`training/results/comparison.json` and decides promote/block against `data/promotion-floors.json`
+(hybrid faithfulness semantics: floor 0.656 **AND** (within-band **OR** format jumped) **AND** refusal
+Δ≥0 **AND** cost ≤10%). Wired into CI as **"Model promotion gate (base-vs-FT, floors + cost)"**.
+```bash
+# promote the real cost-extended adapter (exit 0):
+uv run --directory evals python -m atlas_evals.promotion_gate \
+    --comparison ../training/results/comparison.json
+# proof-it-bites: a hand-authored sub-floor adapter is BLOCKED (exit non-zero):
+uv run --directory evals python -m atlas_evals.promotion_gate \
+    --comparison data/promotion/blocked/comparison.json || echo BLOCKED
+```
+Committed L4 evidence: faithfulness 0.776→0.674 (Δ −0.102, above floor); format 0.000→0.955
+(McNemar-significant); **cost/req −79.2%** (ft ~5× faster). One-shot drift demo (`atlas_evals.drift`
+→ `AtlasModelQualityDrift` → `scripts/capture_drift_alert.py`) is in RUNBOOK §13.3; rule unit-tested
+via `promtool test rules infra/prometheus/alerts.rules.test.yml`.
 
 ## Refresh the UI eval/cost snapshot (P5 admin artifact)
 ```bash

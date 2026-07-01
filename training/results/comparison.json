@@ -1,0 +1,66 @@
+{
+  "metrics": {
+    "faithfulness": {
+      "base": 0.7763,
+      "ft": 0.6742,
+      "delta": -0.1021
+    },
+    "format_validity": {
+      "base": 0.0,
+      "ft": 0.9545,
+      "delta": 0.9545,
+      "ci95_delta": [
+        0.8636,
+        1.0
+      ],
+      "p_value": 0.0,
+      "significant": true,
+      "test": "mcnemar"
+    },
+    "refusal_correctness": {
+      "base": 0.375,
+      "ft": 0.375,
+      "delta": 0.0,
+      "ci95_delta": [
+        0.0,
+        0.0
+      ],
+      "p_value": 1.0,
+      "significant": false,
+      "test": "mcnemar"
+    }
+  },
+  "model_ids": {
+    "base": "Qwen/Qwen2.5-7B-Instruct",
+    "ft": "hf://venkat2393/atlas-citation-adapter"
+  },
+  "dataset_size": 30,
+  "training_cost": {
+    "rate_per_hour": 42.0,
+    "currency": "INR",
+    "wall_seconds": 3845.681,
+    "cost": 44.8663,
+    "teardown_recorded": true,
+    "started_at": "2026-07-01T10:19:58.765504+00:00",
+    "ended_at": "2026-07-01T11:24:04.446792+00:00"
+  },
+  "git_sha": "a696108",
+  "recorded_at": "2026-07-01T11:24:04.511450+00:00",
+  "meta": {},
+  "cost": {
+    "base": {
+      "cost_units_per_req": 0.177224,
+      "latency_ms_p50": 15190.6,
+      "latency_ms_p95": 15190.6
+    },
+    "ft": {
+      "cost_units_per_req": 0.036938,
+      "latency_ms_p50": 3166.1,
+      "latency_ms_p95": 3166.1
+    },
+    "delta_pct": -79.16,
+    "same_gpu": "L4"
+  },
+  "ci_method": "paired_bootstrap_10k",
+  "sig_test": "wilcoxon+mcnemar"
+}
