@@ -137,7 +137,8 @@ public class GatewayQueryController {
         }
 
         // Miss → route + proxy to rag-engine (wrapped in the circuit breaker + read timeout).
-        ModelRouter.RoutingDecision decision = router.route(safeRequest.query(), http.getHeader(ModelRouter.QUALITY_HEADER));
+        ModelRouter.RoutingDecision decision = router.route(safeRequest.query(),
+                http.getHeader(ModelRouter.QUALITY_HEADER), http.getHeader(ModelRouter.FT_HINT_HEADER));
         String tier = decision.tier().label();
         String assertion = signer.sign(user, caller.clearance());
         log.info("Cache miss → proxying for '{}' at '{}' via tier '{}' (escalated={})",

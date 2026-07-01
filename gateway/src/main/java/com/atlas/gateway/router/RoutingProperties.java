@@ -18,6 +18,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param cascadeEnabled       model-cascade flag (reserved; not yet wired — see note)
  * @param frontierEnabled      whether the frontier tier may be served ({@code ATLAS_ROUTER_FRONTIER_ENABLED})
  * @param frontierModel        reserved frontier model name ({@code ATLAS_ROUTER_FRONTIER_MODEL})
+ * @param ftTierEnabled        whether the fine-tuned citation tier is selectable (P7, ADR-0080;
+ *                             {@code ATLAS_ROUTER_FT_TIER_ENABLED}) — capability flag, off in prod
+ * @param ftTierModel          served vLLM multi-LoRA adapter name for the FT tier
+ *                             ({@code ATLAS_ROUTER_FT_TIER_MODEL})
  */
 @ConfigurationProperties(prefix = "atlas.router")
 public record RoutingProperties(
@@ -27,7 +31,9 @@ public record RoutingProperties(
         int escalateQueryTokens,
         boolean cascadeEnabled,
         boolean frontierEnabled,
-        String frontierModel) {
+        String frontierModel,
+        boolean ftTierEnabled,
+        String ftTierModel) {
 
     public RoutingProperties {
         defaultTier = blankTo(defaultTier, ModelTier.TIER1_SMALL.label());
@@ -35,6 +41,7 @@ public record RoutingProperties(
         tier2Model = blankTo(tier2Model, "qwen2.5:7b-instruct");
         escalateQueryTokens = escalateQueryTokens > 0 ? escalateQueryTokens : 1200;
         frontierModel = (frontierModel == null || frontierModel.isBlank()) ? null : frontierModel;
+        ftTierModel = (ftTierModel == null || ftTierModel.isBlank()) ? null : ftTierModel;
     }
 
     private static String blankTo(String v, String fallback) {

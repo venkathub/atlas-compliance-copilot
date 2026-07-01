@@ -7,7 +7,10 @@ public enum ModelTier {
 
     TIER1_SMALL("tier1-small"),
     TIER2_MID("tier2-mid"),
-    TIER3_FRONTIER("tier3-frontier");
+    TIER3_FRONTIER("tier3-frontier"),
+    /** Fine-tuned citation/refusal adapter served via vLLM multi-LoRA (P7, ADR-0080). Flag-gated,
+     * never auto-selected — reachable only via an explicit FT hint when {@code ft-tier-enabled}. */
+    TIER_FT_CITATION("tier-ft-citation");
 
     private final String label;
 
