@@ -9,6 +9,14 @@ When complete, the gateway provides: simulated-IdP auth + verified-clearance tru
 egress redaction + output sanitization (ADR-0037), rate limiting + budget caps + circuit breaker
 (ADR-0038/0039, LLM10), and a cost-units cost model (ADR-0040) surfaced on a Grafana dashboard.
 
+**Fine-tuned citation tier (P7, ADR-0080).** The router can select a fourth tier,
+`TIER_FT_CITATION` (served by the single multi-LoRA vLLM backend as a model-name swap) — but only
+when `atlas.router.ft-tier-enabled=true` **and** the request carries the explicit
+`X-Atlas-FT-Citation` hint. It is **never auto-selected**; the prod default stays `tier1-small` and
+the frontier tier stays disabled. The selected tier flows to rag-engine via `X-Atlas-Model-Tier`,
+which resolves it to the served LoRA name (`ATLAS_ROUTER_FT_TIER_MODEL`). Proven by JUnit unit + IT
+(both directions); FT cost-units default to tier2's rate (same 7B family).
+
 ## Status — P3 task 10 (eval-through-Gateway + cost-delta)
 
 Implemented so far:

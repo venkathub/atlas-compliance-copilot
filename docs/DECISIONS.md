@@ -300,6 +300,36 @@
   comparison schema (unit-tested on fixtures with known CIs). A significance-aware gate (c) remains an easy
   fast-follow if desired.
 
+### P7 implementation notes (2026-07-01) — deviations & concretizations logged during build
+
+These are the implementation-time specifics for ADR-0075…0082, recorded honestly as the phase was
+built (per CLAUDE.md "decisions are logged"):
+
+- **ADR-0076 (hybrid faithfulness):** "format jumped" is quantified as a documented module constant
+  `_FORMAT_JUMP_MIN_DELTA = 0.25` in `promotion_gate.py` (the real jump is +0.955, far above it), keeping
+  `promotion-floors.json` matching the §2.3 schema (no new config field). Faithfulness floor is absolute in
+  every `mode`; the regression branch is mode-switched (`hybrid`/`no_regression`/`absolute`).
+- **ADR-0077 (cost gate):** when a `comparison.json` carries **no** `cost` block (pre-episodic), the gate
+  records the cost decision as **"not measured" (passing)** rather than blocking — GPU-free CI stays green
+  before the episodic capture. p95 latency is report-only. The committed L4 run measured **−79.2%** cost/req.
+- **ADR-0078 (served regen):** the live 2026-07-01 run used the **PEFT generation path** (`run_episodic`,
+  the documented **D4(a) fallback**) + Task-9 vLLM multi-LoRA serving proven separately; latency is recorded
+  **batch-mean** (p50==p95) — real per-request p50/p95 spread is a fast-follow. Lesson: the box clones
+  `origin`, so **push before launching** (first run ran stale code, no cost/stats).
+- **ADR-0079 (aliases):** rollback target is a **`previous_champion`** alias (not `@challenger`, which means
+  "candidate under evaluation"); promote/rollback are idempotent + reversible (unit-tested + container IT).
+- **ADR-0080 (router FT tier):** FT hint header = **`X-Atlas-FT-Citation`** (distinct from the
+  `X-Atlas-Model-Tier` response header and `X-Atlas-Quality`); FT cost-units default to **tier2's rate** (same
+  7B family); rag-engine **double-gates** FT resolution (its own `ft-tier-enabled`) mirroring frontier.
+- **ADR-0081 (drift):** rule matches on `(metric, model_version)` so it never collides with the gate's
+  unversioned `atlas_eval_metric_score`; validated with **`promtool test rules` → SUCCESS** (promtool 3.5.4).
+  The live capture (committed `drift-alert.json` + lead-time) is a reproduce-on-demand runbook step (§13.3).
+- **ADR-0082 (stats):** implemented **pure-stdlib** (no numpy/scipy) to keep the `training` CI job
+  dependency-light: Wilcoxon via **normal approximation** (accurate at N≈30) + McNemar **exact binomial**;
+  top-level label `sig_test="wilcoxon+mcnemar"` with per-metric `test` recorded. Faithfulness (continuous)
+  CI/significance is emitted only when per-sample RAGAS scores are captured; the committed run reports
+  McNemar significance on the binary format/refusal metrics (format Δ +0.955 **significant**).
+
 ### ADR-0074 — FT metrics: deterministic, GPU-free format-validity + refusal-correctness validators
 - **Date:** 2026-06-30 · **Status:** Accepted · **Phase/tag:** Training · **Spec:** `docs/phases/P6_SPEC.md`
   §3 (D6), §4.3 · **Anticipated files:** `evals/atlas_evals/metrics/format_validity.py`,

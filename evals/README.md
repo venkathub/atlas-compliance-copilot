@@ -86,6 +86,24 @@ scorer, writes `report/metrics.json` + `report/summary.md`. **No GPU, no RAGAS i
 First calibrated baseline (qwen2.5:3b RAG + llama3.1:8b judge, 22 tuples): faithfulness 0.80 /
 answer_relevancy 0.70 / context_recall 0.78 gating; adversarial 1.00 (0 violations).
 
+## Model-promotion gate + drift (P7, ADR-0075…0082)
+The **model-version** analog of the merge gate — GPU-free, consumes the committed base-vs-FT
+`training/results/comparison.json` and decides promote/block against `data/promotion-floors.json`
+(hybrid faithfulness semantics: floor 0.656 **AND** (within-band **OR** format jumped) **AND** refusal
+Δ≥0 **AND** cost ≤10%). Wired into CI as **"Model promotion gate (base-vs-FT, floors + cost)"**.
+```bash
+# promote the real cost-extended adapter (exit 0):
+uv run --directory evals python -m atlas_evals.promotion_gate \
+    --comparison ../training/results/comparison.json
+# proof-it-bites: a hand-authored sub-floor adapter is BLOCKED (exit non-zero):
+uv run --directory evals python -m atlas_evals.promotion_gate \
+    --comparison data/promotion/blocked/comparison.json || echo BLOCKED
+```
+Committed L4 evidence: faithfulness 0.776→0.674 (Δ −0.102, above floor); format 0.000→0.955
+(McNemar-significant); **cost/req −79.2%** (ft ~5× faster). One-shot drift demo (`atlas_evals.drift`
+→ `AtlasModelQualityDrift` → `scripts/capture_drift_alert.py`) is in RUNBOOK §13.3; rule unit-tested
+via `promtool test rules infra/prometheus/alerts.rules.test.yml`.
+
 ## Refresh the UI eval/cost snapshot (P5 admin artifact)
 ```bash
 python evals/scripts/refresh_eval_summary.py    # writes ui/public/{eval-summary,cost-summary}.json

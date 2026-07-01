@@ -6,6 +6,48 @@ Repo: <https://github.com/venkathub/atlas-compliance-copilot>
 
 ---
 
+## Eval-gated model promotion + base-vs-FT cost benchmark + drift (P7 · 2026-07-01)
+
+**One-liner:** Built the **governance layer** over the P6 fine-tune — a **GPU-free CI gate that promotes a
+model version only if it clears the same eval+cost bar P2/P3 enforce on code**, a router that *can* select a
+fine-tuned tier (capability, flag-gated), an MLflow `@champion` promote/rollback lifecycle, and a one-shot
+drift alert — delivered as a **reproducible committed evidence bundle, not an always-on endpoint**.
+
+**What shipped:** a pure `promotion_gate.py` (hybrid faithfulness semantics: absolute floor **AND**
+(within-band **OR** significant format jump) **AND** refusal Δ≥0 **AND** cost ≤10%) + committed floors, wired
+into CI as a required check that runs over **two committed fixtures** to prove it *bites*; a cost/latency +
+**report-only paired-bootstrap 95% CIs + significance** extension to the base-vs-FT report (pure-stdlib
+Wilcoxon/McNemar — no numpy/scipy); MLflow **alias**-based `promote`/`rollback` (`@champion`/
+`@previous_champion`, idempotent + reversible); a flag-gated **`TIER_FT_CITATION`** router tier (gateway +
+rag-engine) served by **vLLM multi-LoRA**; a version-tagged **`AtlasModelQualityDrift`** Prometheus rule
+(validated `promtool test rules` → SUCCESS) + seeded emitter + alert-capture; and an episodic-run
+orchestrator with **guaranteed teardown**.
+
+**Quantified (committed L4 evidence, same-GPU base vs FT):**
+
+| Dimension | base | ft | Δ | signal |
+|---|---|---|---|---|
+| **cost / request** | 0.177 units | **0.037 units** | **−79.2%** | FT ~**5× faster** (3.2s vs 15.2s) — concise cited answers use fewer tokens |
+| format_validity | 0.000 | **0.955** | **+0.955** | **McNemar-significant** (CI [0.86, 1.0], p≈0) |
+| faithfulness | 0.776 | 0.674 | −0.102 | above the **0.656** floor — bounded, documented trade-off |
+| refusal_correctness | 0.375 | 0.375 | 0.000 | held (not significant) |
+
+- **Proof it bites:** the gate **promotes** the real cost-extended adapter (exit 0) and **blocks** a
+  hand-authored sub-floor adapter (exit non-zero) — a committed CI matrix, **1 promotion blocked**.
+- **Drift:** `AtlasModelQualityDrift` fires when a version drops >0.05 below its registered baseline within a
+  **2-minute** `for:` window (measurable lead-time), matched on `(metric, model_version)`.
+- **Cost discipline honored live:** the whole episodic window (2 runs incl. a debugging re-run) cost
+  **≈ ₹65 (~$0.78)** on an L4, self-destructed to zero residual cost.
+
+**Why it's a senior-level story:** the same eval-gate philosophy that guards *code* now guards *model
+versions* — and the gate encodes an **honest, bounded** quality trade-off (accept −0.10 faithfulness *only*
+when it buys a significant format win and stays above floor and is cheaper), rather than pretending the
+fine-tune is strictly better. The **−79% cost** result is the headline: the fine-tune is not just more
+correct-in-format but materially cheaper to serve. **8 ADRs (0075–0082)**; ~**90 new tests** across evals /
+training / gateway / rag-engine / infra, all GPU-free in CI.
+
+---
+
 ## Production model serving — vLLM profile + on-GPU benchmark (2026-06-29)
 
 **One-liner:** Added vLLM as a swappable, production-grade serving profile alongside Ollama and **proved**

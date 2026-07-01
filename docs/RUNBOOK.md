@@ -890,3 +890,70 @@ git commit -m "chore(training): commit P6 episodic base-vs-FT evidence + adapter
 ```
 The committed `training/results/COMPARISON.md` is the headline; the registered MLflow version (source
 = HF repo+revision) is the durable, GPU-decoupled artifact. P7 consumes these GPU-free.
+
+## 13. Model promotion, rollback & drift — P7
+
+P7 turns the P6 evidence into a **governed promotion path**: a GPU-free CI gate, a router FT tier, an
+MLflow `@champion` lifecycle, and a one-shot drift alert. Everything the CI gate touches is GPU-free;
+the GPU is episodic (§13.4).
+
+### 13.1 Run the promotion gate on committed evidence (GPU-free — the 30-second path)
+```bash
+# PROMOTE the real cost-extended adapter (exit 0):
+uv run --directory evals python -m atlas_evals.promotion_gate \
+    --comparison ../training/results/comparison.json
+# Proof-it-bites: the sub-floor fixture is BLOCKED (exit non-zero):
+uv run --directory evals python -m atlas_evals.promotion_gate \
+    --comparison data/promotion/blocked/comparison.json || echo "BLOCKED as expected"
+```
+CI runs both over `evals/data/promotion/{pass,blocked}/` in the required check
+**"Model promotion gate (base-vs-FT, floors + cost)"** (`ci.yml`). Floors: `evals/data/promotion-floors.json`.
+
+### 13.2 MLflow promote / rollback (GPU-free)
+```bash
+docker compose -f infra/docker-compose.yml up -d mlflow      # registry (30-sec demo browses it)
+MLFLOW_TRACKING_URI=http://localhost:5000 \
+  uv run --directory training --group train python scripts/register_adapter.py   # register the HF adapter
+MLFLOW_TRACKING_URI=http://localhost:5000 \
+  uv run --directory training --group train python scripts/promote.py --version 1 # @champion -> v1
+# ROLLBACK: re-point @champion to the prior version + swap @previous_champion (ADR-0079):
+MLFLOW_TRACKING_URI=http://localhost:5000 \
+  uv run --directory training --group train python scripts/rollback.py
+```
+The **router** reads the served LoRA name indirectly via `ATLAS_ROUTER_FT_TIER_MODEL` (never a version
+number), so promote/rollback take effect without a redeploy. Legacy-stage equivalent (deprecated in
+MLflow ≥2.9): promote == transition to "Production" + archive the prior.
+
+### 13.3 One-shot drift demo (GPU-free)
+```bash
+# stack up (prometheus + pushgateway + alertmanager), then seed a version-tagged degraded score:
+PUSHGATEWAY_URL=http://localhost:9091 \
+  uv run --directory evals python -m atlas_evals.drift \
+    --model-version 3 --metric faithfulness --score 0.60 --baseline 0.79
+# AtlasModelQualityDrift fires after its for:2m window; capture the fired alert + lead-time:
+ATLAS_ALERTMANAGER_URL=http://localhost:9093 \
+  uv run --directory evals python scripts/capture_drift_alert.py --seeded-at "$(date +%s)"
+# -> evals/report/drift-alert.json (committed artifact). Rule unit-tested: promtool test rules
+#    infra/prometheus/alerts.rules.test.yml  (→ SUCCESS).
+```
+
+### 13.4 The episodic P7 window (GPU) + lessons learned live
+```bash
+# ONE bounded L4 window: reuse the committed adapter, regenerate base-vs-FT quality + measure
+# cost/latency-per-request on the SAME GPU + report-only CIs/significance. Guaranteed teardown.
+uv run --directory infra/gpu --with huggingface-hub --env-file "$PWD/.env" \
+  python ../../training/scripts/p7_episodic_run.py \
+    --config configs/qlora_qwen7b.yaml --bake-in --faithfulness -1
+```
+> **Lessons learned (2026-07-01 live run):**
+> 1. **Push first.** The box clones `origin`; run the episodic driver only **after** pushing the
+>    branch, or it runs stale code (the first run produced no `cost`/stats — ₹35 wasted).
+> 2. **`--bake-in`** reproduces the committed eval regime (base can't cite → format 0.0; FT → 0.955).
+> 3. **Script cap.** JarvisLabs caps saved startup scripts; the wrapper upserts by name, but a *new*
+>    name at the cap fails with `APIError: Maximum scripts reached` — prune with `scripts.remove`.
+> 4. **Teardown is manual here.** Background pollers don't survive; always confirm `instances.list()`
+>    is empty after, or `atlas_gpu teardown --destroy`.
+
+Result (committed): faithfulness 0.776→0.674 (Δ −0.102, above the 0.656 floor); format 0.000→0.955
+(McNemar-significant); **cost/req −79.2%** (ft 0.037 vs base 0.177 units; ft ~5× faster — concise
+cited answers use fewer tokens). The promotion gate PROMOTES it (hybrid + cost ≤ 10%).
