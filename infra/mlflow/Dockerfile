@@ -15,5 +15,13 @@ RUN pip install --no-cache-dir "mlflow>=2.16,<3" "psycopg2-binary>=2.9"
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+# Run as a non-root user (Trivy DS-0002, container-escape hardening — matches the Java service
+# images which run as distroless UID 65532). Pre-create + own the artifacts dir so the named volume
+# (atlas-mlflow-artifacts) inherits writable ownership on first creation. The server binds :5000
+# (>1024), so no privileged port is needed.
+RUN useradd --system --create-home --uid 10001 mlflow \
+    && mkdir -p /mlflow/artifacts && chown -R mlflow:mlflow /mlflow
+USER 10001
+
 EXPOSE 5000
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
