@@ -57,7 +57,7 @@ class HubClient(Protocol):
 
 @runtime_checkable
 class RegistryClient(Protocol):
-    """Minimal MLflow surface the tracker needs (params/metrics + version registration)."""
+    """Minimal MLflow surface the tracker needs (params/metrics + versions + aliases)."""
 
     def set_experiment(self, name: str) -> None: ...
     def start_run(self, run_name: str) -> str: ...  # returns run_id
@@ -66,6 +66,9 @@ class RegistryClient(Protocol):
     def end_run(self) -> None: ...
     # returns the created version string
     def create_model_version(self, name: str, source: str, run_id: str) -> str: ...
+    # registry aliases (P7 promote/rollback, ADR-0079)
+    def set_alias(self, name: str, alias: str, version: str) -> None: ...
+    def get_version_by_alias(self, name: str, alias: str) -> str | None: ...
 
 
 def run_params(config: RunConfig, prompt_template_sha: str | None = None) -> dict:
@@ -148,6 +151,62 @@ class Tracker:
         return ModelVersion(name=register_as, version=version, source=source, run_id=run_id)
 
 
+# ── model-lifecycle: alias-based promote/rollback (P7 Task 6, ADR-0079) ─────────────────────────
+#
+# MLflow registry stages (Staging/Production/Archived) are deprecated (≥2.9, hard in 3.9/2026) in
+# favour of **aliases + tags**. The production pointer is the ``@champion`` alias; the router
+# resolves ``@champion`` (via ftTierModel), never a version number, so a rollback is instant. The
+# last good champion is stashed under ``@previous_champion`` so ``rollback`` can re-point without
+# external state. (A version freshly registered as a candidate would carry ``@challenger`` — the
+# pre-promotion tag — which promote turns into the champion. Legacy-stage equivalent: promote ==
+# transition to "Production" + archive the prior; narrated in docs/DECISIONS.md ADR-0079.)
+
+CHAMPION = "champion"
+PREVIOUS = "previous_champion"
+
+
+@dataclass(frozen=True)
+class PromotionOutcome:
+    name: str
+    champion: str            # the version @champion now points at
+    previous: str | None     # the version @previous_champion now points at (rollback target)
+    action: str              # "promote" | "rollback" | "noop"
+
+
+def promote(registry: RegistryClient, name: str, version: str) -> PromotionOutcome:
+    """Point ``@champion`` at ``version``; stash the outgoing champion under ``@previous_champion``.
+
+    Idempotent: promoting the version that is already champion is a no-op that does NOT clobber the
+    existing rollback target. GPU-free (registry metadata only).
+    """
+    version = str(version)
+    current = registry.get_version_by_alias(name, CHAMPION)
+    if current == version:
+        return PromotionOutcome(name=name, champion=version, previous=None, action="noop")
+    if current is not None:
+        registry.set_alias(name, PREVIOUS, current)
+    registry.set_alias(name, CHAMPION, version)
+    return PromotionOutcome(name=name, champion=version, previous=current, action="promote")
+
+
+def rollback(registry: RegistryClient, name: str) -> PromotionOutcome:
+    """Re-point ``@champion`` back to ``@previous_champion`` (the last good version).
+
+    The outgoing champion is swapped into ``@previous_champion`` so a rollback is itself reversible
+    (re-promotable). Raises ``TrackingError`` if there is no prior version to roll back to.
+    """
+    prev = registry.get_version_by_alias(name, PREVIOUS)
+    if prev is None:
+        raise TrackingError(
+            f"cannot roll back {name!r}: no @{PREVIOUS} alias — nothing was promoted over"
+        )
+    current = registry.get_version_by_alias(name, CHAMPION)
+    registry.set_alias(name, CHAMPION, prev)
+    if current is not None and current != prev:
+        registry.set_alias(name, PREVIOUS, current)
+    return PromotionOutcome(name=name, champion=prev, previous=current, action="rollback")
+
+
 # ── real impls (lazy heavy imports; optional `train` group) ───────────────────────────────────────
 
 
@@ -207,3 +266,16 @@ class MlflowRegistry:
             pass
         mv = client.create_model_version(name=name, source=source, run_id=run_id)
         return mv.version
+
+    def set_alias(self, name: str, alias: str, version: str) -> None:
+        from mlflow.tracking import MlflowClient  # lazy
+
+        MlflowClient().set_registered_model_alias(name, alias, str(version))
+
+    def get_version_by_alias(self, name: str, alias: str) -> str | None:
+        from mlflow.tracking import MlflowClient  # lazy
+
+        try:
+            return MlflowClient().get_model_version_by_alias(name, alias).version
+        except Exception:  # noqa: BLE001 - alias-absent is the normal "no champion yet" path
+            return None

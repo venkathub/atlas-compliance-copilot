@@ -57,3 +57,37 @@ def test_live_mlflow_round_trip(tmp_path):
     fetched = client.get_model_version(config.mlflow.register_as, mv.version)
     assert fetched.source == mv.source
     assert fetched.run_id == run_id
+
+
+def test_live_promote_rollback_round_trip(tmp_path):
+    """Register two versions, promote each, roll back — assert @champion resolves correctly."""
+    from atlas_training.tracking import (
+        MlflowRegistry,
+        promote,
+        rollback,
+    )
+
+    registry = MlflowRegistry()
+    tracker = Tracker(registry=registry, hub=FakeHub(), hf_repo="atlas-it/adapter", hf_token="tok")
+    config = load(CONFIG)
+    name = config.mlflow.register_as
+
+    # register two versions of the same registered model
+    run1 = tracker.log_run(config, prompt_template_sha="v1")
+    (tmp_path / "a").mkdir()
+    v1 = tracker.register_adapter(run1, tmp_path / "a", name).version
+    run2 = tracker.log_run(config, prompt_template_sha="v2")
+    (tmp_path / "b").mkdir()
+    v2 = tracker.register_adapter(run2, tmp_path / "b", name).version
+
+    # promote v1, then v2 (v1 becomes the rollback target)
+    promote(registry, name, v1)
+    assert registry.get_version_by_alias(name, "champion") == v1
+    out = promote(registry, name, v2)
+    assert registry.get_version_by_alias(name, "champion") == v2
+    assert out.previous == v1
+
+    # rollback restores v1
+    rb = rollback(registry, name)
+    assert rb.champion == v1
+    assert registry.get_version_by_alias(name, "champion") == v1
