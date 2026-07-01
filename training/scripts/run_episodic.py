@@ -32,7 +32,7 @@ from pathlib import Path
 
 from atlas_training.config import load
 from atlas_training.cost import CostMeter, gpu_rate_from_env
-from atlas_training.report import build_comparison, write_comparison
+from atlas_training.report import build_comparison, build_cost_per_request, write_comparison
 
 log = logging.getLogger("atlas_training.episodic")
 
@@ -99,6 +99,55 @@ def _candidates(rows, outputs):  # pragma: no cover - episodic
                   allowed_ids=r["allowed_ids"])
         for r, out in zip(rows, outputs, strict=True)
     ]
+
+
+def _timed_generate(*args, **kwargs):  # pragma: no cover - episodic (GPU generate)
+    """generate() wrapped with wall timing. Returns (outputs, per_request_latencies_ms).
+
+    generate() runs a single BATCHED forward, so a true per-request latency is not separable here;
+    P7 Task 5 records the batch-mean per request (p50==p95). The Task 11 window can replace this
+    with a per-request loop for a real p50/p95 spread — the report/gate schema is unchanged either
+    way (build_cost_per_request only needs the latency list).
+    """
+    import time as _time
+
+    from atlas_training.infer import generate
+
+    start = _time.monotonic()
+    outputs = generate(*args, **kwargs)
+    elapsed_ms = (_time.monotonic() - start) * 1000.0
+    n = max(1, len(outputs))
+    return outputs, [elapsed_ms / n] * len(outputs)
+
+
+def _per_case_vectors(rows, base_golden, ft_golden, refusal_cases, base_refusal, ft_refusal,
+                      base_faith_per_case, ft_faith_per_case):  # pragma: no cover - episodic
+    """Build metric -> {base, ft} per-case vectors for the report-only D8 stats (ADR-0082).
+
+    format-validity / refusal-correctness are deterministic per-case pass/fail (0/1); faithfulness
+    per-case is included only when per-sample RAGAS scores are available (else its significance is
+    simply omitted — we never invent numbers).
+    """
+    from atlas_evals.metrics.format_validity import score as fmt_score
+    from atlas_evals.metrics.refusal import score as refusal_score
+
+    per_case: dict[str, dict[str, list[float]]] = {
+        "format_validity": {
+            "base": [1.0 if fmt_score(o, set(r["allowed_ids"])) else 0.0
+                     for r, o in zip(rows, base_golden, strict=True)],
+            "ft": [1.0 if fmt_score(o, set(r["allowed_ids"])) else 0.0
+                   for r, o in zip(rows, ft_golden, strict=True)],
+        },
+        "refusal_correctness": {
+            "base": [1.0 if refusal_score(c, o) else 0.0
+                     for c, o in zip(refusal_cases, base_refusal, strict=True)],
+            "ft": [1.0 if refusal_score(c, o) else 0.0
+                   for c, o in zip(refusal_cases, ft_refusal, strict=True)],
+        },
+    }
+    if base_faith_per_case and ft_faith_per_case:
+        per_case["faithfulness"] = {"base": base_faith_per_case, "ft": ft_faith_per_case}
+    return per_case
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic GPU entrypoint
@@ -218,10 +267,11 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
         golden_prompts = [r["prompt"] for r in rows]
         refusal_prompts = [c.question for c in refusal_cases]
 
-        base_golden = generate(config.base_model, golden_prompts, system=train_system)
+        base_golden, base_golden_lat = _timed_generate(
+            config.base_model, golden_prompts, system=train_system)
         base_refusal = generate(config.base_model, refusal_prompts, system=train_system)
-        ft_golden = generate(config.base_model, golden_prompts, adapter_path=adapter_ref,
-                             system=train_system)
+        ft_golden, ft_golden_lat = _timed_generate(
+            config.base_model, golden_prompts, adapter_path=adapter_ref, system=train_system)
         ft_refusal = generate(config.base_model, refusal_prompts, adapter_path=adapter_ref,
                              system=train_system)
 
@@ -256,10 +306,31 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - episodic G
                     "golden": ft_golden, "refusal": ft_refusal}, indent=2) + "\n")
     cost.save(results_dir / "cost.json")
 
+    # Serving cost/latency per request, base vs FT on the SAME GPU (§2.3, D3/ADR-0077). cost-units
+    # per request = GPU ₹/hr prorated over the measured generation wall-time per request
+    # (same-family base vs base+LoRA, so the real signal is LoRA serving overhead, not price).
+    def _per_req_seconds(lat_ms):
+        return (sum(lat_ms) / len(lat_ms) / 1000.0) if lat_ms else 0.0
+
+    base_cost_units = round(rate / 3600.0 * _per_req_seconds(base_golden_lat), 6)
+    ft_cost_units = round(rate / 3600.0 * _per_req_seconds(ft_golden_lat), 6)
+    cost_per_request = build_cost_per_request(
+        base_latencies_ms=base_golden_lat,
+        ft_latencies_ms=ft_golden_lat,
+        base_cost_units_per_req=base_cost_units,
+        ft_cost_units_per_req=ft_cost_units,
+        same_gpu=os.environ.get("ATLAS_GPU_LABEL", "L4"),
+    )
+    per_case = _per_case_vectors(
+        rows, base_golden, ft_golden, refusal_cases, base_refusal, ft_refusal,
+        base_faith_per_case=None, ft_faith_per_case=None,
+    )
+
     comparison = build_comparison(
         base_scores, ft_scores,
         model_ids={"base": config.base_model, "ft": ft_model_id},
         dataset_size=dataset_size, training_cost=cost.to_dict(),
+        cost_per_request=cost_per_request, per_case=per_case,
     )
     jp, mp = write_comparison(comparison, results_dir)
     log.info("wrote %s and %s", jp, mp)

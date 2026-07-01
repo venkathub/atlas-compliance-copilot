@@ -13,6 +13,7 @@ from atlas_training.report import (
     METRICS,
     ComparisonResult,
     build_comparison,
+    build_cost_per_request,
     comparison_markdown,
     metric_delta,
     write_comparison,
@@ -80,3 +81,95 @@ def test_default_git_sha_and_timestamp_filled():
     r = build_comparison(BASE, FT, model_ids=MODEL_IDS, dataset_size=5)
     assert r.git_sha  # current_git_sha() or "unknown"
     assert r.recorded_at  # iso timestamp
+
+
+# --- P7 Task 5: cost/latency-per-request + report-only statistics (D3/ADR-0077, D8/ADR-0082) ---
+
+def _per_case():
+    # 12 paired cases per metric: faithfulness (continuous), format/refusal (binary 0/1).
+    return {
+        "faithfulness": {
+            "base": [0.80 + 0.01 * i for i in range(12)],
+            "ft": [0.68 + 0.01 * i for i in range(12)],  # consistent ~-0.12 regression
+        },
+        "format_validity": {"base": [0.0] * 12, "ft": [1.0] * 12},  # big binary jump
+        "refusal_correctness": {"base": [1.0, 0.0] * 6, "ft": [1.0, 0.0] * 6},  # no change
+    }
+
+
+def test_cost_per_request_block_shape():
+    cpr = build_cost_per_request(
+        base_latencies_ms=[100.0, 120.0, 110.0],
+        ft_latencies_ms=[130.0, 150.0, 140.0],
+        base_cost_units_per_req=0.001,
+        ft_cost_units_per_req=0.0011,
+        same_gpu="L4",
+    )
+    assert cpr["same_gpu"] == "L4"
+    assert cpr["delta_pct"] == 10.0  # (0.0011-0.001)/0.001*100
+    assert cpr["base"]["latency_ms_p50"] == 110.0
+    assert set(cpr["ft"]) == {"cost_units_per_req", "latency_ms_p50", "latency_ms_p95"}
+
+
+def test_cost_delta_pct_zero_when_base_zero():
+    cpr = build_cost_per_request(
+        base_latencies_ms=[], ft_latencies_ms=[],
+        base_cost_units_per_req=0.0, ft_cost_units_per_req=0.0,
+    )
+    assert cpr["delta_pct"] == 0.0
+
+
+def test_stats_embedded_without_breaking_base_ft_delta():
+    r = build_comparison(
+        BASE, FT, model_ids=MODEL_IDS, dataset_size=12, per_case=_per_case(), stats_seed=0,
+    )
+    for m in METRICS:
+        block = r.metrics[m]
+        # the gate-critical trio is untouched...
+        assert set(("base", "ft", "delta")).issubset(block)
+        assert block["delta"] == metric_delta(BASE[m], FT[m])
+        # ...and the report-only stats are additive.
+        assert "ci95_delta" in block and "p_value" in block and "significant" in block
+    assert r.ci_method == "paired_bootstrap_10k"
+    assert r.sig_test == "wilcoxon+mcnemar"
+    assert r.metrics["faithfulness"]["test"] == "wilcoxon"
+    assert r.metrics["format_validity"]["test"] == "mcnemar"
+
+
+def test_no_stats_when_per_case_absent():
+    r = build_comparison(BASE, FT, model_ids=MODEL_IDS, dataset_size=3)
+    assert r.ci_method == "" and r.sig_test == ""
+    assert "ci95_delta" not in r.metrics["faithfulness"]
+
+
+def test_extended_comparison_round_trips_and_is_gate_readable():
+    cpr = build_cost_per_request(
+        base_latencies_ms=[100.0], ft_latencies_ms=[104.0],
+        base_cost_units_per_req=0.001, ft_cost_units_per_req=0.00104,
+    )
+    r = build_comparison(
+        BASE, FT, model_ids=MODEL_IDS, dataset_size=12,
+        cost_per_request=cpr, per_case=_per_case(),
+    )
+    raw = r.to_json()
+    # the promotion gate reads exactly these paths — assert they exist and are well-typed.
+    assert raw["cost"]["delta_pct"] == 4.0
+    for m in METRICS:
+        assert isinstance(raw["metrics"][m]["ft"], float)
+    assert ComparisonResult.from_json(raw) == r
+
+
+def test_markdown_shows_stats_and_cost_sections():
+    cpr = build_cost_per_request(
+        base_latencies_ms=[100.0], ft_latencies_ms=[112.0],
+        base_cost_units_per_req=0.001, ft_cost_units_per_req=0.00112,
+    )
+    r = build_comparison(
+        BASE, FT, model_ids=MODEL_IDS, dataset_size=12,
+        cost_per_request=cpr, per_case=_per_case(),
+    )
+    md = comparison_markdown(r)
+    assert "Statistical rigor" in md
+    assert "95% CI" in md
+    assert "Serving cost/latency per request" in md
+    assert "Cost/req Δ:" in md
