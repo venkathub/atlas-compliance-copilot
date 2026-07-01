@@ -39,6 +39,12 @@ jobs:
         run: uv run --directory agents python -m app.eval.agent_gate
       - name: Cost-regression gate
         run: uv run --directory evals python -m atlas_evals.cost_gate
+      # Model-promotion gate (P7 Task 4, ADR-0075): the committed promoted comparison must still clear
+      # the floors + cost band before a deploy proceeds (GPU-free, over the committed pass fixture).
+      - name: Model-promotion gate (base-vs-FT floors + cost)
+        run: |
+          uv run --directory evals python -m atlas_evals.promotion_gate \
+            --comparison data/promotion/pass/comparison.json
 
   # ── Deploy to the single box (pulls the pre-built multi-arch GHCR images; no build on the box). ──
   deploy:

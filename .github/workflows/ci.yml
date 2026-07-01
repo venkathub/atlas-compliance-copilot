@@ -170,6 +170,43 @@ jobs:
           path: evals/report/*
           if-no-files-found: ignore
 
+  promotion-gate:
+    # NET-NEW required check (P7 Task 4, ADR-0075). GPU-free model-promotion gate: runs
+    # `atlas_evals.promotion_gate` over the two committed fixtures (data/promotion/{pass,blocked})
+    # to prove it BITES — the real P6 adapter PROMOTES (exit 0) and a hand-authored sub-floor adapter
+    # is BLOCKED (exit non-zero). Consumes committed comparison.json only: no GPU, no Ollama, no RAGAS.
+    # NOTE: to make this a merge gate, add this job's `name` as a required status check in main's
+    # branch protection (repo settings — RUNBOOK). Do NOT fold it into `evals-gate` (keeps the
+    # model-promotion bar and the code-merge bar as independently legible required contexts).
+    name: Model promotion gate (base-vs-FT, floors + cost)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.2.0
+      # (1) The passing example: the real P6 adapter must PROMOTE (exit 0). A regression here (e.g. a
+      # re-generated comparison that drops below floor) blocks merge.
+      - name: Assert passing adapter is PROMOTED
+        run: |
+          uv run --directory evals python -m atlas_evals.promotion_gate \
+            --comparison data/promotion/pass/comparison.json
+      # (2) Proof it bites: the sub-floor adapter MUST be blocked. The gate exits non-zero on a block,
+      # so we invert — the step fails loudly if a bad adapter is ever PROMOTED.
+      - name: Assert sub-floor adapter is BLOCKED (proof it bites)
+        run: |
+          if uv run --directory evals python -m atlas_evals.promotion_gate \
+               --comparison data/promotion/blocked/comparison.json; then
+            echo "::error::sub-floor adapter was PROMOTED — the promotion gate failed to bite"
+            exit 1
+          fi
+          echo "Sub-floor adapter correctly BLOCKED (exit non-zero) — gate bites."
+      - name: Upload promotion report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: promotion-report
+          path: evals/report/promotion*
+          if-no-files-found: ignore
+
   secret-scan:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
