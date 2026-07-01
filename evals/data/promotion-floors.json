@@ -1,0 +1,17 @@
+{
+  "faithfulness": {
+    "abs_floor": 0.656,
+    "max_regression_vs_base": 0.05,
+    "mode": "hybrid"
+  },
+  "format_validity": {
+    "abs_floor": 0.95
+  },
+  "refusal_correctness": {
+    "min_delta_vs_base": 0.0
+  },
+  "cost": {
+    "max_regression_pct_vs_base": 10.0
+  },
+  "block_reason_required": true
+}
