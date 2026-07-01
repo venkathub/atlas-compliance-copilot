@@ -1,7 +1,7 @@
 {
   "model": "Qwen/Qwen2.5-7B-Instruct",
   "scores": {
-    "faithfulness": 0.787,
+    "faithfulness": 0.7763,
     "format_validity": 0.0,
     "refusal_correctness": 0.375
   },

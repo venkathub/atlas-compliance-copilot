@@ -1,7 +1,7 @@
 {
-  "model": "hf://venkat2393/atlas-citation-adapter@386e3d3b9a1742e1ce631ae47dab799f32247c93",
+  "model": "hf://venkat2393/atlas-citation-adapter",
   "scores": {
-    "faithfulness": 0.678,
+    "faithfulness": 0.6742,
     "format_validity": 0.9545,
     "refusal_correctness": 0.375
   },
