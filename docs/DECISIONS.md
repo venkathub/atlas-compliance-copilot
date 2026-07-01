@@ -19,6 +19,14 @@
 
 | ADR | Date | Title | Status | Phase |
 |-----|------|-------|--------|-------|
+| 0082 | 2026-07-01 | Statistical rigor: report-only paired-bootstrap 95% CIs + paired significance (Wilcoxon/McNemar) on base-vs-FT deltas | Accepted | Promotion |
+| 0081 | 2026-07-01 | Model drift demo: version-tagged `atlas_eval_metric_score` + `AtlasModelQualityDrift` Alertmanager rule (one-shot seeded) | Accepted | Promotion |
+| 0080 | 2026-07-01 | Router FT tier: new `TIER_FT_CITATION` (flag-gated, never auto-selected) on a single multi-LoRA vLLM backend | Accepted | Promotion |
+| 0079 | 2026-07-01 | Model promote/rollback via MLflow aliases (`@champion`/`@challenger`), legacy stages narrated | Accepted | Promotion |
+| 0078 | 2026-07-01 | Base-vs-FT benchmark: (re)generate via served vLLM multi-LoRA on the same GPU (cost/latency + quality) | Accepted | Promotion |
+| 0077 | 2026-07-01 | Model cost-regression check: relative 10% band on cost-units/req vs base; p95 latency report-only | Accepted | Promotion |
+| 0076 | 2026-07-01 | Faithfulness promotion semantics: hybrid (floor 0.656 AND (within 0.05 of base OR format jump)) | Accepted | Promotion |
+| 0075 | 2026-07-01 | Eval-gated model-promotion gate: dedicated `promotion_gate.py` + `promotion-floors.json` (GPU-free CI) | Accepted | Promotion |
 | 0074 | 2026-06-30 | FT metrics: deterministic, GPU-free format-validity + refusal-correctness validators (reused by P7 gate) | Accepted | Training |
 | 0073 | 2026-06-30 | Base-vs-FT candidate-output generation via Transformers/PEFT in the GPU window (vLLM multi-LoRA stays P7) | Accepted | Training |
 | 0072 | 2026-06-30 | MLflow tracking/registry on existing Postgres; Hugging Face Hub as primary durable artifact store (Oracle mirror deferred) | Accepted | Training |
@@ -116,6 +124,181 @@
 ---
 
 ## 2. Decisions
+
+### ADR-0075 — Eval-gated model-promotion gate: dedicated `promotion_gate.py` + `promotion-floors.json`
+- **Date:** 2026-07-01 · **Status:** Accepted · **Phase/tag:** Promotion · **Spec:** `docs/phases/P7_SPEC.md`
+  §3 (D1), §2.2 · **Builds on:** ADR-0024 (P2 replay/merge gate + `baseline.json` floors), ADR-0064
+  (cost-regression gate) · **Anticipated files:** `evals/atlas_evals/promotion_gate.py`,
+  `evals/data/promotion-floors.json`, `.github/workflows/ci.yml`
+- **Context:** P7 must promote a fine-tuned adapter to the router's production tier **only** if it clears an
+  eval+cost gate — the model-version analog of the P2 code-merge gate — and it must run **GPU-free in CI**
+  against P6's committed `training/results/comparison.json`. The question is where that gate lives.
+- **Options considered:** (a) **new `promotion_gate.py` + new `promotion-floors.json`** — clean separation of
+  the "code-merge bar" (P2 `gate.py`/`baseline.json`) from the "model-promotion bar"; mirrors the `cost_gate.py`
+  precedent (its own baseline file); reuses the P6 deterministic scorers; (b) **extend `gate.py`** with a
+  `--promotion` mode — one entrypoint but overloads the P2 gate (replay-scored code vs pre-scored model deltas)
+  and couples two required checks; (c) **put the gate in `training/`** next to `report.py` — co-located with
+  the producer but splits the eval-harness story and duplicates gate plumbing.
+- **Decision:** **(a).** A dedicated, pure `evaluate_promotion_gate(comparison, floors)` + thin CLI
+  (`python -m atlas_evals.promotion_gate`) consuming the committed `comparison.json`; floors in
+  `promotion-floors.json` that **reference** the P2 faithfulness floor value (0.656) without entangling the two
+  calibration lifecycles. Wired into `ci.yml` as a new required check alongside `evals-gate`.
+- **Rationale:** Keeps the two required CI checks decoupled and independently legible; "the model bar inherits
+  the P2 floor value, not the P2 gate object"; stays GPU-free (no RAGAS/judge import — faithfulness is read
+  from the committed comparison, format/refusal are recomputable deterministically).
+- **Consequences:** A second baseline-style config file to maintain. The gate is proven to "bite" via two
+  committed fixtures (ADR-0076) — a passing and a sub-floor `comparison.json` — asserted in CI.
+
+### ADR-0076 — Faithfulness promotion semantics: hybrid (floor AND (within-band OR format jump))
+- **Date:** 2026-07-01 · **Status:** Accepted · **Phase/tag:** Promotion · **Spec:** `docs/phases/P7_SPEC.md`
+  §3 (D2), §7 Q1 · **Builds on:** ADR-0024 (floor 0.656, `max_regression` 0.05), ADR-0071 empirical addendum
+  (the −0.109 structural trade-off) · **Anticipated files:** `evals/data/promotion-floors.json`,
+  `evals/atlas_evals/promotion_gate.py`
+- **Context:** The committed P6 adapter regresses faithfulness Δ **−0.109** (0.787→0.678) — **above** the 0.656
+  floor but **outside** the P2 0.05 no-regression band — while lifting format-validity 0.000→**0.955**. The gate
+  must decide whether such an adapter is "promotable", which also decides whether the real adapter can be the
+  committed "promoted" example or whether a fresh fine-tune is needed.
+- **Options considered:** (a) **absolute-floor-only** (`ft ≥ 0.656`) — simple; real adapter passes; but
+  tolerates any regression above floor; (b) **strict no-regression** (reuse P2 0.05 band) — model bar == code
+  bar, but **blocks the real adapter**, forcing a P6 re-run to get a passing example; (c) **hybrid** — promote
+  iff `ft ≥ 0.656` **AND** (`ft ≥ base − 0.05` **OR** format-validity jumped) **AND** refusal `Δ ≥ 0` **AND**
+  cost OK — allows a *bounded, justified* faithfulness regression only when it buys the format objective, never
+  below floor.
+- **Decision:** **(c) hybrid.** The real P6 adapter becomes the committed **"promoted"** example (floor +
+  format jump); a hand-authored sub-floor `comparison.json` is the **"blocked"** example. **No new fine-tune
+  required.**
+- **Rationale:** Encodes P6's "honest, structural trade-off" finding as gate policy and tells the strongest
+  portfolio story — the gate accepts a *deliberate, bounded* quality trade-off but blocks silent regression and
+  sub-floor adapters — without spending more GPU on a re-train.
+- **Consequences:** The gate's faithfulness rule is more nuanced than the P2 gate's (needs clear docstring +
+  table tests). The "bounded regression" is now visible policy, so the honest-regression narrative is auditable.
+  Statistical significance of the −0.109 is reported (ADR-0082) but does not yet change the decision.
+
+### ADR-0077 — Model cost-regression check: relative 10% band on cost/req; p95 latency report-only
+- **Date:** 2026-07-01 · **Status:** Accepted · **Phase/tag:** Promotion · **Spec:** `docs/phases/P7_SPEC.md`
+  §3 (D3) · **Builds on:** ADR-0064 / ADR-0040 (cost-regression pattern, cost units) · **Anticipated files:**
+  `evals/data/promotion-floors.json`, `training/atlas_training/report.py`
+- **Context:** Base (`Qwen2.5-7B-Instruct`) and FT (base + LoRA) share the same family, so $/token is ~equal;
+  the real cost signal is **serving overhead** (LoRA) under vLLM multi-LoRA, not price. The promotion gate needs
+  a cost dimension that is meaningful for same-family models.
+- **Options considered:** (a) **relative cost-per-request band** — block if `ft cost/req > base × (1+10%)`;
+  reuses the P3 regression-vs-baseline philosophy; robust to absolute-unit drift; (b) **absolute cost/req
+  ceiling** — simplest but arbitrary for same-family models; (c) **latency-p95 regression band** — most honest
+  for LoRA overhead but a new metric surface.
+- **Decision:** **(a) relative 10% band on cost-units-per-request vs base**, with **p95 latency reported
+  alongside (report-only)**. Threshold tunable.
+- **Rationale:** Mirrors the cost-gate pattern the reviewer already knows; the 10% band tolerates measurement
+  noise while catching real adapter-serving blowups; p95 latency gives serving-overhead context without a new
+  gating surface.
+- **Consequences:** Requires cost/latency-per-request measured on the **same GPU** for base vs FT (ADR-0078).
+  Latency can later be promoted from report-only to a gate if adapter overhead proves material.
+
+### ADR-0078 — Base-vs-FT benchmark regenerated via served vLLM multi-LoRA on the same GPU
+- **Date:** 2026-07-01 · **Status:** Accepted · **Phase/tag:** Promotion · **Spec:** `docs/phases/P7_SPEC.md`
+  §3 (D4), §7 Q3 · **Supersedes (for P7):** the training-window inference caveat in ADR-0073 · **Builds on:**
+  ADR-0066/0067 (provisioner + vLLM profile) · **Anticipated files:** `training/scripts/run_episodic.py`,
+  `training/atlas_training/{infer,report,cost}.py`, `training/results/*`
+- **Context:** P6 generated base/FT quality outputs via Transformers/PEFT (ADR-0073), explicitly deferring the
+  *served* path to P7. P7's whole point (R6, train–serve skew) is proving the **served** adapter clears the bar
+  and measuring its production cost/latency.
+- **Options considered:** (a) **reuse P6's committed quality outputs**; only measure cost/latency on the GPU —
+  minimal GPU, but the served path stays quality-unverified; (b) **regenerate base-vs-FT through the served
+  vLLM multi-LoRA path** in one bounded window (quality **and** cost/latency, same GPU) — most
+  production-faithful, closes the skew gap, costs more GPU.
+- **Decision:** **(b)** — one bounded episodic L4 window: serve base + LoRA via vLLM multi-LoRA, regenerate
+  base-vs-FT quality **and** measure cost/latency-per-request on the same GPU, commit the extended
+  `COMPARISON.md`/`results/*`, then guaranteed teardown.
+- **Rationale:** Directly de-risks R6 — the numbers that gate promotion come from the **same serving path**
+  production would use, not a training-window proxy; keeps everything to one bounded window.
+- **Consequences:** One additional bounded GPU spend (within the episodic budget). Falls back to (a)
+  (inherit quality, cost-only) if budget is tight — documented in the spec.
+
+### ADR-0079 — Model promote/rollback via MLflow aliases (`@champion`/`@challenger`)
+- **Date:** 2026-07-01 · **Status:** Accepted · **Phase/tag:** Promotion · **Spec:** `docs/phases/P7_SPEC.md`
+  §3 (D5) · **Builds on:** ADR-0072 (MLflow registry on Postgres + HF source) · **Anticipated files:**
+  `training/atlas_training/tracking.py`, `training/scripts/{promote,rollback}.py`, `docs/RUNBOOK.md`
+- **Context:** Promotion/rollback need a registry lifecycle primitive the router can resolve indirectly. MLflow
+  model-registry **stages** (Staging/Production/Archived) are **deprecated** (≥2.9, hard in 3.9/2026) in favour
+  of **aliases + tags** (web-confirmed 2026-07).
+- **Options considered:** (a) **aliases** (`@champion`/`@challenger`) — modern, non-deprecated; promote = move
+  `@champion`; rollback = re-point; serving resolves an alias, never a version number; (b) **legacy stages** —
+  instantly recognizable but deprecated; (c) **version tags** (`promoted=true`) — trivial but not a real
+  lifecycle primitive (useful only as an alias fallback on registries lacking alias APIs — not our self-hosted
+  OSS case).
+- **Decision:** **(a) aliases**, with the **legacy-stage equivalent narrated** in docs/README for interview
+  coverage. Promote/rollback are alias moves the router reads indirectly via `ftTierModel`.
+- **Rationale:** Current best practice; gives instant rollback with serving code that never hard-codes a
+  version; future-proof against the stage deprecation.
+- **Consequences:** Requires MLflow ≥ the alias-supporting line (our self-hosted OSS server qualifies). Router
+  coupling is indirect (config points at the served LoRA name, not a registry version).
+
+### ADR-0080 — Router FT tier: new `TIER_FT_CITATION`, flag-gated, on a single multi-LoRA vLLM backend
+- **Date:** 2026-07-01 · **Status:** Accepted · **Phase/tag:** Promotion · **Spec:** `docs/phases/P7_SPEC.md`
+  §3 (D6), §7 Q4 · **Builds on:** ADR-0035 (router), ADR-0068 (rag-engine config-selectable chat backend) ·
+  **Anticipated files:** `gateway/.../router/{ModelTier,ModelRouter,RoutingProperties,CostTable}.java`,
+  `rag-engine/.../qa/{ModelTierResolver,ModelTierProperties}.java`, both `application.yml`
+- **Context:** The router must be able to **select** the fine-tuned tier for the citation/refusal path
+  (capability, not uptime). Current limit: `atlas.chat.backend` picks **one** global `ChatModel`; the
+  per-request `X-Atlas-Model-Tier` header only swaps the **model-name string**, not the endpoint.
+- **Options considered:** (a) **FT tier = a new `ModelTier` whose model-name is the served vLLM LoRA name**, on
+  the **same** global vLLM backend with `--enable-lora` (base + LoRA both hosted by one vLLM) — the tier switch
+  stays a model-name swap; no per-route endpoint switching; multi-LoRA is a native vLLM feature; (b) **per-route
+  endpoint switching** — most flexible but a real router refactor beyond P7's remit; (c) **reuse `tier2-mid`** to
+  point at the FT model — no enum change but conflates "mid quality" with "fine-tuned" and muddies the cost table.
+- **Decision:** **(a).** A dedicated `TIER_FT_CITATION` (enable-flag-gated via `atlas.router.ft-tier-enabled`,
+  **never auto-selected** in prod — reachable only via explicit hint), model-name = the served LoRA, on the
+  single multi-LoRA vLLM backend. Production default stays `tier1-small`; frontier stays disabled.
+- **Rationale:** Proves router tiering + multi-adapter serving without a router endpoint-refactor; the
+  flag-gated, hint-only exposure mirrors the frontier-tier safety posture (never trades below the eval floor by
+  surprise).
+- **Consequences:** The `ModelTier` enum gains a value → every exhaustive `switch` (`ModelRouter.modelFor`,
+  `CostTable.unitsPer1k`) and both modules' config + `application.yml` must add the case; router/cost unit tests
+  updated. Multi-LoRA serving is episodic (ADR-0078), so the FT tier is a proven capability, not an SLA.
+
+### ADR-0081 — Model drift demo: version-tagged metric + `AtlasModelQualityDrift` Alertmanager rule
+- **Date:** 2026-07-01 · **Status:** Accepted · **Phase/tag:** Promotion · **Spec:** `docs/phases/P7_SPEC.md`
+  §3 (D7), §2.2 (10) · **Builds on:** ADR-0063 (Prometheus/Alertmanager + `atlas_eval_metric_score`,
+  pushgateway) · **Anticipated files:** `infra/prometheus/alerts.rules.yml`,
+  `evals/atlas_evals/*` (drift emitter/capture)
+- **Context:** P7 must prove the system can **detect drift** without an always-on monitor. There is an existing
+  binary `AtlasEvalGateFailing` rule and an `atlas_eval_metric_score` gauge, but no version-tagged, quality-drop
+  drift signal.
+- **Options considered:** (a) **version-tagged metric + new rule** — emitter pushes
+  `atlas_eval_metric_score{metric,model_version}`; `AtlasModelQualityDrift` fires when a version's score drops
+  below its registered baseline by a margin for a `for:` window; yields a measurable lead-time; (b) **reuse
+  `AtlasEvalGateFailing`** — zero new rule but pass/fail only, not "drift", not version-tagged.
+- **Decision:** **(a).** A dedicated version-tagged drift rule; a **one-shot seeded** regression fires it and
+  the fired alert is captured (`amtool`/API) as a committed artifact.
+- **Rationale:** The honest artifact for R6/R7; produces a quantified **alert lead-time** for PORTFOLIO;
+  version-tagging ties the signal to a specific model version.
+- **Consequences:** Adds a `model_version` label to the eval metric. Deliberately simple (threshold-vs-baseline
+  with a window) — a production build would use PSI/KS/CUSUM over a sliding window (noted as future work in the
+  spec §8, out of P7 scope). No always-on monitor; Alertmanager receiver stays the no-op stub (the demo captures
+  the *fired* alert).
+
+### ADR-0082 — Statistical rigor: report-only paired-bootstrap CIs + paired significance on base-vs-FT deltas
+- **Date:** 2026-07-01 · **Status:** Accepted · **Phase/tag:** Promotion · **Spec:** `docs/phases/P7_SPEC.md`
+  §3 (D8), §8 (W4), §7 Q6 · **Origin:** web-gap review (2026-07-01) · **Anticipated files:**
+  `training/atlas_training/report.py`, `training/results/comparison.json`, `training/results/COMPARISON.md`
+- **Context:** The base-vs-FT comparison is **N=30**. Deciding promote/block on **point deltas** alone
+  (faithfulness Δ −0.109) is statistically underpowered — 2026 eval-rigor consensus is to report **confidence
+  intervals + paired significance**, not point estimates. This directly affects whether the −0.109 "regression"
+  is real or noise.
+- **Options considered:** (a) **point deltas only** (status quo) — simplest but weakest; a −0.109 could be
+  noise and a format gain could be luck; (b) **report-only CIs + paired significance** — the confirmed hybrid
+  gate (ADR-0076) still decides, but `comparison.json`/`COMPARISON.md` additionally carry **paired-bootstrap 95%
+  CIs** per metric delta + a **paired significance test** (Wilcoxon signed-rank for continuous faithfulness;
+  McNemar for binary format/refusal); non-breaking; (c) **significance-aware gate** — additionally don't block on
+  a non-significant regression / don't credit a non-significant gain; most rigorous but couples gate behavior to
+  a stats test.
+- **Decision:** **(b) report-only now, with the seam designed for (c)** (owner-confirmed 2026-07-01, Q6). The
+  confirmed hybrid gate logic is **unchanged**.
+- **Rationale:** Hardens the "honest regression" narrative at near-zero risk — we can state whether the −0.109
+  is statistically real — and mitigates the small-N weakness of the whole benchmark, without making the gate
+  harder to reason about.
+- **Consequences:** Adds `ci95_delta`, `p_value`, `significant`, `ci_method`, `sig_test` fields to the
+  comparison schema (unit-tested on fixtures with known CIs). A significance-aware gate (c) remains an easy
+  fast-follow if desired.
 
 ### ADR-0074 — FT metrics: deterministic, GPU-free format-validity + refusal-correctness validators
 - **Date:** 2026-06-30 · **Status:** Accepted · **Phase/tag:** Training · **Spec:** `docs/phases/P6_SPEC.md`
