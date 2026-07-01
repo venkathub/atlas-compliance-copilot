@@ -1,0 +1,30 @@
+{
+  "metrics": {
+    "faithfulness": {
+      "base": 0.787,
+      "ft": 0.59,
+      "delta": -0.197
+    },
+    "format_validity": {
+      "base": 0.0,
+      "ft": 0.9545,
+      "delta": 0.9545
+    },
+    "refusal_correctness": {
+      "base": 0.375,
+      "ft": 0.375,
+      "delta": 0.0
+    }
+  },
+  "model_ids": {
+    "base": "Qwen/Qwen2.5-7B-Instruct",
+    "ft": "hf://venkat2393/atlas-citation-adapter-SUBFLOOR@0000000000000000000000000000000000000000"
+  },
+  "dataset_size": 30,
+  "git_sha": "fixture",
+  "recorded_at": "2026-07-01T00:00:00+00:00",
+  "meta": {
+    "fixture": "hand-authored sub-floor adapter for the P7 proof-it-bites CI matrix",
+    "why_blocked": "faithfulness ft 0.590 < abs_floor 0.656 — below floor, never promotable even with the format jump"
+  }
+}
