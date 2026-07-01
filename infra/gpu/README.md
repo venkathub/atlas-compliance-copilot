@@ -48,6 +48,37 @@ uv run --directory infra/gpu python -m atlas_gpu teardown --destroy  # delete
 `provision` writes `OLLAMA_BASE_URL`, `ATLAS_VLLM_BASE_URL` (when `vllm`/`both`), and the live
 `GPU_INSTANCE_ID` back to `--write-env`.
 
+### Episodic vLLM multi-LoRA (P7 — base + fine-tuned adapter on one endpoint)
+
+The P7 promotion evidence is generated in one bounded GPU window that serves the **base** model and
+the **fine-tuned LoRA adapter** as **distinct model names on a single OpenAI-compatible endpoint**
+(vLLM `--enable-lora`, ADR-0080). This de-risks train–serve skew (R6): the numbers that gate
+promotion come from the same serving path production would use. Set the LoRA env, then provision:
+
+```bash
+# in .env (or exported) — the adapter NAME must match ATLAS_ROUTER_FT_TIER_MODEL so the router
+# tier, the rag-engine resolver, and the served adapter all line up:
+ATLAS_VLLM_ENABLE_LORA=true
+ATLAS_VLLM_LORA_MODULES="atlas-citation-adapter=/workspace/adapter"   # NAME=PATH (dir or HF repo)
+ATLAS_VLLM_MAX_LORAS=1            # base + 1 adapter
+ATLAS_VLLM_MAX_LORA_RANK=16      # = the committed adapter's lora.r
+# ATLAS_VLLM_RUNTIME_LORA=true    # optional: enable POST /v1/load_lora_adapter hot-load
+
+uv run --directory infra/gpu python -m atlas_gpu provision --serve vllm --write-env ./.env
+# → both "Qwen/Qwen2.5-7B-Instruct-AWQ" and "atlas-citation-adapter" appear at GET /v1/models.
+
+# generate the base-vs-FT evidence + measure cost/latency through the SERVED path (training/), then:
+uv run --directory infra/gpu python -m atlas_gpu teardown --destroy   # zero residual cost
+```
+
+Verify the served endpoint with the opt-in smoke (`tests/test_vllm_lora_live.py`, not in CI):
+```bash
+ATLAS_GPU_LIVE=1 uv run --directory infra/gpu --with pytest pytest tests/test_vllm_lora_live.py -q
+```
+Runtime hot-load (when `ATLAS_VLLM_RUNTIME_LORA=true`): `POST {ATLAS_VLLM_BASE_URL}/load_lora_adapter`
+with `{"lora_name": …, "lora_path": …}` (see `provision.lora_load_payload`).
+
+
 ### Resume / run against an already-provisioned instance
 ```bash
 make -C infra gpu-up                 # resume + discover + arm watchdog

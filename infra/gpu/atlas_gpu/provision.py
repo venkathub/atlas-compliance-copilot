@@ -57,6 +57,14 @@ class ProvisionConfig:
     embed_model: str = "nomic-embed-text"
     vllm_model: str = "Qwen/Qwen2.5-7B-Instruct-AWQ"
     vllm_max_model_len: int = 8192
+    # vLLM multi-LoRA (P7, ADR-0080/W2): serve base + N adapters as distinct model names on ONE
+    # OpenAI-compatible endpoint. Off by default → the non-LoRA serve command is byte-identical.
+    vllm_enable_lora: bool = False
+    # vLLM --lora-modules specs, e.g. "atlas-citation-adapter=/path/or/hf-repo"
+    vllm_lora_modules: str = ""
+    vllm_max_loras: int = 1  # concurrent adapters (base + 1 by default)
+    vllm_max_lora_rank: int = 16  # sized for the committed P6 adapter (lora.r=16)
+    vllm_runtime_lora: bool = False  # enable POST /v1/load_lora_adapter hot-load
 
     @classmethod
     def from_env(cls, target: ServeTarget, env: dict | None = None) -> ProvisionConfig:
@@ -67,6 +75,11 @@ class ProvisionConfig:
             embed_model=env.get("OLLAMA_EMBED_MODEL", cls.embed_model),
             vllm_model=env.get("ATLAS_VLLM_MODEL", cls.vllm_model),
             vllm_max_model_len=int(env.get("ATLAS_VLLM_MAX_MODEL_LEN", cls.vllm_max_model_len)),
+            vllm_enable_lora=_truthy(env.get("ATLAS_VLLM_ENABLE_LORA")),
+            vllm_lora_modules=env.get("ATLAS_VLLM_LORA_MODULES", cls.vllm_lora_modules).strip(),
+            vllm_max_loras=int(env.get("ATLAS_VLLM_MAX_LORAS", cls.vllm_max_loras)),
+            vllm_max_lora_rank=int(env.get("ATLAS_VLLM_MAX_LORA_RANK", cls.vllm_max_lora_rank)),
+            vllm_runtime_lora=_truthy(env.get("ATLAS_VLLM_RUNTIME_LORA")),
         )
 
     def http_ports(self) -> str:
@@ -115,15 +128,53 @@ if ! python -c "import vllm" >/dev/null 2>&1; then
   echo "[atlas] installing vllm"
   pip install --quiet "vllm>=0.6"
 fi
-if ! pgrep -f "vllm.entrypoints.openai.api_server" >/dev/null 2>&1; then
+{lora_env}if ! pgrep -f "vllm.entrypoints.openai.api_server" >/dev/null 2>&1; then
   echo "[atlas] starting vllm openai server"
   nohup python -m vllm.entrypoints.openai.api_server \\
     --model "{vllm_model}" --host 0.0.0.0 --port {port} \\
-    --max-model-len {max_len} --served-model-name "{vllm_model}" \\
+    --max-model-len {max_len} --served-model-name "{vllm_model}"{lora_args} \\
     > /var/log/atlas-vllm.log 2>&1 &
 fi
 echo "[atlas] vllm starting on :{port} (model load can take several minutes)"
 """
+
+
+def _truthy(value: str | None) -> bool:
+    return str(value).strip().lower() in ("1", "true", "yes", "on") if value is not None else False
+
+
+def _vllm_lora_args(config: ProvisionConfig) -> str:
+    """The ``--enable-lora`` serve flags (P7 multi-LoRA), or '' when LoRA is disabled."""
+    if not config.target.wants_vllm or not config.vllm_enable_lora:
+        return ""
+    args = [
+        " \\\n    --enable-lora",
+        f"--max-loras {config.vllm_max_loras}",
+        f"--max-lora-rank {config.vllm_max_lora_rank}",
+    ]
+    if config.vllm_lora_modules:
+        # vLLM --lora-modules takes space-separated name=path specs.
+        args.append(f"--lora-modules {config.vllm_lora_modules}")
+    return " ".join(args)
+
+
+def _vllm_lora_env(config: ProvisionConfig) -> str:
+    """Export the runtime-LoRA-update flag (W2) when hot-loading is requested; else ''."""
+    if config.target.wants_vllm and config.vllm_enable_lora and config.vllm_runtime_lora:
+        return "export VLLM_ALLOW_RUNTIME_LORA_UPDATING=1\n"
+    return ""
+
+
+def lora_load_payload(name: str, path: str) -> dict[str, str]:
+    """Body for vLLM's runtime hot-load API ``POST /v1/load_lora_adapter`` (W2).
+
+    Requires the server started with ``VLLM_ALLOW_RUNTIME_LORA_UPDATING=1`` (see
+    ``ATLAS_VLLM_RUNTIME_LORA``). After a successful load the adapter is addressable as a distinct
+    model name (``lora_name``) on the same endpoint.
+    """
+    if not name or not path:
+        raise ValueError(f"lora_load_payload needs both name and path (got {name!r}, {path!r})")
+    return {"lora_name": name, "lora_path": path}
 
 
 def build_startup_script(config: ProvisionConfig) -> str:
@@ -154,7 +205,11 @@ def build_startup_script(config: ProvisionConfig) -> str:
     if config.target.wants_vllm:
         parts.append(
             _VLLM_BLOCK.format(
-                port=VLLM_PORT, vllm_model=config.vllm_model, max_len=config.vllm_max_model_len
+                port=VLLM_PORT,
+                vllm_model=config.vllm_model,
+                max_len=config.vllm_max_model_len,
+                lora_args=_vllm_lora_args(config),
+                lora_env=_vllm_lora_env(config),
             )
         )
     parts.append('echo "[atlas] provisioning script complete"')
