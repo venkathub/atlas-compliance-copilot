@@ -1,0 +1,50 @@
+# Atlas — promtool rule unit tests (P7 Task 10, D7/ADR-0081).
+# Run:  promtool test rules infra/prometheus/alerts.rules.test.yml
+# (promtool ships with Prometheus; validated in CI / against the container — see infra/README.)
+#
+# Proves the AtlasModelQualityDrift rule fires when a registered version's score drops >0.05 below
+# its baseline, and does NOT fire when it is within band. Series are pushgateway-shaped
+# (metric + model_version labels), matched on (metric, model_version).
+rule_files:
+  - alerts.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # 1) A real drift: faithfulness 0.79 baseline → 0.60 served (drop 0.19 > 0.05) fires after `for: 2m`.
+  - interval: 1m
+    input_series:
+      - series: 'atlas_eval_metric_score{metric="faithfulness",model_version="3",job="atlas_model_drift"}'
+        values: "0.60 0.60 0.60 0.60 0.60"
+      - series: 'atlas_model_quality_baseline{metric="faithfulness",model_version="3",job="atlas_model_drift"}'
+        values: "0.79 0.79 0.79 0.79 0.79"
+    alert_rule_test:
+      - eval_time: 1m       # before the `for: 2m` window elapses → pending, not firing
+        alertname: AtlasModelQualityDrift
+        exp_alerts: []
+      - eval_time: 3m       # window elapsed → firing
+        alertname: AtlasModelQualityDrift
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              area: quality
+              metric: faithfulness
+              model_version: "3"
+            exp_annotations:
+              summary: "Model 3 drifted on faithfulness"
+              description: >-
+                faithfulness for model version 3 dropped 0.190 below its registered baseline
+                (threshold 0.05). Investigate the served adapter / rollback via the MLflow @champion
+                alias (RUNBOOK rollback section).
+
+  # 2) Within band: 0.79 baseline → 0.76 served (drop 0.03 ≤ 0.05) never fires.
+  - interval: 1m
+    input_series:
+      - series: 'atlas_eval_metric_score{metric="faithfulness",model_version="4",job="atlas_model_drift"}'
+        values: "0.76 0.76 0.76 0.76 0.76"
+      - series: 'atlas_model_quality_baseline{metric="faithfulness",model_version="4",job="atlas_model_drift"}'
+        values: "0.79 0.79 0.79 0.79 0.79"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: AtlasModelQualityDrift
+        exp_alerts: []
